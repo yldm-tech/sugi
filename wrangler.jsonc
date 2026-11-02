@@ -1,0 +1,26 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sugi",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": true,
+  "preview_urls": false,
+  "r2_buckets": [
+    {
+      "binding": "BUCKET",
+      "bucket_name": "sugi"
+    }
+  ],
+  // The Rate Limiting binding only accepts a period of 10 or 60 seconds, so "60 per hour" is expressed as a burst-friendly 10 uploads per 60 seconds per client. Counters are per Cloudflare location and eventually consistent, so treat this as abuse damping rather than an exact quota.
+  "ratelimits": [
+    {
+      "name": "UPLOAD_LIMITER",
+      "namespace_id": "5317",
+      "simple": {
+        "limit": 10,
+        "period": 60
+      }
+    }
+  ]
+  // Secrets (set with `wrangler secret put` or `wrangler deploy --secrets-file`, never in this file): IP_HASH_SECRET (required for uploads), ADMIN_TOKEN (enables admin endpoints), UPLOAD_TOKEN (while set, uploads need `Authorization: Bearer <token>`).
+}
