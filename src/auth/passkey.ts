@@ -1,6 +1,7 @@
 // Passkeys (WebAuthn) via @simplewebauthn/server. Logging in uses discoverable credentials, so no user name is needed. Registering works both for a logged-in account (adds a passkey) and for a visitor without an account (creates a passkey-only account).
+import { brand } from "../config";
 import { generateAuthenticationOptions, generateRegistrationOptions, verifyAuthenticationResponse, verifyRegistrationResponse } from "@simplewebauthn/server";
-import type { AuthenticationResponseJSON, AuthenticatorTransportFuture, RegistrationResponseJSON } from "@simplewebauthn/server";
+import type { AuthenticationResponseJSON, AuthenticatorTransport, RegistrationResponseJSON } from "@simplewebauthn/server";
 import { HttpError, jsonResponse } from "../http";
 import { base64url, randomId } from "../ids";
 import { accountsOn, cookie, createSession, createUser, displayName, getUser, readCookies, resolvePrincipal, sameOrigin } from "./core";
@@ -59,7 +60,7 @@ export async function handlePasskeyLoginVerify(request: Request, env: Env): Prom
       expectedChallenge: challenge,
       expectedOrigin: origin,
       expectedRPID: rpID,
-      credential: { id: row.id, publicKey: new Uint8Array(row.public_key), counter: row.counter, transports: (row.transports ? JSON.parse(row.transports) : undefined) as AuthenticatorTransportFuture[] | undefined },
+      credential: { id: row.id, publicKey: new Uint8Array(row.public_key), counter: row.counter, transports: (row.transports ? JSON.parse(row.transports) : undefined) as AuthenticatorTransport[] | undefined },
     });
     verified = result.verified;
     newCounter = result.authenticationInfo.newCounter;
@@ -79,11 +80,11 @@ export async function handlePasskeyRegisterOptions(request: Request, env: Env): 
   const existing = current ? (await env.DB.prepare("SELECT id, transports FROM passkeys WHERE user_id = ?").bind(userId).all<{ id: string; transports: string | null }>()).results : [];
   const label = current ? current.user.email ?? displayName(current.user) : `sugi-${userId.slice(0, 6)}`;
   const options = await generateRegistrationOptions({
-    rpName: "sugi.moe",
+    rpName: brand(env).siteName,
     rpID: rp(env).rpID,
     userName: label,
     userDisplayName: label,
-    userID: new TextEncoder().encode(userId),
+    userID: new Uint8Array(new TextEncoder().encode(userId)),
     attestationType: "none",
     excludeCredentials: existing.map((c) => ({ id: c.id, transports: c.transports ? JSON.parse(c.transports) : undefined })),
     authenticatorSelection: { residentKey: "required", userVerification: "preferred" },

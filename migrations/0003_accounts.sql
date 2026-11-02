@@ -66,6 +66,8 @@ CREATE TABLE api_tokens (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   token_hash TEXT NOT NULL UNIQUE,
+  -- "user" or "admin". An admin token is treated exactly like ADMIN_TOKEN (moderation tools, no rate limit), so a maintainer can use a personal token instead of the shared one. Only set by hand in D1, never through the API.
+  role TEXT NOT NULL DEFAULT 'user',
   -- First characters of the token, so people can tell their tokens apart.
   prefix TEXT NOT NULL,
   created_at INTEGER NOT NULL,
