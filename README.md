@@ -1,12 +1,18 @@
 # sugi
 
-水杉输入法（msime）项目自用的匿名图床，用来放 PR 截图。一个 Cloudflare Worker 加一个 R2 bucket，没有数据库，没有账号体系。
+通用的匿名公共图床：免注册，上传图片拿到直链。一个 Cloudflare Worker 加一个 R2 bucket，没有数据库，没有账号体系。
 
 - 线上地址：<https://sugi.moe>（备用 <https://sugi.evan-e2b.workers.dev>）
 - Cloudflare 账户：Evan@yldm.tech's Account（`e2b27aea5f599efdbe0a7016a2580d05`），Worker `sugi`，R2 bucket `sugi`（自定义域 `r2.sugi.moe`，作为走缓存的回源地址），zone `sugi.moe`
 - 当前状态：**上传闸门开启**，上传需要 `UPLOAD_TOKEN` 或 `TRUSTED_TOKEN`，匿名上传尚未开放（见文末“剩余上线步骤”）
 
 ## 用法
+
+### 网页
+
+打开 <https://sugi.moe>，把图片拖进上传框、点击选择文件（可多选），或者直接 Ctrl+V / ⌘V 粘贴剪贴板里的图片。每张图上传后显示缩略图、直链和 Markdown 片段，各带一个复制按钮。类型不对、超过 20 MB、触发频率限制、闸门未开放时都会显示对应的提示。页面按 `Accept-Language` 显示中文或英文（默认英文），右上角可以切换，也可以用 `?lang=zh` / `?lang=en` 指定。网页上传是匿名的，和 curl 匿名上传的限制、闸门完全一样，页面里不含任何令牌。
+
+### 命令行
 
 ```sh
 # multipart，字段名 file
@@ -35,7 +41,7 @@ bin/sugi-upload before.png after.png
 
 连接失败（curl 退出码 7）时会再用 `--ipv4` 试一次；如果系统解析器里根本没有缓存 A 记录（macOS 在 zone 刚生效时可能只缓存了 AAAA），再用 `dig` 直接查 A 记录并用 `--resolve` 钉住地址。这几次重试的 curl 报错会出现在 stderr，最终结果以退出码和 stdout 为准。
 
-在 PR 里引用：`![after](https://sugi.moe/3f9a1c0b7e2d4a51.png)`。
+在 Markdown 里嵌入：`![](https://sugi.moe/3f9a1c0b7e2d4a51.png)`。
 
 ## 接口
 
@@ -59,9 +65,10 @@ bin/sugi-upload before.png after.png
 - **取图响应头**：`Content-Type`（存储的图片类型）、`X-Content-Type-Options: nosniff`、`Content-Disposition: inline; filename="<key>"`、`Content-Security-Policy: default-src 'none'; img-src 'self'; style-src 'unsafe-inline'`、`Cache-Control: public, max-age=31536000, immutable`、`ETag`、`Last-Modified`、`Content-Length`。直接在浏览器打开图片时，浏览器会生成一个内置的图片查看页，`img-src 'self'` 让它能显示图片本身，`style-src 'unsafe-inline'` 让它的内联样式生效，其他一切（脚本、外链、表单）都被禁止。
 - **滥用追踪不存原始 IP**。每个对象的 R2 customMetadata 里有 `uploaded`（ISO 时间）、`source`（`HMAC-SHA256(IP_HASH_SECRET, CF-Connecting-IP)` 的十六进制）、`sha256`。拿不到 `IP_HASH_SECRET` 就无法从 `source` 反推 IP；同一个 IP 的所有上传 `source` 相同，所以能按来源整批清除。没配置 `IP_HASH_SECRET` 时上传返回 503，宁可不收也不存无法追溯的文件。Workers Logs 故意没开，避免请求日志里留下 IP。
 - **走 Cloudflare 缓存出图**。CSAM Scanning Tool 只比对“通过 Cloudflare 缓存提供的内容”，而 Worker 自己的响应不进 zone 缓存。所以设置了 `CACHE_ORIGIN`（`wrangler.jsonc` 的 vars，目标是 `https://r2.sugi.moe`，即 bucket 的 R2 自定义域）后，`GET /<key>` 先用 bucket 绑定 `head()` 确认对象还在，再以 `cacheEverything` 经 zone 缓存去取 `r2.sugi.moe/<key>`，套上 sugi 自己的响应头返回。2026-11-02 实测 `r2.sugi.moe` 的第二次请求即 `cf-cache-status: HIT`。因为先查 bucket，删掉的对象立即 404，不依赖缓存清除；HEAD 和 304 不回源。删除和按来源清除在删完 R2 对象后调用 zone 的 purge API 清掉 `r2.sugi.moe/<key>`（每次最多 30 个 URL），需要 `ZONE_ID` 和 `CF_PURGE_TOKEN`。`CACHE_ORIGIN` 为空时照旧直接读 bucket。注意 `r2.sugi.moe` 本身也能直接访问到图片，只是不带 sugi 的那几个安全响应头，内容和权限与 `sugi.moe/<key>` 相同。
-- **频率限制**用 Workers Rate Limiting 绑定（`wrangler.jsonc` 的 `ratelimits`），按来源 HMAC 计数，**每 60 秒 10 次**。这个绑定只支持 10 秒或 60 秒两种周期，所以没法直接写“每小时 60 次”，选了 60 秒 10 次：一次 PR 连传几张截图不会被拦，持续上传的速率上限是每分钟 10 张。令牌校验在限流之前，没带对令牌的请求不消耗额度。注意这个绑定是按 Cloudflare 节点计数、最终一致的，不是精确配额：2026-11-02 在线上 16 秒内连发 60 次，前 42 次都放行，第 43 次起才开始返回 429。它能压住持续刷量，挡不住短时间的突发，所以 zone 上再加一条 WAF 速率规则（见下）。
+- **频率限制**用 Workers Rate Limiting 绑定（`wrangler.jsonc` 的 `ratelimits`），按来源 HMAC 计数，**每 60 秒 10 次**。这个绑定只支持 10 秒或 60 秒两种周期，所以没法直接写“每小时 60 次”，选了 60 秒 10 次：一次连传几张图不会被拦，持续上传的速率上限是每分钟 10 张。令牌校验在限流之前，没带对令牌的请求不消耗额度。注意这个绑定是按 Cloudflare 节点计数、最终一致的，不是精确配额：2026-11-02 在线上 16 秒内连发 60 次，前 42 次都放行，第 43 次起才开始返回 429。它能压住持续刷量，挡不住短时间的突发，所以 zone 上再加一条 WAF 速率规则（见下）。
 - **可信令牌 `TRUSTED_TOKEN`**：维护者和 agent 用，和 `UPLOAD_TOKEN`、`ADMIN_TOKEN` 互相独立，同样用常量时间比较。带 `Authorization: Bearer <TRUSTED_TOKEN>` 的上传跳过 Worker 限流，并且在闸门开启时也能上传；它不能调用管理接口。没设置时没有任何效果。不按 IP 做白名单，因为维护者的 IP 会变，agent 还跑在另一台 Mac 上。
 - **WAF 速率规则**（zone `sugi.moe`，Free 计划）：Free 计划只给 1 条速率规则，表达式只能匹配路径，计数周期和封禁时长都只能是 10 秒，按 IP 计数。规则是 `http.request.uri.path eq "/upload"`，每个 IP 每 10 秒最多 5 次，超出后封 10 秒（返回 429）。`/upload` 只接受 POST/PUT，其他方法本来就是 405，所以不按方法区分。Free 计划的速率规则表达式里不能写请求头，可信令牌的豁免放在一条自定义规则里：`http.request.uri.path eq "/upload" and any(http.request.headers["authorization"][*] eq "Bearer <TRUSTED_TOKEN>")` 时执行 Skip，跳过 `http_ratelimit` 阶段（自定义规则阶段在速率规则阶段之前执行）。WAF 无法验证令牌，只能按字面值匹配，**所以 `TRUSTED_TOKEN` 的值也写在这条 zone 规则里，轮换时必须两处一起改**。
+- **首页**：纯 HTML 加一段内联脚本，不引用任何外部资源，不用框架。首页有自己的 CSP：`default-src 'none'; script-src 'nonce-<随机>'; style-src 'nonce-<随机>'; img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`，每次响应换一个 nonce，只有带这个 nonce 的那一段脚本和样式能执行；浏览器端的提示文字放在一个 `type="application/json"` 的数据块里，不执行。因为 nonce 每次不同，首页是 `Cache-Control: private, no-cache`，并带 `Vary: Accept-Language`。图片响应的 CSP 保持原样不变。
 - **鉴权**：`Authorization: Bearer <token>`，比较前先对两边各做一次 SHA-256，再用 `crypto.subtle.timingSafeEqual` 比较，长度和内容都不会从耗时上泄露。
 
 ### Secrets
