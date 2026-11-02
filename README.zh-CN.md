@@ -2,7 +2,7 @@
 
 [English](README.md)
 
-sugi 是一个匿名图床，图片和短视频都能传，整个跑在 Cloudflare 上：一个 Worker，一个存文件的 R2 bucket，一个存打包链接的 D1 数据库。不用注册，拖进来就能拿到直链，可以永久保存，也可以 1 小时、12 小时或 3 天后自动删除。自带中英双语网站、HTTP API、命令行工具和 MCP 服务，还有一只什么都往腮帮子里屯的仓鼠。
+sugi 是一个匿名图床，图片和短视频都能传，整个跑在 Cloudflare 上：一个 Worker，一个存文件的 R2 bucket，一个存打包链接的 D1 数据库。传图片不用注册（短视频默认要登录），拖进来就能拿到直链，可以永久保存，也可以 1 小时、12 小时或 3 天后自动删除。自带中英双语网站、HTTP API、命令行工具和 MCP 服务，还有一只什么都往腮帮子里屯的仓鼠。
 
 作者自己运营的实例是 <https://sugi.moe>。这个仓库用来部署你自己的：你的名字、你的域名、你的规则。
 
@@ -12,7 +12,7 @@ sugi 是一个匿名图床，图片和短视频都能传，整个跑在 Cloudfla
 
 ## 功能
 
-- 图片和短视频：PNG、JPEG、WebP、GIF、AVIF、MP4、WebM，单个文件最大 200 MB。类型只看文件内容，不看文件名和 Content-Type；其他格式（SVG、HTML、PDF、压缩包等）一律拒绝。
+- 图片和短视频：PNG、JPEG、WebP、GIF、AVIF、MP4、WebM，单个文件最大 200 MB。类型只看文件内容，不看文件名和 Content-Type；其他格式（SVG、HTML、PDF、压缩包等）一律拒绝。视频默认需要登录才能上传（`VIDEO_UPLOADS`），因为 Cloudflare 的 CSAM 扫描工具只检测图片。
 - 拖放、选择文件、粘贴，或者贴一个链接让服务器去搬。超过 90 MB 的文件自动分片上传（R2 multipart），不会撞上 Cloudflare 的请求体上限。
 - 永久或临时链接（1 小时、12 小时、3 天），随机 id（`k3x9qa2m`）或可爱 id（`snow-sesame-19`），每个文件有分享页，可以复制成 Markdown、HTML、BBCode，多个文件可以打包成一个链接。
 - 「我的文件」把上传记录和删除凭证存在浏览器里，不需要账号。网页上传时默认在浏览器里抹掉照片的位置信息（EXIF、XMP）。
@@ -65,6 +65,7 @@ npx wrangler secret put ADMIN_TOKEN
 | `STORAGE_LOCATION`             | 无                             | bucket 的位置提示或司法辖区（`apac`、`weur`、`eu` 等），写进隐私政策。                                                                                                                                                                                                                  |
 | `MAIL_FROM`、`RESEND_REGION`   | 无                             | 账号功能用：登录邮件的发件人（例如 `pics <login@example.org>`，域名要在邮件服务商那里验证过），以及写进隐私政策的 Resend 区域。登录邮件通过 Resend（secret `RESEND_API_KEY`）或名为 `EMAIL` 的 `send_email` 绑定发送。                                                                  |
 | `CACHE_ORIGIN`、`ZONE_ID`      | 无                             | 让文件经 zone 缓存提供：bucket 上的 [R2 自定义域](https://developers.cloudflare.com/r2/buckets/public-buckets/#custom-domains)（例如 `https://r2.example.org`）和 zone id。删除文件时会顺带清缓存，需要 secret `CF_PURGE_TOKEN`（只有该 zone 的 Zone → Cache Purge 权限的 API token）。 |
+| `VIDEO_UPLOADS`                | `account`                      | 谁能上传视频。`account`：登录的会话或 API 令牌，以及 `TRUSTED_TOKEN`、`ADMIN_TOKEN`（没开账号功能时只有这两个），因为 Cloudflare 的 CSAM 扫描工具只检测图片、不检测视频。`anyone`：匿名访客也能传。图片不受限制。                                                                       |
 | `FEATURE_CLI`                  | `1`                            | 命令行工具（`/install.sh`）和 MCP 服务（`/mcp`）。                                                                                                                                                                                                                                      |
 | `FEATURE_ACCOUNTS`             | `0`                            | 可选的账号功能，`ACCOUNT_FEATURES` 列出打开哪些部分；目前只有 `email`（邮件魔法链接登录）。                                                                                                                                                                                             |
 | `ACCOUNT_FEATURES`             | `email`                        | `FEATURE_ACCOUNTS` 为 `1` 时启用的账号功能，逗号分隔。                                                                                                                                                                                                                                  |

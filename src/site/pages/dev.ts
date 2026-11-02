@@ -1,5 +1,6 @@
 // The developer page: HTTP API reference, and with FEATURE_CLI the command-line and MCP tabs.
 import { MCP_MAX_BYTES } from "../../mcp";
+import { videoRule } from "./help";
 import {
   ALBUM_MAX_FILES,
   MAX_FILE_BYTES,
@@ -137,7 +138,7 @@ ${
     ? `<p class="lead source-line">${BRAND_ICONS.github}<span>${t(`${esc(b.siteName)} 用的是开源的 sugi（MIT）：<a href="${esc(b.sourceUrl)}" rel="noopener">源代码</a>`, `${esc(b.siteName)} runs sugi, which is open source (MIT): <a href="${esc(b.sourceUrl)}" rel="noopener">source code</a>`)}${b.deployUrl ? t(`。你也可以自己托管一个：<a href="${esc(b.deployUrl)}" rel="noopener">部署到 Cloudflare</a>。`, `. You can host your own too: <a href="${esc(b.deployUrl)}" rel="noopener">Deploy to Cloudflare</a>.`) : t("。", ".")}</span></p>`
     : ""
 }
-<p class="lead">${t(`HTTP API 和网页用的是同一套规则：不登录也能直接用，单个文件最大 ${maxMb} MB，只收图片和短视频（PNG、JPEG、WebP、GIF、AVIF、MP4、WebM，按内容识别格式）。`, `The HTTP API follows the same rules as the website: no account needed, up to ${maxMb} MB per file, images and short videos only (PNG, JPEG, WebP, GIF, AVIF, MP4, WebM, detected from the content).`)}</p>
+<p class="lead">${t(`HTTP API 和网页用的是同一套规则：不登录也能直接用，单个文件最大 ${maxMb} MB，只收图片和短视频（PNG、JPEG、WebP、GIF、AVIF、MP4、WebM，按内容识别格式）。`, `The HTTP API follows the same rules as the website: no account needed, up to ${maxMb} MB per file, images and short videos only (PNG, JPEG, WebP, GIF, AVIF, MP4, WebM, detected from the content).`)}${videoRule(ctx) ? `${ctx.lang === "zh" ? "" : " "}${videoRule(ctx)}${ctx.flags.video === "account" ? t("API 和命令行带上账号页创建的令牌（Authorization: Bearer sugi_…）就行，没有令牌的视频上传会得到 403。", " For the API and the CLI, send a token from the account page (Authorization: Bearer sugi_…); video uploads without one get 403.") : ""}` : ""}</p>
 ${ctx.gated ? `<p class="lead">${t('这个网站的上传接口需要请求头 <code class="chip">Authorization: Bearer &lt;token&gt;</code>，匿名请求会得到 401。', 'Uploads on this site need <code class="chip">Authorization: Bearer &lt;token&gt;</code>; anonymous requests get 401.')}</p>` : ""}
 </section>
 ${ctx.flags.cli ? `<div class="seg big" data-tabs="dev" role="tablist"><button type="button" class="on" data-tab="api" role="tab">HTTP API</button><button type="button" data-tab="cli" role="tab">${t("命令行 CLI", "CLI")}</button><button type="button" data-tab="mcp" role="tab">MCP</button></div>` : ""}

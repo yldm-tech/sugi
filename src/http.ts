@@ -118,6 +118,27 @@ export interface Uploader {
   userId?: string;
 }
 
+/** Who may upload videos (VIDEO_UPLOADS): "anyone"; "account" (a logged-in session or API token, plus the trusted and admin tokens); "trusted" (only the trusted and admin tokens; what "account" means while accounts are off). Cloudflare's CSAM Scanning Tool checks images only, which is why videos are not anonymous by default. */
+export type VideoPolicy = "anyone" | "account" | "trusted";
+
+export function videoPolicy(env: Env): VideoPolicy {
+  if ((env.VIDEO_UPLOADS ?? "").trim() === "anyone") return "anyone";
+  return env.FEATURE_ACCOUNTS === "1" ? "account" : "trusted";
+}
+
+/** Refuses a video from an uploader the video policy does not cover; images always pass. */
+export function assertMayUpload(env: Env, uploader: Uploader, kind: "image" | "video"): void {
+  if (kind !== "video" || uploader.trusted) return;
+  const policy = videoPolicy(env);
+  if (policy === "anyone" || (policy === "account" && uploader.userId)) return;
+  throw new HttpError(
+    403,
+    policy === "account"
+      ? `video uploads need an account: log in at ${env.MAIN_ORIGIN}/login, or use an API token (sugi login TOKEN)`
+      : "video uploads are limited to this site's maintainers",
+  );
+}
+
 // Shared gate for every route that stores user content: the UPLOAD_TOKEN gate (skipped for the trusted token), the IP_HASH_SECRET requirement and the per-source rate limit. `bucket` separates counters, e.g. uploads from album creation; `cost` is how many uploads the call accounts for.
 export async function authorizeUpload(request: Request, env: Env, bucket = "upload", cost = 1): Promise<Uploader> {
   const trusted = await isTrusted(request, env);

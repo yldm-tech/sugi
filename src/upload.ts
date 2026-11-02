@@ -95,9 +95,10 @@ export async function storeStream(
     await stream.cancel();
     throw unsupportedType();
   }
-  const p = await prepare(env, uploader, opts, type, fixedId);
+  let p: Prepared;
   let put: R2PutOptions;
   try {
+    p = await prepare(env, uploader, opts, type, fixedId);
     put = await reservedPutOptions(env, p, fixedId);
   } catch (err) {
     await stream.cancel();

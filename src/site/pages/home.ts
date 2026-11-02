@@ -14,6 +14,12 @@ export function homePage(ctx: Ctx): Page {
   const filesHost = strip(ctx.env.FILES_ORIGIN);
   const tmpHost = strip(ctx.env.TMP_ORIGIN);
   const maxMb = MAX_FILE_BYTES / MiB;
+  const videoNote =
+    ctx.user || ctx.flags.video === "anyone"
+      ? ""
+      : ctx.flags.video === "account"
+        ? t('视频要先 <a href="/login" data-nav>登录</a> 才能上传。', 'Videos need you to <a href="/login" data-nav>log in</a> first. ')
+        : t("这里只能匿名上传图片。", "Anonymous uploads are images only. ");
   const main = `<section class="hero">
 <span class="deco d1" aria-hidden="true">✦</span><span class="deco d2" aria-hidden="true">♡</span><span class="deco d3" aria-hidden="true">✿</span><span class="deco d4" aria-hidden="true">✦</span>
 <h1>${t("把图图交给仓仓吧～", "Hand your pics to the hamster~")}</h1>
@@ -57,7 +63,7 @@ ${ctx.gated ? `<p class="gate" id="gate">${t("这个网站目前只接受带令�
 <input name="url" type="url" inputmode="url" autocomplete="off" placeholder="${t("或者贴一个图片链接，仓仓帮你搬过来", "Or paste an image link and the hamster will fetch it")}" aria-label="${t("图片或视频链接", "Image or video link")}">
 <button type="submit">${t("搬过来", "Fetch")}</button>
 </form>
-<p class="small agree">${t('上传的文件都是公开的。上传即表示同意 <a href="/terms" data-nav>使用条款</a> 和 <a href="/privacy" data-nav>隐私政策</a>。', 'Uploads are public. By uploading you agree to the <a href="/terms" data-nav>terms</a> and the <a href="/privacy" data-nav>privacy policy</a>.')}</p>
+<p class="small agree">${t("上传的文件都是公开的。", "Uploads are public. ")}${videoNote}${t('上传即表示同意 <a href="/terms" data-nav>使用条款</a> 和 <a href="/privacy" data-nav>隐私政策</a>。', 'By uploading you agree to the <a href="/terms" data-nav>terms</a> and the <a href="/privacy" data-nav>privacy policy</a>.')}</p>
 </section>
 
 <section class="stack" id="results" hidden>

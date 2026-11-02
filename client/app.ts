@@ -8,7 +8,7 @@ interface Config {
   lang: "zh" | "en";
   page: string;
   gated: boolean;
-  flags: { accounts: boolean; account: string[]; cli: boolean; donate: boolean };
+  flags: { accounts: boolean; account: string[]; cli: boolean; donate: boolean; video: "anyone" | "account" | "trusted" };
   user?: boolean;
   origins: { main: string; files: string; tmp: string };
   limits: { maxFile: number; single: number; rate: number; ratePeriod: number };
@@ -308,6 +308,7 @@ function errorFor(status: number, body: any, retryAfter: string | null): string 
   if (status === 401) return T.errGated;
   if (status === 413) return T.errTooBig;
   if (status === 415) return T.errType;
+  if (status === 403 && /video uploads/.test(body?.error ?? "")) return /log in/.test(body.error) ? T.errVideoLogin : T.errVideoClosed;
   if (status === 429 && /quota/.test(body?.error ?? "")) return /log in/.test(body.error) ? T.errQuotaAnon : T.errQuota;
   if (status === 507) return T.errFull;
   if (status === 429) return fmt(T.errRate, { s: retryAfter || "60" });
@@ -482,6 +483,10 @@ function addFiles(list: FileList | File[] | null | undefined) {
     } else if (file.type && !/^(image|video)\//.test(file.type)) {
       u.status = "err";
       u.error = T.errType;
+    } else if (u.kind === "video" && CFG.flags.video !== "anyone" && !CFG.user) {
+      // The server refuses these too (VIDEO_UPLOADS); saying so up front saves sending the bytes.
+      u.status = "err";
+      u.error = CFG.flags.video === "account" ? T.errVideoLogin : T.errVideoClosed;
     } else {
       u.local = URL.createObjectURL(file);
       void makeThumb(file).then((t) => {
