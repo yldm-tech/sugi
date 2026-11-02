@@ -4,8 +4,21 @@ import { HttpError, jsonResponse } from "../http";
 import { albumUrl } from "../albums";
 import { constantTimeEqual, sha256Hex } from "../crypto";
 import { describe, fileKey, publicInfo, tokenMatches } from "../files";
-import { isFileId } from "../ids";
-import { accountFeature, clearSessionCookie, displayName, forgetFiles, ownAlbum, ownFile, type Principal, requirePrincipal, sameOrigin } from "./core";
+import { isFileId, randomId } from "../ids";
+import {
+  accountFeature,
+  API_TOKEN_PREFIX,
+  clearSessionCookie,
+  hashSecret,
+  secret,
+  displayName,
+  forgetFiles,
+  ownAlbum,
+  ownFile,
+  type Principal,
+  requirePrincipal,
+  sameOrigin,
+} from "./core";
 
 export async function meSummary(_env: Env, p: Principal) {
   return {
@@ -107,6 +120,34 @@ export async function handleClaim(request: Request, env: Env): Promise<Response>
 }
 
 const MAX_CLAIM = 500;
+
+const MAX_TOKENS = 10;
+
+// POST /api/me/tokens: the token is returned once; only its hash is kept.
+export async function handleCreateToken(request: Request, env: Env): Promise<Response> {
+  const p = await requirePrincipal(request, env);
+  if (!accountFeature(env, "tokens")) throw new HttpError(404, "not found");
+  if (p.via !== "session") throw new HttpError(403, "create API tokens from the website");
+  if (p.via === "session" && !sameOrigin(request, env)) throw new HttpError(403, "cross-site request refused");
+  const count = await env.DB.prepare("SELECT COUNT(*) AS n FROM api_tokens WHERE user_id = ?").bind(p.user.id).first<{ n: number }>();
+  if ((count?.n ?? 0) >= MAX_TOKENS) throw new HttpError(400, `at most ${MAX_TOKENS} API tokens; revoke one first`);
+  const token = API_TOKEN_PREFIX + secret(30);
+  const id = randomId(10);
+  await env.DB.prepare("INSERT INTO api_tokens (id, user_id, token_hash, prefix, created_at) VALUES (?, ?, ?, ?, ?)")
+    .bind(id, p.user.id, await hashSecret(token), token.slice(0, 9), Date.now())
+    .run();
+  return jsonResponse({ id, token, prefix: token.slice(0, 9) }, 201);
+}
+
+// DELETE /api/me/tokens/:id
+export async function handleDeleteToken(request: Request, env: Env, id: string): Promise<Response> {
+  const p = await requirePrincipal(request, env);
+  if (!accountFeature(env, "tokens")) throw new HttpError(404, "not found");
+  if (p.via === "session" && !sameOrigin(request, env)) throw new HttpError(403, "cross-site request refused");
+  const r = await env.DB.prepare("DELETE FROM api_tokens WHERE id = ? AND user_id = ?").bind(id, p.user.id).run();
+  if (!r.meta.changes) throw new HttpError(404, "not found");
+  return jsonResponse({ deleted: [id] });
+}
 
 // DELETE /api/me/passkeys/:id, from the account page.
 export async function handleDeletePasskey(request: Request, env: Env, id: string): Promise<Response> {

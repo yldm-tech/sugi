@@ -85,7 +85,7 @@ const USER_COLUMNS = "u.id AS id, u.email AS email, u.name AS name, u.created_at
 export async function resolvePrincipal(request: Request, env: Env): Promise<Principal | null> {
   if (!accountsOn(env)) return null;
   const bearer = bearerToken(request);
-  if (bearer?.startsWith(API_TOKEN_PREFIX)) {
+  if (bearer?.startsWith(API_TOKEN_PREFIX) && accountFeature(env, "tokens")) {
     const hash = await hashSecret(bearer);
     const row = await env.DB.prepare(
       `SELECT ${USER_COLUMNS}, t.id AS token_id, t.last_used_at AS last_used_at FROM api_tokens t JOIN users u ON u.id = t.user_id WHERE t.token_hash = ?`,

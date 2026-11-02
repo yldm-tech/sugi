@@ -26,7 +26,8 @@
     "fonts": "scripts/subset-fonts.sh",
     "deploy": "wrangler deploy",
     "deploy:production": "scripts/deploy-production.sh",
-    "check:passkey": "node scripts/passkey-e2e.mjs"
+    "check:passkey": "node scripts/passkey-e2e.mjs",
+    "check:account": "node scripts/account-e2e.mjs"
   },
   "cloudflare": {
     "bindings": {

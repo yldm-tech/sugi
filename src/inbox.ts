@@ -1,5 +1,5 @@
 // The end-to-end test inbox: Email Routing sends exactly one hard-to-guess address (E2E_INBOX) to this Worker. Mail to that address is kept briefly in D1 so tests can read a login link; anything else that reaches the Worker is rejected. Only admins can read it.
-import { HttpError, jsonResponse, requireBearer } from "./http";
+import { HttpError, jsonResponse, requireAdmin } from "./http";
 
 export const INBOX_TTL_MS = 3600 * 1000;
 export const INBOX_MAX_ROWS = 50;
@@ -75,7 +75,7 @@ export async function latestMessage(env: Env): Promise<Record<string, unknown> |
 
 // GET /admin/e2e-inbox: the newest test message (admin only).
 export async function handleInboxRead(request: Request, env: Env): Promise<Response> {
-  await requireBearer(request, env.ADMIN_TOKEN, "admin");
+  await requireAdmin(request, env);
   const msg = await latestMessage(env);
   if (!msg) throw new HttpError(404, "the test inbox is empty");
   return jsonResponse(msg);
