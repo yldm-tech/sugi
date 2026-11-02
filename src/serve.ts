@@ -59,6 +59,8 @@ export async function handleFileServe(request: Request, env: Env, temporary: boo
   const range = parseRange(request.headers.get("range"), obj.size);
   if (range === "invalid") {
     headers.set("content-range", `bytes */${obj.size}`);
+    // Only a confirmed object's 200, 206 and 304 may be cached; an error never is.
+    headers.set("cache-control", "no-store");
     return new Response(null, { status: 416, headers });
   }
   if (request.method === "HEAD") {
@@ -69,24 +71,27 @@ export async function handleFileServe(request: Request, env: Env, temporary: boo
   if (env.CACHE_ORIGIN) {
     const opts = { ttl, range: range ? `bytes=${range.offset}-${range.offset + range.length - 1}` : null };
     let upstream = await fetchViaCache(env, key, opts);
-    if (upstream.status !== 200 && upstream.status !== 206 && upstream.status !== 404 && upstream.status !== 451) {
-      // Anything else from our own R2 custom domain (a 403 or 5xx) is not the visitor's fault: count it, then try once more.
+    if (upstream.status !== 200 && upstream.status !== 206 && upstream.status !== 451) {
+      // The bucket has just confirmed the object, so anything else from our own R2 custom domain (a 404 right after the upload, a 403, a 5xx) is not the visitor's fault: count it and try once more.
       await upstream.body?.cancel();
       await countOps(env, `cache_${upstream.status}`);
       upstream = await fetchViaCache(env, key, opts);
     }
-    if (upstream.status !== 200 && upstream.status !== 206) {
+    // A CSAM match (451) is passed on, never worked around by reading the bucket directly, which would defeat the block.
+    if (upstream.status === 451) {
       await upstream.body?.cancel();
-      // A CSAM match (451) is passed on, never worked around by reading the bucket directly, which would defeat the block.
-      if (upstream.status === 451) throw new RemovedError();
-      if (upstream.status === 404) throw new HttpError(404, "not found");
-      throw new HttpError(502, "the file could not be fetched; try again in a moment");
+      throw new RemovedError();
     }
-    for (const h of ["content-length", "content-range"]) {
-      const v = upstream.headers.get(h);
-      if (v) headers.set(h, v);
+    if (upstream.status === 200 || upstream.status === 206) {
+      for (const h of ["content-length", "content-range"]) {
+        const v = upstream.headers.get(h);
+        if (v) headers.set(h, v);
+      }
+      return new Response(upstream.body, { status: upstream.status, headers });
     }
-    return new Response(upstream.body, { status: upstream.status, headers });
+    // Still failing: serve the confirmed object from the bucket rather than fail a visitor (typically the first view right after an upload).
+    await upstream.body?.cancel();
+    await countOps(env, "cache_fallback");
   }
 
   const body = await env.BUCKET.get(key, range ? { range } : undefined);
