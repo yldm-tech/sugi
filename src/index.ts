@@ -1,19 +1,18 @@
 import { constantTimeEqual, hmacSha256Hex, sha256Hex } from "./crypto";
-import { renderIndex } from "./page";
+import { pageCsp, pickLang, renderIndex } from "./page";
 import { sniffImageType, TYPES_BY_EXT } from "./sniff";
 
 export const MAX_BYTES = 20 * 1024 * 1024;
 // Room for multipart boundaries and part headers on top of the file itself.
 const MULTIPART_OVERHEAD = 64 * 1024;
 // Keep in sync with the `ratelimits` entry in wrangler.jsonc; the binding does not expose its own configuration.
-const RATE_LIMIT_TEXT = "每 60 秒最多 10 次上传";
+const RATE_LIMIT = 10;
 const RATE_LIMIT_PERIOD_SECONDS = 60;
 
 const KEY_RE = /^[0-9a-f]{16}\.(png|jpg|webp|gif)$/;
 const SOURCE_RE = /^[0-9a-f]{64}$/;
 
 const IMAGE_CSP = "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'";
-const PAGE_CSP = "default-src 'none'; style-src 'unsafe-inline'";
 
 class HttpError extends Error {
   constructor(
@@ -306,13 +305,29 @@ async function handlePurgeBySource(request: Request, env: Env): Promise<Response
 }
 
 function handleIndex(request: Request, env: Env): Response {
-  const html = renderIndex(new URL(request.url).origin, MAX_BYTES / 1024 / 1024, RATE_LIMIT_TEXT, Boolean(env.UPLOAD_TOKEN));
+  const url = new URL(request.url);
+  const lang = pickLang(url.searchParams.get("lang"), request.headers.get("accept-language"));
+  const nonceBytes = crypto.getRandomValues(new Uint8Array(16));
+  const nonce = btoa(String.fromCharCode(...nonceBytes));
+  const html = renderIndex({
+    origin: url.origin,
+    lang,
+    maxMiB: MAX_BYTES / 1024 / 1024,
+    rateLimit: RATE_LIMIT,
+    ratePeriodSeconds: RATE_LIMIT_PERIOD_SECONDS,
+    gated: Boolean(env.UPLOAD_TOKEN),
+    nonce,
+  });
   return new Response(request.method === "HEAD" ? null : html, {
     headers: {
       "content-type": "text/html; charset=utf-8",
-      "content-security-policy": PAGE_CSP,
+      "content-language": lang === "zh" ? "zh-CN" : "en",
+      "content-security-policy": pageCsp(nonce),
       "x-content-type-options": "nosniff",
-      "cache-control": "public, max-age=300",
+      "referrer-policy": "no-referrer",
+      // Each response carries a fresh CSP nonce, so shared caches must not reuse it across visitors.
+      "cache-control": "private, no-cache",
+      vary: "Accept-Language",
     },
   });
 }
