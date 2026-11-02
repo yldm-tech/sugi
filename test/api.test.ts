@@ -380,38 +380,59 @@ describe("GET/DELETE /api/files/:id", () => {
     expect(seen).toEqual([{ url: `https://r2.sugi.test/f/${r.id}`, range: "bytes=0-9", cf: expect.objectContaining({ cacheEverything: true }) }]);
   });
 
-  // A bare 403 from the R2 custom domain once reached a browser as Chrome's own "HTTP ERROR 403" page.
-  it("retries an unexpected status from the cache origin once, and never answers a browser with a bare error", async () => {
+  // Reported twice: a link opened right after its upload showed Chrome's "HTTP ERROR 403". Whatever the cache origin answers for an object the bucket has confirmed, the visitor gets the file.
+  it("retries an unexpected cache-origin status once, then serves the confirmed object from the bucket", async () => {
     const bytes = png();
     const r = await upload(bytes);
     const browser = { accept: "text/html,application/xhtml+xml,image/avif,image/webp,*/*;q=0.8" };
+    const origin = { CACHE_ORIGIN: "https://r2.sugi.test" };
     let calls = 0;
     vi.spyOn(globalThis, "fetch").mockImplementation(async () => (++calls === 1 ? new Response(null, { status: 403 }) : new Response(bytes, { status: 200 })));
-    const ok = await call(new Request(r.url, { headers: browser }), { CACHE_ORIGIN: "https://r2.sugi.test" });
+    const ok = await call(new Request(r.url, { headers: browser }), origin);
     expect(ok.status).toBe(200);
     expect(calls).toBe(2);
     await new Promise((res) => setTimeout(res, 20));
     const counted = await env.DB.prepare("SELECT SUM(count) AS n FROM ops_counters WHERE name = 'cache_403'").first<{ n: number }>();
     expect(counted?.n).toBeGreaterThan(0);
-    vi.restoreAllMocks();
-    vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(null, { status: 403 }));
-    const bad = await call(new Request(r.url, { headers: browser }), { CACHE_ORIGIN: "https://r2.sugi.test" });
-    expect(bad.status).toBe(502);
-    expect(bad.headers.get("content-type")).toBe("text/html; charset=utf-8");
-    expect(await bad.text()).toContain("文件暂时打不开");
-    // Without an HTML Accept header the error is still a readable line, never empty.
-    const plain = await call(new Request(r.url), { CACHE_ORIGIN: "https://r2.sugi.test" });
-    expect(plain.status).toBe(502);
-    expect((await plain.text()).trim()).not.toBe("");
-    // A CSAM block (451) from the cache is passed on without a retry.
+    // The race right after an upload: the origin still says 404 (or keeps failing) while the bucket has the object.
+    for (const status of [404, 403, 503]) {
+      vi.restoreAllMocks();
+      vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(null, { status }));
+      const res = await call(new Request(r.url, { headers: browser }), origin);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+      expect(new Uint8Array(await res.arrayBuffer())).toEqual(bytes);
+    }
+    // A CSAM block (451) from the cache is passed on without a retry and never worked around.
     vi.restoreAllMocks();
     let blocked = 0;
     vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
       blocked++;
       return new Response(null, { status: 451 });
     });
-    expect((await call(new Request(r.url, { headers: browser }), { CACHE_ORIGIN: "https://r2.sugi.test" })).status).toBe(451);
+    const removed = await call(new Request(r.url, { headers: browser }), origin);
+    expect(removed.status).toBe(451);
+    expect(removed.headers.get("cache-control")).toBe("no-store");
     expect(blocked).toBe(1);
+  });
+
+  it("only a confirmed object's success is cacheable; every error on the files host is no-store and has a body", async () => {
+    const r = await upload(png());
+    const html = { accept: "text/html" };
+    const cases: [Request, number][] = [
+      [new Request(`${FILES}/zzzzzzzz.png`, { headers: html }), 404],
+      [new Request(r.url.replace(/\.png$/, ".jpg"), { headers: html }), 404],
+      [new Request(r.url, { method: "POST", headers: html }), 405],
+      [new Request(r.url, { headers: { range: "bytes=999999-" } }), 416],
+    ];
+    for (const [req, status] of cases) {
+      const res = await call(req);
+      expect(res.status).toBe(status);
+      expect(res.headers.get("cache-control")).toBe("no-store");
+      if (status !== 416) expect((await res.text()).length).toBeGreaterThan(0);
+    }
+    const ok = await call(new Request(r.url));
+    expect(ok.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
   });
 
   it("a missing file on the files host gets a small page for browsers", async () => {

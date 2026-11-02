@@ -13,7 +13,8 @@ export function fetchViaCache(env: Env, key: string, opts: CacheFetchOptions): P
   if (opts.range) headers.range = opts.range;
   return fetch(`${env.CACHE_ORIGIN}/${key}`, {
     headers,
-    cf: { cacheEverything: true, cacheTtlByStatus: { "200-299": Math.max(1, Math.floor(opts.ttl)), "404": 1, "500-599": 0 } },
+    // Only successful reads are cached at the edge; a 404 (e.g. a guessed id before its upload finished), a 403 or a 5xx never is, so it cannot outlive the moment it happened.
+    cf: { cacheEverything: true, cacheTtlByStatus: { "200-299": Math.max(1, Math.floor(opts.ttl)), "300-599": 0 } },
   });
 }
 
