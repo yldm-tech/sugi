@@ -242,6 +242,9 @@ if [ -s "$work/burst.keys" ]; then
   check "deleted every burst object this run created" "$deleted" "$created"
 fi
 
+# The smoke check, which also requests each host on the others' connections (browsers coalesce HTTP/2 connections across hostnames one certificate covers).
+if SUGI_SECRETS_FILE="$secrets" "$here/scripts/smoke.sh" "$base" >"$work/smoke.out" 2>&1; then pass "smoke check, including cross-host requests"; else fail "smoke check: $(grep FAIL "$work/smoke.out" | tr '\n' ';')"; fi
+
 if [ "$failures" -ne 0 ]; then
   echo "$failures check(s) failed"
   exit 1

@@ -48,6 +48,20 @@ npx wrangler secret put ADMIN_TOKEN
 
 不想叫 `my-sugi` 的话，先改 `wrangler.jsonc` 里的 `"name"`。
 
+
+### 用自己的域名
+
+把网站和文件域名放在同一个 Cloudflare zone 里（例如 `example.org`、`files.example.org`、`tmp.example.org`），用**路由**（routes）挂 Worker，**不要用自定义域名**（Custom Domains）：给三个名字各加一条代理的 DNS 记录（`AAAA 100::` 就够，所有请求都由 Worker 回答），然后在 `wrangler.jsonc` 里写
+
+```jsonc
+"routes": [
+  { "pattern": "example.org/*", "zone_name": "example.org" },
+  { "pattern": "files.example.org/*", "zone_name": "example.org" },
+  { "pattern": "tmp.example.org/*", "zone_name": "example.org" }
+]
+```
+
+并设置 `MAIN_ORIGIN`、`FILES_ORIGIN`、`TMP_ORIGIN`。这样三个名字都用 zone 的 Universal SSL 证书（`example.org`、`*.example.org`）。自定义域名会给每个主机名单独发一张证书；浏览器会把 HTTP/2 连接复用给证书覆盖到的其他主机名，而 Cloudflare 对落在另一张证书上的主机名直接回一个空的 403，结果是 files 域名上的图片在 Chrome 里时不时打不开。`scripts/smoke.sh` 专门检查这一点。
 ## 配置
 
 一个实例的身份都在 [`wrangler.jsonc`](wrangler.jsonc) 的 `vars` 里。留空时用默认值，在裸的 `*.workers.dev` 地址上也能工作。
@@ -56,7 +70,7 @@ npx wrangler secret put ADMIN_TOKEN
 | ---------------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `SITE_NAME`                              | 主机名                         | 显示在标题、logo（`pics.example` 显示成 `pics♥example`）、Open Graph 和法律页面里。                                                                                                                                                                                                                                                                                                                                                                   |
 | `MAIN_ORIGIN`                            | 请求自己的 origin              | 网站和接口的公开地址，例如 `https://pics.example.org`。                                                                                                                                                                                                                                                                                                                                                                                               |
-| `FILES_ORIGIN`、`TMP_ORIGIN`             | `<主站>/_files`、`<主站>/_tmp` | 永久和临时文件的地址。有自己的域名时，建议用单独的主机名（`https://files.example.org`、`https://tmp.example.org`）并加成自定义域，这样用户上传的文件永远不会和网站同源。                                                                                                                                                                                                                                                                              |
+| `FILES_ORIGIN`、`TMP_ORIGIN`             | `<主站>/_files`、`<主站>/_tmp` | 永久和临时文件的地址。有自己的域名时，建议用单独的主机名（`https://files.example.org`、`https://tmp.example.org`）并用路由挂上（见「用自己的域名」），这样用户上传的文件永远不会和网站同源。                                                                                                                                                                                                                                                          |
 | `OPERATOR_NAME`                          | 无                             | 运营这个站点的个人或公司，写在使用条款和隐私政策里。                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `CONTACT_EMAIL`、`ABUSE_EMAIL`           | 无                             | 一般和隐私问题的联系邮箱，以及举报邮箱（不填时用联系邮箱）。都不填时页面会请访客联系运营者。                                                                                                                                                                                                                                                                                                                                                          |
 | `CSAM_SCANNING`                          | `0`                            | 只有在 zone 上开启了 Cloudflare 的 [CSAM Scanning Tool](https://developers.cloudflare.com/cache/reference/csam-scanning/)、并且文件经缓存提供（`CACHE_ORIGIN`）之后才设成 `1`，FAQ 和隐私政策只在打开时提到它。                                                                                                                                                                                                                                       |

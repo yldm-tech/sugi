@@ -12,10 +12,11 @@
   "build": {
     "command": "node scripts/build-client.mjs"
   },
+  // Zone routes, not Custom Domains: all three hostnames are then served under the zone's Universal SSL certificate (sugi.moe, *.sugi.moe), so a browser that reuses one HTTP/2 connection for another of them is answered by this Worker. With a Custom Domain per hostname each got its own certificate and such coalesced requests got an empty 403 from the edge. The hostnames need proxied DNS records (AAAA 100::).
   "routes": [
-    { "pattern": "sugi.moe", "custom_domain": true },
-    { "pattern": "files.sugi.moe", "custom_domain": true },
-    { "pattern": "tmp.sugi.moe", "custom_domain": true }
+    { "pattern": "sugi.moe/*", "zone_name": "sugi.moe" },
+    { "pattern": "files.sugi.moe/*", "zone_name": "sugi.moe" },
+    { "pattern": "tmp.sugi.moe/*", "zone_name": "sugi.moe" }
   ],
   "assets": {
     "directory": "./public",
