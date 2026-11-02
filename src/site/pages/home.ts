@@ -33,6 +33,7 @@ ${mascotStage(t("今天屯点什么呢？", "What shall we stash today?"), t("�
 </div>
 <input type="file" id="file" multiple accept="image/png,image/jpeg,image/webp,image/gif,image/avif,video/mp4,video/webm" hidden>
 </div>
+${ctx.env.IP_HASH_SECRET ? "" : `<p class="gate">${t("这个网站还没配置好：缺少 IP_HASH_SECRET 密钥，上传会失败。运营者可以用 wrangler secret put IP_HASH_SECRET 设置。", "This site is not set up yet: the IP_HASH_SECRET secret is missing, so uploads will fail. The operator can set it with wrangler secret put IP_HASH_SECRET.")}</p>`}
 ${ctx.gated ? `<p class="gate" id="gate">${t("暂未开放匿名上传：服务还在内测，目前只接受带令牌的上传。", "Anonymous uploads are not open yet: the service is in a closed test and only accepts uploads with a token.")}</p>` : ""}
 <div class="opts">
 <div class="expiry">

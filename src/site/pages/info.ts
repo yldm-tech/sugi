@@ -37,6 +37,7 @@ function jsonLine(key: string, value: string, indent: number, last = false): Lin
 const str = (s: string) => `<span class="s">"${esc(s)}"</span>`;
 
 export function devPage(ctx: Ctx): Page {
+  const wafRule = brand(ctx.env).wafRule;
   const t = tr(ctx);
   const main = ctx.env.MAIN_ORIGIN;
   const api = `${main}/api/upload`;
@@ -99,8 +100,8 @@ ${codeBlock(ctx, [{ kind: "cmd", text: `curl -X DELETE -H "Sugi-Token: d_7Yq2…
 ${rows.map(([path, desc]) => `<div class="apirow"><code>${esc(path)}</code><span>${esc(desc)}</span></div>`).join("\n")}
 </div>
 <p class="small">${t(
-    `限流：每个 IP 每 ${RATE_LIMIT_PERIOD_SECONDS} 秒最多 ${RATE_LIMIT} 次上传（一次上传、一次链接搬运、一次分片上传的开始各算一次），打包链接另算，也是 ${RATE_LIMIT_PERIOD_SECONDS} 秒 ${RATE_LIMIT} 次；另外防火墙对 /upload、/api/upload 和 /api/uploads 每个 IP 每 ${WAF_PERIOD_SECONDS} 秒最多 ${WAF_LIMIT} 次请求，超过会被拦 ${WAF_PERIOD_SECONDS} 秒。超过限制会返回 429，歇一下再来就好。`,
-    `Rate limits: each IP may start ${RATE_LIMIT} uploads per ${RATE_LIMIT_PERIOD_SECONDS} seconds (an upload, a link import and the start of a chunked upload each count once), and separately create ${RATE_LIMIT} albums per ${RATE_LIMIT_PERIOD_SECONDS} seconds. On top of that the firewall allows ${WAF_LIMIT} requests per ${WAF_PERIOD_SECONDS} seconds per IP to /upload, /api/upload and /api/uploads, and blocks for ${WAF_PERIOD_SECONDS} seconds beyond that. Over a limit you get 429; wait a moment and try again.`,
+    `限流：每个 IP 每 ${RATE_LIMIT_PERIOD_SECONDS} 秒最多 ${RATE_LIMIT} 次上传（一次上传、一次链接搬运、一次分片上传的开始各算一次），打包链接另算，也是 ${RATE_LIMIT_PERIOD_SECONDS} 秒 ${RATE_LIMIT} 次${wafRule ? `；另外防火墙对 /upload、/api/upload 和 /api/uploads 每个 IP 每 ${WAF_PERIOD_SECONDS} 秒最多 ${WAF_LIMIT} 次请求，超过会被拦 ${WAF_PERIOD_SECONDS} 秒` : ""}。超过限制会返回 429，歇一下再来就好。`,
+    `Rate limits: each IP may start ${RATE_LIMIT} uploads per ${RATE_LIMIT_PERIOD_SECONDS} seconds (an upload, a link import and the start of a chunked upload each count once), and separately create ${RATE_LIMIT} albums per ${RATE_LIMIT_PERIOD_SECONDS} seconds.${wafRule ? ` On top of that the firewall allows ${WAF_LIMIT} requests per ${WAF_PERIOD_SECONDS} seconds per IP to /upload, /api/upload and /api/uploads, and blocks for ${WAF_PERIOD_SECONDS} seconds beyond that.` : ""} Over a limit you get 429; wait a moment and try again.`,
   )}</p>
 <p class="small">${t(
     `旧接口 <code class="chip">POST /upload</code> 继续可用：只收 PNG、JPEG、WebP、GIF，最大 20 MB，链接是 ${main}/&lt;内容哈希&gt;.png 这种形式，相同内容得到同一个链接，没有删除凭证。`,

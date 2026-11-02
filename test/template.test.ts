@@ -16,6 +16,7 @@ const TEMPLATE: Partial<Env> = {
   ABUSE_EMAIL: "",
   CSAM_SCANNING: "0",
   EMAIL_ROUTING: "0",
+  WAF_RATE_LIMIT: "0",
   STORAGE_LOCATION: "",
   RESEND_REGION: "",
   MAIL_FROM: "",
@@ -32,7 +33,7 @@ describe("template deployment", () => {
     for (const path of ["/", "/faq", "/terms", "/privacy", "/dev", "/mine", "/nope"]) {
       for (const init of [{}, zh]) {
         const html = await (await get(path, init)).text();
-        for (const needle of ["sugi.moe", "YLDM", "hi@", "abuse@", "CSAM", "Resend", "邮件转发", "email forwarding"]) expect(html, `${path} ${needle}`).not.toContain(needle);
+        for (const needle of ["sugi.moe", "YLDM", "hi@", "abuse@", "CSAM", "Resend", "邮件转发", "email forwarding", "防火墙", "firewall"]) expect(html, `${path} ${needle}`).not.toContain(needle);
       }
     }
     const home = await (await get("/")).text();
@@ -84,5 +85,15 @@ describe("runtime migrations", () => {
     await ensureSchema(env.DB);
     const { results } = await env.DB.prepare("SELECT name FROM d1_migrations").all<{ name: string }>();
     expect(results.map((r) => r.name)).toEqual(MIGRATIONS.map(([n]) => n));
+  });
+});
+
+describe("missing secrets", () => {
+  it("tells the operator instead of failing silently", async () => {
+    const home = await (await get("/", {}, { IP_HASH_SECRET: undefined })).text();
+    expect(home).toContain("IP_HASH_SECRET secret is missing");
+    expect(await (await get("/")).text()).not.toContain("IP_HASH_SECRET");
+    const res = await get("/api/upload", { method: "PUT", body: png(), headers: { "cf-connecting-ip": freshIp(), ...TRUSTED } }, { IP_HASH_SECRET: undefined });
+    expect(res.status).toBe(503);
   });
 });

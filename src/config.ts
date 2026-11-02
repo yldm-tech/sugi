@@ -13,6 +13,8 @@ export interface Brand {
   abuseEmail: string | null;
   /** Cloudflare's CSAM Scanning Tool is enabled on the zone (only then may the pages say so). */
   csamScanning: boolean;
+  /** The zone has the WAF rate limiting rule for upload paths (see README); the developer page then describes it. */
+  wafRule: boolean;
   /** Mail to the contact addresses is forwarded by Cloudflare Email Routing (named as a processor in the privacy policy). */
   emailRouting: boolean;
   /** Where the R2 bucket stores data, e.g. "APAC"; mentioned in the privacy policy when set. */
@@ -43,6 +45,7 @@ export function brand(env: Env): Brand {
     abuseEmail: blank(env.ABUSE_EMAIL) ?? contactEmail,
     csamScanning: env.CSAM_SCANNING === "1",
     emailRouting: env.EMAIL_ROUTING === "1",
+    wafRule: env.WAF_RATE_LIMIT === "1",
     storageLocation: blank(env.STORAGE_LOCATION),
     resendRegion: blank(env.RESEND_REGION),
     mailFrom: blank(env.MAIL_FROM),

@@ -27,6 +27,7 @@ export default defineConfig(async () => {
             ABUSE_EMAIL: "abuse@sugi.moe",
             CSAM_SCANNING: "1",
             EMAIL_ROUTING: "1",
+            WAF_RATE_LIMIT: "1",
             STORAGE_LOCATION: "APAC",
             RESEND_REGION: "ap-northeast-1",
             MAIL_FROM: "sugi.moe <login@sugi.moe>",

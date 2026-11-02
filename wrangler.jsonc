@@ -38,6 +38,8 @@
     "CSAM_SCANNING": "0",
     // Set to "1" if mail to CONTACT_EMAIL / ABUSE_EMAIL goes through Cloudflare Email Routing; the privacy policy then lists it.
     "EMAIL_ROUTING": "0",
+    // Set to "1" once the zone has the WAF rate limiting rule for upload paths described in README.md; the developer page then mentions it.
+    "WAF_RATE_LIMIT": "0",
     // Optional statements for the privacy policy: where the R2 bucket stores data, and the Resend region used for login emails.
     "STORAGE_LOCATION": "",
     "RESEND_REGION": "",
