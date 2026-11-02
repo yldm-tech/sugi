@@ -423,83 +423,84 @@ button,
   background: var(--pale2);
   color: var(--ink);
 }
-/* Compact header: logo and tools on the first row, the links in one row below that scrolls sideways instead of wrapping. The page script switches to it whenever the single row does not fit the current set of links (logged in or not, donate on or off, either language); see fitHeader in client/app.ts. Without the script, a fixed width decides. */
-.top.compact {
-  flex-wrap: wrap;
-  row-gap: 12px;
-}
-.top.compact .brand {
-  order: 1;
-}
-.top.compact .tools {
-  order: 2;
+/* Always one row. Compact form (set by the page script when the full row does not fit, see fitHeader in client/app.ts): logo on the left, a menu button on the right; the links and tools move into the menu panel. */
+.menu {
+  display: none;
+  position: relative;
   margin-left: auto;
+  flex: 0 0 auto;
 }
-.top.compact .nav {
-  order: 3;
-  flex: 1 1 100%;
-  margin-left: 0;
-  overflow-x: auto;
-  scrollbar-width: none;
-  padding: 2px 28px 6px 2px;
-  margin-bottom: -6px;
-  mask-image: linear-gradient(90deg, #000 calc(100% - 32px), transparent);
-}
-.top.compact .nav::-webkit-scrollbar {
+.top.compact .nav,
+.top.compact .tools {
   display: none;
 }
-@media (max-width: 1440px) {
-  html:not(.js) .top {
-    flex-wrap: wrap;
-    row-gap: 12px;
-  }
-  html:not(.js) .top .brand {
-    order: 1;
-  }
-  html:not(.js) .top .tools {
-    order: 2;
-    margin-left: auto;
-  }
-  html:not(.js) .top .nav {
-    order: 3;
-    flex: 1 1 100%;
-    margin-left: 0;
-    overflow-x: auto;
-    scrollbar-width: none;
-    padding: 2px 28px 6px 2px;
-    margin-bottom: -6px;
-    mask-image: linear-gradient(90deg, #000 calc(100% - 32px), transparent);
-  }
-  html:not(.js) .top .nav::-webkit-scrollbar {
+.top.compact .menu {
+  display: block;
+}
+/* Phones and narrow tablets never fit the full row: compact from the first paint, before the script has measured. Without the script, a fixed width decides. */
+@media (max-width: 900px) {
+  .top .nav,
+  .top .tools {
     display: none;
+  }
+  .top .menu {
+    display: block;
   }
 }
-/* Phones and narrow tablets never fit one row: compact from the first paint, before the script has measured anything. */
-@media (max-width: 900px) {
-  .top {
-    flex-wrap: wrap;
-    row-gap: 12px;
-  }
-  .top .brand {
-    order: 1;
-  }
-  .top .tools {
-    order: 2;
-    margin-left: auto;
-  }
-  .top .nav {
-    order: 3;
-    flex: 1 1 100%;
-    margin-left: 0;
-    overflow-x: auto;
-    scrollbar-width: none;
-    padding: 2px 28px 6px 2px;
-    margin-bottom: -6px;
-    mask-image: linear-gradient(90deg, #000 calc(100% - 32px), transparent);
-  }
-  .top .nav::-webkit-scrollbar {
+@media (max-width: 1200px) {
+  html:not(.js) .top .nav,
+  html:not(.js) .top .tools {
     display: none;
   }
+  html:not(.js) .top .menu {
+    display: block;
+  }
+}
+.menu-btn {
+  list-style: none;
+  width: 44px;
+  height: 44px;
+}
+.menu-btn::-webkit-details-marker {
+  display: none;
+}
+.menu[open] .menu-btn {
+  background: var(--pale2);
+}
+.menu-sheet {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 10px);
+  z-index: 40;
+  width: max-content;
+  min-width: 220px;
+  max-width: calc(100vw - 40px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  background: #fff;
+  border: 2.5px solid var(--line);
+  border-radius: 24px;
+  box-shadow: 0 4px 0 var(--line);
+}
+.menu-links {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-family: var(--f-body);
+  font-weight: 600;
+  font-size: 16px;
+}
+.menu-links .pill {
+  text-align: left;
+}
+.menu-tools {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding-top: 10px;
+  border-top: 2px dashed var(--line);
 }
 @media (max-width: 480px) {
   .brand {

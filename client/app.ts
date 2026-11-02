@@ -1713,9 +1713,9 @@ function initPage() {
   updateTab();
 }
 
-// ---------------------------------------------------------------- header fit
+// ---------------------------------------------------------------- header
 
-// One row (logo, links, tools) while it fits; otherwise the compact header with the links in a scrolling row of their own. Measured, not guessed from the window width, because the set of links changes (logged in or not, donate on or off) and so do their widths (language, fonts).
+// The header is always one row: logo, links and tools while they fit, otherwise the logo and a menu button whose panel holds the links and tools. Measured, not guessed from the window width, because the set of links changes (logged in or not, donate on or off) and so do their widths (language, fonts).
 function fitHeader() {
   const top = $(".top");
   const nav = $("#nav");
@@ -1726,14 +1726,56 @@ function fitHeader() {
   }
   top.classList.remove("compact");
   const parts = [$(".brand", top), nav, $(".tools", top)].filter(Boolean) as HTMLElement[];
-  const tops = parts.map((e) => e.getBoundingClientRect().top);
-  const overflow = nav.scrollWidth > nav.clientWidth + 1 || top.scrollWidth > top.clientWidth + 1 || Math.max(...tops) - Math.min(...tops) > 4;
+  // Same row: their vertical centres line up (they differ in height, so their tops do not).
+  const mids = parts.map((e) => {
+    const r = e.getBoundingClientRect();
+    return (r.top + r.bottom) / 2;
+  });
+  const overflow = nav.scrollWidth > nav.clientWidth + 1 || top.scrollWidth > top.clientWidth + 1 || Math.max(...mids) - Math.min(...mids) > 4;
   top.classList.toggle("compact", overflow);
+  if (!overflow) closeMenu(false);
 }
 let fitFrame = 0;
 window.addEventListener("resize", () => {
   cancelAnimationFrame(fitFrame);
   fitFrame = requestAnimationFrame(fitHeader);
+});
+// The menu is a <details>, so it opens without the script too; here it gets aria-expanded, Esc, a focus trap, and closes on outside clicks and on navigation.
+const menu = $<HTMLDetailsElement>("#menu");
+const menuBtn = menu ? $<HTMLElement>("summary", menu) : null;
+function closeMenu(focusButton: boolean) {
+  if (!menu?.open) return;
+  menu.open = false;
+  if (focusButton) menuBtn?.focus();
+}
+menu?.addEventListener("toggle", () => {
+  menuBtn?.setAttribute("aria-expanded", String(menu.open));
+  if (menu.open) $<HTMLElement>(".menu-links a", menu)?.focus();
+});
+document.addEventListener("click", (e) => {
+  if (menu?.open && !menu.contains(e.target as Node)) closeMenu(false);
+});
+document.addEventListener("keydown", (e) => {
+  if (!menu?.open) return;
+  if (e.key === "Escape") {
+    e.preventDefault();
+    closeMenu(true);
+    return;
+  }
+  if (e.key !== "Tab") return;
+  const items = $$<HTMLElement>("summary, .menu-sheet a, .menu-sheet button", menu);
+  const first = items[0];
+  const last = items[items.length - 1];
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault();
+    first.focus();
+  }
+});
+menu?.addEventListener("click", (e) => {
+  if ((e.target as HTMLElement).closest(".menu-sheet a")) closeMenu(false);
 });
 fitHeader();
 void document.fonts?.ready.then(fitHeader);
@@ -1741,7 +1783,7 @@ void document.fonts?.ready.then(fitHeader);
 // ---------------------------------------------------------------- navigation
 
 function markNav(page: string) {
-  for (const a of $$<HTMLAnchorElement>("#nav a[data-for]")) a.classList.toggle("on", a.dataset.for!.split(" ").includes(page));
+  for (const a of $$<HTMLAnchorElement>(".top a[data-for]")) a.classList.toggle("on", a.dataset.for!.split(" ").includes(page));
 }
 
 async function navigate(path: string, push = true): Promise<void> {
@@ -1826,13 +1868,14 @@ document.addEventListener("submit", async (e) => {
 
 // ---------------------------------------------------------------- global listeners
 
-$("#theme")?.addEventListener("click", () => {
-  const night = !isNight();
-  document.documentElement.classList.toggle("night", night);
-  prefs.night = night;
-  savePrefs();
-  touch();
-});
+for (const btn of $$("[data-theme-toggle]"))
+  btn.addEventListener("click", () => {
+    const night = !isNight();
+    document.documentElement.classList.toggle("night", night);
+    prefs.night = night;
+    savePrefs();
+    touch();
+  });
 
 document.addEventListener("paste", (e) => {
   const tag = (e.target as HTMLElement)?.tagName || "";

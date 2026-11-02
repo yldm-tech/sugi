@@ -172,7 +172,7 @@ try {
       }
     }
   }
-  // Header: at every width from phone to wide desktop, logged out and logged in (the links differ), no link or the wordmark may wrap onto a second line, and the single-row header must really fit; otherwise the page has to use the compact header.
+  // Header: at every width from phone to wide desktop, logged out and logged in (the links differ), the header is exactly one row, nothing in it wraps, and where it is compact the menu works.
   const headerWidths = [360, 390, 430, 600, 768, 900, 1024, 1100, 1200, 1280, 1300, 1366, 1400, 1440, 1536, 1600, 1920];
   const headerCheck = () => {
     const out = [];
@@ -195,11 +195,13 @@ try {
     }
     const top = document.querySelector(".top");
     const nav = document.querySelector("#nav");
-    if (!top.classList.contains("compact")) {
-      const parts = [".brand", "#nav", ".tools"].map((q) => document.querySelector(q).getBoundingClientRect());
-      if (Math.max(...parts.map((r) => r.top)) - Math.min(...parts.map((r) => r.top)) > 4) out.push("single-row header items are not on one row");
-      if (nav.scrollWidth > nav.clientWidth + 1) out.push(`single-row nav overflows by ${nav.scrollWidth - nav.clientWidth}px`);
-    }
+    // Always exactly one row: the logo and whatever is visible next to it (links and tools, or the menu button) share one line.
+    const visible = [".brand", "#nav", ".tools", ".menu"].map((q) => document.querySelector(q)).filter((e) => e && getComputedStyle(e).display !== "none");
+    const rects = visible.map((e) => e.getBoundingClientRect());
+    const mids = rects.map((r) => (r.top + r.bottom) / 2);
+    if (Math.max(...mids) - Math.min(...mids) > 4 || top.getBoundingClientRect().height > 70)
+      out.push(`header is not one row (${Math.round(top.getBoundingClientRect().height)}px tall)`);
+    if (getComputedStyle(nav).display !== "none" && nav.scrollWidth > nav.clientWidth + 1) out.push(`nav overflows by ${nav.scrollWidth - nav.clientWidth}px`);
     return out;
   };
   const loggedIn = [false];
@@ -241,10 +243,38 @@ try {
         await page.evaluate(() => document.fonts.ready);
         await page.waitForTimeout(100);
         for (const p of await page.evaluate(headerCheck)) problems.push(`header ${lang}/${user ? "logged in" : "logged out"}/${width}px: ${p}`);
+        // Compact header: the menu opens, stays on screen, lists every link and the tools, and Esc closes it.
+        if (await page.evaluate(() => getComputedStyle(document.querySelector(".menu")).display !== "none")) {
+          await page.click(".menu-btn");
+          // aria-expanded follows the details "toggle" event, which fires right after the click.
+          await page
+            .waitForFunction(() => document.querySelector(".menu-btn").getAttribute("aria-expanded") === "true", null, { timeout: 2000 })
+            .catch(() => undefined);
+          const m = await page.evaluate(() => {
+            const sheet = document.querySelector(".menu-sheet").getBoundingClientRect();
+            return {
+              open: document.querySelector("#menu").open,
+              expanded: document.querySelector(".menu-btn").getAttribute("aria-expanded"),
+              links: [...document.querySelectorAll(".menu-links a")].map((a) => a.getAttribute("href")).join(" "),
+              want: [...document.querySelectorAll("#nav a")].map((a) => a.getAttribute("href")).join(" "),
+              tools: document.querySelectorAll(".menu-tools .lang, .menu-tools [data-theme-toggle]").length,
+              inside: sheet.left >= 0 && sheet.right <= document.documentElement.clientWidth + 1 && sheet.height > 0,
+            };
+          });
+          const where = `header ${lang}/${user ? "logged in" : "logged out"}/${width}px`;
+          if (!m.open || m.expanded !== "true") problems.push(`${where}: the menu does not open`);
+          if (m.links !== m.want) problems.push(`${where}: the menu lists "${m.links}", expected "${m.want}"`);
+          if (m.tools !== 2) problems.push(`${where}: the menu lacks the language or theme toggle`);
+          if (!m.inside) problems.push(`${where}: the menu panel sticks out of the screen`);
+          if (shots && width === 390 && lang === "zh")
+            await page.screenshot({ path: `${shots}/zh-header-menu-${user ? "user" : "anon"}-390.png`, clip: { x: 0, y: 0, width, height: 520 } });
+          await page.keyboard.press("Escape");
+          if (await page.evaluate(() => document.querySelector("#menu").open)) problems.push(`${where}: Esc does not close the menu`);
+        }
         // On a desktop screen the whole header (logo, every link, the tools) must sit on one row.
         if (width >= 1280 && (await page.evaluate(() => document.querySelector(".top").classList.contains("compact"))))
           problems.push(`header ${lang}/${user ? "logged in" : "logged out"}/${width}px: two-row header on a desktop width`);
-        if (shots && (width === 1300 || width === 1440 || width === 1920) && lang === "zh")
+        if (shots && [390, 1024, 1300, 1440, 1920].includes(width) && lang === "zh")
           await page.screenshot({ path: `${shots}/zh-header-${user ? "user" : "anon"}-${width}.png`, clip: { x: 0, y: 0, width, height: 140 } });
       }
       await ctx.close();
