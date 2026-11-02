@@ -2,6 +2,7 @@ import { esc } from "../i18n";
 import { brand } from "../../config";
 import { type Ctx, type Page, pageTitle, tr } from "../layout";
 import { peekHamster } from "../svg";
+import { BRAND_ICONS } from "../brand-icons";
 
 function loginFrame(_ctx: Ctx, inner: string): string {
   return `<section class="login"><div class="holder">
@@ -32,7 +33,7 @@ function providerButtons(ctx: Ctx, skip: string, link = false): string {
   const t = tr(ctx);
   const live = PROVIDERS.filter(([id]) => ctx.flags.account.includes(id) && !skip.split(",").includes(id));
   if (!live.length) return "";
-  return `<div class="row-actions center">${live.map(([id, name]) => `<a class="mini" href="/auth/${id}">${link ? t(`关联 ${name}`, `Link ${name}`) : t(`用 ${name} 登录`, `Log in with ${name}`)}</a>`).join("")}</div>`;
+  return `<div class="row-actions center">${live.map(([id, name]) => `<a class="mini with-icon" href="/auth/${id}">${BRAND_ICONS[id] ?? ""}<span>${link ? t(`关联 ${name}`, `Link ${name}`) : t(`用 ${name} 登录`, `Log in with ${name}`)}</span></a>`).join("")}</div>`;
 }
 
 function tokenSection(ctx: Ctx): string {
@@ -119,7 +120,7 @@ export function accountPage(ctx: Ctx): Page {
   const welcome = ctx.query?.get("welcome") === "1";
   const inner = `<div class="center"><h1 class="h2">${t("我的账号", "Your account")}</h1>${welcome ? `<p class="lead">${t("登录好啦～", "You're logged in~")}</p>` : ""}</div>
 <p class="lead">${u.email ? t("邮箱", "Email") : t("名字", "Name")}${t("：", ": ")}<strong>${esc(u.email ?? u.name)}</strong></p>
-${u.providers.length ? `<p class="small">${t("登录方式", "Log in with")}${t("：", ": ")}${u.providers.map((p) => esc(PROVIDER_NAMES[p] ?? p)).join(" · ")}</p>` : ""}
+${u.providers.length ? `<p class="small">${t("登录方式", "Log in with")}${t("：", ": ")}${u.providers.map((p) => `<span class="nw provider">${BRAND_ICONS[p] ?? ""}${esc(PROVIDER_NAMES[p] ?? p)}</span>`).join(" · ")}</p>` : ""}
 ${providerButtons(ctx, u.providers.join(","), true)}
 ${ctx.flags.account.includes("passkey") ? passkeySection(ctx) : ""}
 ${ctx.flags.account.includes("tokens") ? tokenSection(ctx) : ""}
