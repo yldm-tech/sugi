@@ -9,7 +9,7 @@ All notable changes to sugi are listed here. The format follows [Keep a Changelo
 - Daily upload quotas per source, per account and for the whole site (`QUOTA_*`); 429 or 507 with Retry-After.
 - `/healthz`, a daily operations report and threshold alerts by email (`OPS_EMAIL`, `ALERT_*`), and the admin MCP tool `ops_report`.
 - A report form on file and album pages (`POST /api/reports`), an hourly digest to the abuse address, and the admin MCP tools `list_reports` and `resolve_report`.
-- The donate page ("Feed the hamster") with an Alipay QR code and link (`DONATE_ALIPAY_QR`, `DONATE_ALIPAY_LINK`), and a cost list computed from real data: R2 storage from the measured bucket size, the free plans in use, and the domain renewal when `DONATE_DOMAIN_COST_USD` is set. It replaces `FEATURE_DONATE`.
+- The donate page ("Feed the hamster"): the Alipay QR code and link (`DONATE_ALIPAY_QR`, `DONATE_ALIPAY_LINK`) with a few playful suggested amounts, and an optional thank-you list (`DONATE_THANKS`). It replaces `FEATURE_DONATE`.
 - Integrations: a ShareX custom uploader at `/integrations/sharex.sxcu`, settings for PicGo / PicList, uPic, Typora and Obsidian on `/dev#tools`, and `sugi up --plain` for tools that read bare links.
 
 - Resumable chunked uploads: the website keeps an unfinished big upload's progress in the browser, waits out a lost connection and continues after a reload when the file is picked again; the CLI keeps it in `~/.config/sugi/pending/`, continues on the next run, shows progress bars and has `sugi abort FILE`. Cancelling aborts the multipart upload on the server.

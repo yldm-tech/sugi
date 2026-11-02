@@ -65,27 +65,3 @@ describe("operations", () => {
     expect(await checkAlerts({ ...env, ...OPS } as Env, now + 7 * 3600e3)).toEqual([]);
   });
 });
-
-describe("R2 cost on the donate page", () => {
-  it("charges whole GB-months above the free 10 GB at the published price", async () => {
-    const { r2MonthlyCost } = await import("../src/site/pages/donate");
-    const GB = 1024 ** 3;
-    expect(r2MonthlyCost(27 * 1024 ** 2)).toBe(0);
-    expect(r2MonthlyCost(10 * GB)).toBe(0);
-    expect(r2MonthlyCost(10 * GB + 1)).toBeCloseTo(0.015);
-    expect(r2MonthlyCost(100 * GB)).toBeCloseTo(1.35);
-  });
-});
-
-describe("email counter", () => {
-  it("counts every email sent, for the donate page's free-tier bars", async () => {
-    const { mailCounts } = await import("../src/ops");
-    const { sendEmail } = await import("../src/auth/email");
-    const before = await mailCounts(env);
-    stubResend();
-    await sendEmail({ ...env, RESEND_API_KEY: "re_test" } as Env, { to: "a@example.org", subject: "s", text: "t", html: "h" });
-    const after = await mailCounts(env);
-    expect(after.today).toBe(before.today + 1);
-    expect(after.month).toBe(before.month + 1);
-  });
-});

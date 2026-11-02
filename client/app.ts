@@ -1813,6 +1813,21 @@ document.addEventListener("click", (e) => {
 });
 window.addEventListener("popstate", () => void navigate(location.pathname + location.search, false));
 
+// Donate page: the suggested amounts only change the hint next to the QR code.
+document.addEventListener("click", (e) => {
+  const card = (e.target as HTMLElement).closest<HTMLButtonElement>(".donate-amount");
+  if (!card) return;
+  const group = card.closest<HTMLElement>(".donate-amounts");
+  if (!group) return;
+  for (const b of $$<HTMLButtonElement>(".donate-amount", group)) {
+    const on = b === card;
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-checked", String(on));
+  }
+  const hint = $("#donate-hint");
+  if (hint) hint.textContent = (CFG.lang === "zh" ? group.dataset.hintZh : group.dataset.hintEn)!.replace("{n}", card.dataset.yuan!);
+});
+
 // The report form on file and album pages (form[data-report]); without this script it posts as a plain form and the server redirects back.
 document.addEventListener("submit", async (e) => {
   const form = (e.target as HTMLElement).closest<HTMLFormElement>("form[data-report]");

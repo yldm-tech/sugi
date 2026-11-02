@@ -2761,119 +2761,101 @@ html.night .theme-night {
 }
 
 /* ---- donate page ---- */
-.donate-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 300px) minmax(0, 1fr);
-  gap: 20px;
-  align-items: start;
-}
-@media (max-width: 760px) {
-  .donate-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-.donate-pay,
-.donate-costs {
-  padding: 22px;
+.donate-mascot {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-}
-.donate-pay {
   align-items: center;
-  text-align: center;
 }
-.donate-pay .t,
-.donate-costs .t {
-  font-family: var(--f-body);
-  font-weight: 700;
-  font-size: 19px;
+.donate-mascot .bowl {
+  margin-top: -18px;
 }
-.donate-qr {
-  width: 240px;
-  max-width: 100%;
-  height: auto;
-  border-radius: 14px;
-  border: 2px solid var(--line);
-  background: #fff;
-}
-.costs {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.costs li {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding-bottom: 12px;
-  border-bottom: 2px dashed var(--line);
-}
-.cost-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-.costs .desc {
-  font-size: 14px;
-  color: var(--ink2);
-  line-height: 1.6;
-}
-.costs .num {
-  flex-shrink: 0;
-  font-weight: 700;
-  color: var(--ink);
-  white-space: nowrap;
-}
-.usage {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
+.donate-amounts {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
 }
-.use-head {
+@media (max-width: 640px) {
+  .donate-amounts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.donate-amount {
   display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  font-size: 14px;
-  color: var(--ink2);
-  margin-bottom: 6px;
-}
-.use-head .num {
-  white-space: nowrap;
-  font-weight: 700;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 16px 18px;
+  font: inherit;
   color: var(--ink);
+  text-align: left;
+  cursor: pointer;
 }
-.usage progress {
-  appearance: none;
-  width: 100%;
-  height: 10px;
-  border: 0;
-  border-radius: 999px;
+.donate-amount:hover {
+  background: var(--pale2);
+}
+.donate-amount.on {
   background: var(--pale);
-  overflow: hidden;
+  border-color: #8dbf8f;
+  box-shadow: 0 4px 0 #8dbf8f;
 }
-.usage progress::-webkit-progress-bar {
-  background: var(--pale);
-  border-radius: 999px;
+.donate-amount .ic {
+  font-size: 24px;
+  line-height: 1.2;
 }
-.usage progress::-webkit-progress-value {
-  background: var(--green);
-  border-radius: 999px;
+.donate-amount .nm {
+  font-weight: 700;
+  font-size: 16px;
 }
-.usage progress::-moz-progress-bar {
-  background: var(--green);
-  border-radius: 999px;
+.donate-amount .yuan {
+  font-family: var(--f-brand);
+  font-weight: 700;
+  font-size: 20px;
+  color: var(--green-dk);
 }
-.costs a {
-  color: inherit;
+.donate-pay {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  padding: 24px;
+}
+@media (max-width: 640px) {
+  .donate-pay {
+    flex-direction: column;
+    text-align: center;
+    gap: 16px;
+  }
+}
+.donate-pay-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+@media (max-width: 640px) {
+  .donate-pay-text {
+    align-items: center;
+  }
+}
+.donate-pay .t {
+  font-family: var(--f-body);
+  font-weight: 700;
+  font-size: 20px;
+}
+.donate-hint {
+  margin: 0;
+  font-family: var(--f-brand);
+  font-weight: 700;
+  font-size: 22px;
+  color: var(--green-dk);
+}
+.donate-qr {
+  flex: none;
+  width: 280px;
+  max-width: 100%;
+  height: auto;
+  border-radius: 16px;
+  border: 2px solid var(--line);
+  background: #fff;
 }
 /* The "Open in Alipay" button is for phones; on a computer the QR code is the way. */
 @media (min-width: 761px) and (hover: hover) and (pointer: fine) {

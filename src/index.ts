@@ -15,7 +15,7 @@ import { handleLinkUpload } from "./links";
 import { installScript } from "./site/install";
 import { handleSharexConfig } from "./site/integrations";
 import { handleMcp } from "./mcp";
-import { checkAlerts, countOps, DAILY_REPORT_CRON, handleHealthz, sendDailyReport, storageSnapshot, sweepOps } from "./ops";
+import { checkAlerts, countOps, DAILY_REPORT_CRON, handleHealthz, sendDailyReport, sweepOps } from "./ops";
 import { sweepUsage } from "./quota";
 import { runBackup } from "./backup";
 import { handleReport, notifyReports, sweepReports } from "./reports";
@@ -285,7 +285,6 @@ export default {
         await sweepUsage(env);
         await sweepOps(env);
         await sweepReports(env);
-        await storageSnapshot(env);
         await runBackup(env);
         await checkAlerts(env);
         // A failed digest stays unsent and is retried on the next run.
