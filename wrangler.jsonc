@@ -7,18 +7,59 @@
   "compatibility_date": "2026-10-01",
   "workers_dev": false,
   "preview_urls": false,
+  // Builds the browser bundle into public/static before every `wrangler dev` and `wrangler deploy`.
+  "build": {
+    "command": "node scripts/build-client.mjs"
+  },
   "routes": [
     {
       "pattern": "sugi.moe",
       "custom_domain": true
+    },
+    // Direct links for permanent uploads.
+    {
+      "pattern": "files.sugi.moe",
+      "custom_domain": true
+    },
+    // Direct links for uploads that expire (1 hour to 3 days).
+    {
+      "pattern": "tmp.sugi.moe",
+      "custom_domain": true
     }
   ],
+  // Static files (fonts, the browser bundle, the cursor). The Worker runs first for every request so that it can add security headers and route by hostname; it hands /static/* to this binding itself.
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  // Deletes expired temporary uploads; an R2 lifecycle rule on the t/ prefix is the backstop.
+  "triggers": {
+    "crons": ["*/10 * * * *"]
+  },
   "vars": {
     // Origin hostname for cache-through image serving: an R2 custom domain on the bucket, e.g. "https://r2.sugi.moe". Empty means images are read from the bucket binding directly and never enter the zone cache.
     "CACHE_ORIGIN": "https://r2.sugi.moe",
     // sugi.moe zone, used to purge cached copies of deleted images (needs the CF_PURGE_TOKEN secret).
-    "ZONE_ID": "0ec67ba827776b3d9e3452483205b04c"
+    "ZONE_ID": "0ec67ba827776b3d9e3452483205b04c",
+    // Public origins. The Worker routes requests by hostname: the main origin serves the site and the API, the other two serve uploaded files only.
+    "MAIN_ORIGIN": "https://sugi.moe",
+    "FILES_ORIGIN": "https://files.sugi.moe",
+    "TMP_ORIGIN": "https://tmp.sugi.moe",
+    // Feature flags for parts of the design that ship in later phases. "1" turns a feature on.
+    "FEATURE_ACCOUNTS": "0",
+    "FEATURE_CLI": "0",
+    "FEATURE_DONATE": "0"
   },
+  "d1_databases": [
+    {
+      // Album metadata.
+      "binding": "DB",
+      "database_name": "sugi",
+      "database_id": "61f7d685-83be-4cad-9a56-b6ce9887affb",
+      "migrations_dir": "migrations"
+    }
+  ],
   "r2_buckets": [
     {
       "binding": "BUCKET",
@@ -36,5 +77,5 @@
       }
     }
   ]
-  // Secrets (set with `wrangler secret put` or `wrangler deploy --secrets-file`, never in this file): IP_HASH_SECRET (required for uploads), ADMIN_TOKEN (enables admin endpoints), UPLOAD_TOKEN (while set, uploads need `Authorization: Bearer <token>`).
+  // Secrets (set with `wrangler secret put` or `wrangler deploy --secrets-file`, never in this file): IP_HASH_SECRET (required for uploads; also keys upload session tokens), ADMIN_TOKEN (enables admin endpoints), UPLOAD_TOKEN (while set, uploads need `Authorization: Bearer <token>`), TRUSTED_TOKEN (maintainers: passes the gate, skips rate limits), CF_PURGE_TOKEN (zone cache purge).
 }
