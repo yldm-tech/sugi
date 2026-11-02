@@ -125,7 +125,7 @@ export function faqPage(ctx: Ctx): Page {
     faqItem(t("照片里的位置信息会被抹掉吗？", "Is the location in my photos removed?"), t("在网页上传时，默认勾选的「抹掉照片位置信息」会在你的浏览器里、上传之前删掉 JPEG、PNG、WebP 里的 EXIF 和 XMP 元数据（GPS、相机型号、拍摄时间都在里面），JPEG 只保留照片方向。AVIF 和视频不处理，用 API 上传的文件也不会被改动。", "When you upload on the website, the “Strip photo location” option (on by default) removes the EXIF and XMP metadata from JPEG, PNG and WebP files in your browser before upload; that is where GPS position, camera model and capture time live. For JPEG only the orientation is kept. AVIF files, videos and anything uploaded through the API are left untouched.")),
     faqItem(t("sugi 会记录我的什么？", "What does sugi record about me?"), t("不保存你的 IP 地址。每个文件会记下上传时间、文件名（如果有）和上传者 IP 的 HMAC 指纹（用服务器密钥算出来，不能反推出 IP），只用来在出现滥用时找出并清除同一来源的上传。网站没有统计脚本，也没有广告。sugi 运行在 Cloudflare 上，请求会经过 Cloudflare 的网络。详见 <a href=\"/privacy\" data-nav>隐私政策</a>。", "Not your IP address. With each file we keep its upload time, its file name if it had one, and an HMAC fingerprint of the uploader's IP made with a server-side key, which cannot be turned back into the IP. The fingerprint is only used to find and remove everything from the same source when there is abuse. The site has no analytics and no ads. sugi runs on Cloudflare, so requests pass through Cloudflare's network. See the <a href=\"/privacy\" data-nav>privacy policy</a>.")),
     faqItem(t("链接能直接贴到论坛、博客里吗？", "Can I embed the links in forums and blogs?"), t("可以，所有链接都是直链，支持外链和热链。上传完可以直接复制成 Markdown、HTML 或 BBCode。", "Yes. Every link is a direct link and hotlinking is allowed. You can copy them as Markdown, HTML or BBCode right after uploading.")),
-    faqItem(t("看到不好的内容怎么办？", "I found something bad. What do I do?"), t("把链接发到 <a href=\"mailto:abuse@sugi.moe\">abuse@sugi.moe</a>，确认违规后会删除。所有经过 sugi 的图片还会由 Cloudflare 的 CSAM 扫描工具检测。", "Send the link to <a href=\"mailto:abuse@sugi.moe\">abuse@sugi.moe</a> and it will be removed once confirmed. Images served by sugi are also checked by Cloudflare's CSAM Scanning Tool.")),
+    faqItem(t("看到不好的内容怎么办？", "I found something bad. What do I do?"), t("把链接发到 <a href=\"mailto:abuse@sugi.moe\">abuse@sugi.moe</a>，确认违规后会删除。通过 Cloudflare 缓存提供的内容还会由 Cloudflare 的 CSAM 扫描工具检测。", "Send the link to <a href=\"mailto:abuse@sugi.moe\">abuse@sugi.moe</a> and it will be removed once confirmed. Content served through Cloudflare's cache is also checked by Cloudflare's CSAM Scanning Tool.")),
     faqItem(t("仓仓靠什么活下去？", "Who pays for the hamster?"), ctx.flags.donate ? t("服务器和流量都是大家投喂的。如果仓仓帮到了你，可以 <a href=\"/donate\" data-nav>投喂一点瓜子</a>。", "Servers and bandwidth are paid for by people like you. If the hamster helped, you can <a href=\"/donate\" data-nav>toss it a few seeds</a>.") : t("目前由维护者自费运行，没有广告，也不卖数据。", "For now the maintainers pay for it themselves. There are no ads and no data is sold.")),
   ];
   const html = `<section class="stack8">
@@ -149,11 +149,12 @@ export function termsPage(ctx: Ctx): Page {
     t("违规内容会被直接删除，不另行通知；必要时会配合执法机关。", "Content that breaks these rules is removed without notice; we cooperate with law enforcement when required."),
     t('为了处理滥用，每次上传会保存上传时间和上传者 IP 的 HMAC 指纹，不保存 IP 本身。详见 <a href="/privacy" data-nav>隐私政策</a>。', 'To deal with abuse we keep, for every upload, its time and an HMAC fingerprint of the uploader\'s IP, never the IP itself. See the <a href="/privacy" data-nav>privacy policy</a>.'),
     t("仓仓会尽力保管好每个文件，但不保证永不丢失，也不保证服务一直可用，重要文件请自己留备份。临时文件到期后会被删除。", "The hamster takes good care of every file, but cannot promise that nothing is ever lost or that the service is always up. Keep your own copy of anything important. Temporary files are deleted when they expire."),
+    ...(ctx.flags.accounts ? [t("未满 16 岁请不要注册账号。", "If you are under 16, please do not create an account.")] : []),
     t('举报请写信到 <a href="mailto:abuse@sugi.moe">abuse@sugi.moe</a>。', 'Report abuse to <a href="mailto:abuse@sugi.moe">abuse@sugi.moe</a>.'),
   ];
   const html = `<section class="stack8">
 <h1 class="h1">${t("使用条款", "Terms of use")}</h1>
-<p class="lead">${t("用 sugi.moe 就代表你同意下面这些规则。", "By using sugi.moe you agree to the rules below.")}</p>
+<p class="lead">${t("sugi.moe 由 YLDM Co., Ltd. 运营。用 sugi.moe 就代表你同意下面这些规则。", "sugi.moe is operated by YLDM Co., Ltd. By using sugi.moe you agree to the rules below.")}</p>
 </section>
 <ol class="card terms">
 ${items.map((i) => `<li>${i}</li>`).join("\n")}
