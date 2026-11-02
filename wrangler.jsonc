@@ -35,6 +35,8 @@
     "CONTACT_EMAIL": "",
     "ABUSE_EMAIL": "",
     // Set to "1" only after enabling Cloudflare's CSAM Scanning Tool on your zone; the FAQ and privacy policy then say so.
+    // Public source code of your deployment (e.g. https://github.com/you/sugi), linked from the footer, FAQ and developer page. MIT does not require it, but it helps your users. Empty: no link.
+    "SOURCE_URL": "",
     "CSAM_SCANNING": "0",
     // Set to "1" if mail to CONTACT_EMAIL / ABUSE_EMAIL goes through Cloudflare Email Routing; the privacy policy then lists it.
     "EMAIL_ROUTING": "0",

@@ -5,6 +5,7 @@ import { clientStrings } from "./strings";
 import { HEART, LOGO, MOON, SUN } from "./svg";
 import { ICONS, OG_IMAGES, OG_IMAGES_GENERIC } from "./og-images";
 import { brand } from "../config";
+import { BRAND_ICONS } from "./brand-icons";
 
 export interface Flags {
   accounts: boolean;
@@ -115,6 +116,7 @@ ${ctx.flags.accounts ? (ctx.user ? navLink(ctx, "/account", ["account"], current
 
 export function footer(ctx: Ctx): string {
   const t = tr(ctx);
+  const source = brand(ctx.env).sourceUrl;
   return `<footer class="foot">
 <span class="c">© ${new Date().getUTCFullYear()} ${esc(brand(ctx.env).siteName)} · <span title="すぎ = ${t("太……了", "too much")}">kawaii すぎ</span> <span class="heart">♡</span></span>
 <nav>
@@ -123,6 +125,7 @@ export function footer(ctx: Ctx): string {
 <a href="/privacy" data-nav>${t("隐私政策", "Privacy")}</a>
 <a href="/dev" data-nav>${t("开发者", "Developers")}</a>
 ${ctx.flags.donate ? `<a href="/donate" data-nav>${t("投喂仓仓", "Feed the hamster")}</a>` : ""}
+${source ? `<a class="source" href="${esc(source)}" rel="noopener">${BRAND_ICONS.github}<span>${t("源代码", "Source")}</span></a>` : ""}
 </nav>
 </footer>`;
 }

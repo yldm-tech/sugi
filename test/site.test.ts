@@ -30,7 +30,9 @@ describe("page CSP", () => {
     expect(html).not.toMatch(/<style\b/);
     expect(html).not.toMatch(/\sstyle=/i);
     expect(html).not.toMatch(/\son[a-z]+=/i);
-    expect(html).not.toMatch(/(src|href)="https?:\/\/(?!sugi\.moe|files\.sugi\.moe|tmp\.sugi\.moe)/);
+    // Only our own hosts, plus links (never resources) to the source code.
+    expect(html).not.toMatch(/src="https?:\/\/(?!sugi\.moe|files\.sugi\.moe|tmp\.sugi\.moe)/);
+    expect(html).not.toMatch(/href="https?:\/\/(?!sugi\.moe|files\.sugi\.moe|tmp\.sugi\.moe|github\.com\/yldm-tech\/sugi")/);
     expect(nonceOf(await page())).not.toBe(nonce);
   });
 
@@ -272,5 +274,21 @@ describe("responsive markup", () => {
     expect(html).toMatch(/<\/nav>\s*<div class="tools">\s*<a class="lang"/);
     expect(html).toContain('<span class="nw">单个文件最大 200 MB</span>');
     expect(html).toMatch(/<span class="nw">也可以 <span class="kbd" id="paste-key">/);
+  });
+});
+
+describe("source code link", () => {
+  it("appears in the footer, the FAQ and the developer page only when SOURCE_URL is set", async () => {
+    const zhPage = async (path: string, overrides: Partial<Env> = {}) => (await page(path, zh, overrides)).text();
+    const home = await zhPage("/");
+    expect(home).toMatch(/<a class="source" href="https:\/\/github.com\/yldm-tech\/sugi" rel="noopener"><svg[\s\S]*?<\/svg><span>源代码<\/span><\/a>/);
+    expect(await zhPage("/faq")).toContain("sugi 是开源的吗？");
+    const dev = await zhPage("/dev");
+    expect(dev).toContain("https://deploy.workers.cloudflare.com/?url=https%3A%2F%2Fgithub.com%2Fyldm-tech%2Fsugi");
+    for (const path of ["/", "/faq", "/dev"]) expect(await zhPage(path, { SOURCE_URL: "" }), path).not.toContain("github.com/yldm-tech");
+    // A source that is not on GitHub or GitLab gets a link but no deploy button.
+    const other = await zhPage("/dev", { SOURCE_URL: "https://git.example.org/me/sugi" });
+    expect(other).toContain('href="https://git.example.org/me/sugi"');
+    expect(other).not.toContain("deploy.workers.cloudflare.com");
   });
 });

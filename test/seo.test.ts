@@ -83,8 +83,9 @@ describe("page metadata", () => {
   it("the home page carries WebSite and Organization JSON-LD", async () => {
     const h = head(await (await get("/?lang=en")).text());
     const types = h.jsonLd.map((o) => o["@type"]);
-    expect(types).toEqual(["WebSite", "Organization"]);
-    expect(h.jsonLd[1]).toMatchObject({ name: "YLDM Co., Ltd.", url: "https://sugi.moe/" });
+    expect(types).toEqual(["WebSite", "SoftwareSourceCode", "Organization"]);
+    expect(h.jsonLd[1]).toMatchObject({ codeRepository: "https://github.com/yldm-tech/sugi", license: "https://opensource.org/licenses/MIT" });
+    expect(h.jsonLd[2]).toMatchObject({ name: "YLDM Co., Ltd.", url: "https://sugi.moe/", sameAs: ["https://github.com/yldm-tech"] });
   });
 
   it("the FAQ carries FAQPage JSON-LD with plain-text answers", async () => {

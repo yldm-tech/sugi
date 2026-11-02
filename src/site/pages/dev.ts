@@ -12,6 +12,7 @@ import {
   WAF_PERIOD_SECONDS,
 } from "../../limits";
 import { esc } from "../i18n";
+import { BRAND_ICONS } from "../brand-icons";
 import { brand } from "../../config";
 import { type Ctx, type Page, pageTitle, tr } from "../layout";
 
@@ -47,7 +48,8 @@ function jsonLine(key: string, value: string, indent: number, last = false): Lin
 const str = (s: string) => `<span class="s">"${esc(s)}"</span>`;
 
 export function devPage(ctx: Ctx): Page {
-  const wafRule = brand(ctx.env).wafRule;
+  const b = brand(ctx.env);
+  const wafRule = b.wafRule;
   const t = tr(ctx);
   const main = ctx.env.MAIN_ORIGIN;
   const api = `${main}/api/upload`;
@@ -107,6 +109,11 @@ export function devPage(ctx: Ctx): Page {
   ];
   const html = `<section class="stack8">
 <h1 class="h1">${t("给开发者的仓仓", "The hamster for developers")}</h1>
+${
+  b.sourceUrl
+    ? `<p class="lead source-line">${BRAND_ICONS.github}<span>${t(`${esc(b.siteName)} 用的是开源的 sugi（MIT）：<a href="${esc(b.sourceUrl)}" rel="noopener">源代码</a>`, `${esc(b.siteName)} runs sugi, which is open source (MIT): <a href="${esc(b.sourceUrl)}" rel="noopener">source code</a>`)}${b.deployUrl ? t(`。你也可以自己托管一个：<a href="${esc(b.deployUrl)}" rel="noopener">部署到 Cloudflare</a>。`, `. You can host your own too: <a href="${esc(b.deployUrl)}" rel="noopener">Deploy to Cloudflare</a>.`) : t("。", ".")}</span></p>`
+    : ""
+}
 <p class="lead">${t(`HTTP API 和网页用的是同一套规则：不登录也能直接用，单个文件最大 ${maxMb} MB，只收图片和短视频（PNG、JPEG、WebP、GIF、AVIF、MP4、WebM，按内容识别格式）。`, `The HTTP API follows the same rules as the website: no account needed, up to ${maxMb} MB per file, images and short videos only (PNG, JPEG, WebP, GIF, AVIF, MP4, WebM, detected from the content).`)}</p>
 ${ctx.gated ? `<p class="lead">${t('这个网站的上传接口需要请求头 <code class="chip">Authorization: Bearer &lt;token&gt;</code>，匿名请求会得到 401。', 'Uploads on this site need <code class="chip">Authorization: Bearer &lt;token&gt;</code>; anonymous requests get 401.')}</p>` : ""}
 </section>

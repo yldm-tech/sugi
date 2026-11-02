@@ -2589,3 +2589,12 @@ html.night .theme-night {
   height: 15px;
   margin-right: 4px;
 }
+.foot .source,
+.source-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.source-line .brand-icon {
+  flex: none;
+}
