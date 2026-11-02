@@ -78,7 +78,7 @@ export function header(ctx: Ctx, current: PageId): string {
   const b = brand(ctx.env);
   const other: Lang = ctx.lang === "zh" ? "en" : "zh";
   return `<header class="top">
-<a class="brand" href="/" data-nav aria-label="${esc(b.siteName)}">${LOGO}<span class="brand-word">${esc(b.logo[0])}${HEART}${esc(b.logo[1])}</span></a>
+<a class="brand" href="/" data-nav aria-label="${esc(b.siteName)}">${LOGO}<span class="brand-word">${esc(b.logo[0])}${b.logo[1] ? `${HEART}${esc(b.logo[1])}` : ""}</span></a>
 <nav class="nav" id="nav">
 ${navLink(ctx, "/", ["home"], current, t("上传", "Upload"))}
 ${navLink(ctx, "/mine", ["mine", "album"], current, t("我的文件", "My files"))}

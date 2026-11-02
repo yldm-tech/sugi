@@ -38,7 +38,7 @@ describe("template deployment", () => {
     }
     const home = await (await get("/")).text();
     expect(home).toContain("<title>my-sugi.example.workers.dev · ");
-    expect(home).toContain('<span class="brand-word">my-sugi');
+    expect(home).toContain('<span class="brand-word">my-sugi</span>');
     expect(home).toContain(`content="${HOST}${OG_IMAGES_GENERIC["home-en"]}"`);
     expect(home).not.toContain(OG_IMAGES["home-en"]);
     expect(home).not.toContain('"@type":"Organization"');

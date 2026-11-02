@@ -3,7 +3,7 @@
 export interface Brand {
   /** Shown in titles, the footer and Open Graph, e.g. "sugi.moe" or "pics.example.org". */
   siteName: string;
-  /** Logo text left and right of the heart: "sugi♥moe" for "sugi.moe". */
+  /** Logo text left and right of the heart: "sugi♥moe" for "sugi.moe"; the right part is empty (no heart) for other shapes of name. */
   logo: [string, string];
   /** Legal entity or person running the site; null when not configured. */
   operator: string | null;
@@ -34,8 +34,9 @@ const blank = (v: string | undefined | null): string | null => {
 
 export function brand(env: Env): Brand {
   const siteName = blank(env.SITE_NAME) ?? new URL(env.MAIN_ORIGIN || "https://sugi.invalid").hostname;
-  const dot = siteName.indexOf(".");
-  const logo: [string, string] = dot > 0 ? [siteName.slice(0, dot), siteName.slice(dot + 1)] : [siteName, ""];
+  // Two labels make the wordmark ("sugi.moe" -> sugi♥moe); longer hostnames such as my-sugi.you.workers.dev keep only the first label so the header stays short.
+  const labels = siteName.split(".");
+  const logo: [string, string] = labels.length === 2 && labels[0] && labels[1] ? [labels[0], labels[1]] : [labels[0] || siteName, ""];
   const contactEmail = blank(env.CONTACT_EMAIL);
   return {
     siteName,
