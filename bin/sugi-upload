@@ -77,7 +77,11 @@ for file in "$@"; do
       host="${hostport%%:*}"
       port="${hostport##*:}"
       [ "$port" = "$hostport" ] && { [ "${base%%://*}" = "http" ] && port=80 || port=443; }
-      ip="$(dig +short +time=3 +tries=1 A "$host" 2>/dev/null | grep -E '^[0-9]+(\.[0-9]+){3}$' | head -n1)"
+      # Try the configured resolver first, then a public one: some local resolvers (e.g. a VPN's) answer AAAA only. TLS still verifies the hostname, so a wrong address can only fail, not impersonate the server.
+      for server in "" "@1.1.1.1"; do
+        ip="$(dig +short +time=3 +tries=1 $server A "$host" 2>/dev/null | grep -E '^[0-9]+(\.[0-9]+){3}$' | head -n1)"
+        [ -n "$ip" ] && break
+      done
       if [ -n "$ip" ]; then
         response="$(upload "$file" --ipv4 --resolve "$host:$port:$ip")"
         rc=$?

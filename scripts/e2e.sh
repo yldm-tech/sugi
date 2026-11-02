@@ -17,6 +17,8 @@ upload_token="$(sed -n 's/^UPLOAD_TOKEN=//p' "$secrets")"
 admin_token="$(sed -n 's/^ADMIN_TOKEN=//p' "$secrets")"
 trusted_token="$(sed -n 's/^TRUSTED_TOKEN=//p' "$secrets")"
 burst="${SUGI_E2E_BURST:-100}"
+# The R2 custom domain the Worker reads images through (wrangler.jsonc CACHE_ORIGIN); set to empty to skip the cache checks.
+cache_origin="${SUGI_CACHE_ORIGIN-https://r2.sugi.moe}"
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -89,6 +91,13 @@ check "Cache-Control" "$(header cache-control "$work/get.h")" "public, max-age=3
 etag="$(header etag "$work/get.h")"
 [ -n "$etag" ] && pass "ETag present ($etag)" || fail "ETag missing"
 
+if [ -n "$cache_origin" ]; then
+  # The GET above made the Worker fetch the image through the zone cache, so the origin URL should already be cached in this location.
+  c "" -o "$work/origin.png" -D "$work/origin.h" "$cache_origin/$key"
+  check "image is in the zone cache after a Worker GET" "$(header cf-cache-status "$work/origin.h")" HIT
+  cmp -s "$image" "$work/origin.png" && pass "cached bytes identical" || fail "cached bytes differ"
+fi
+
 code="$(c "" -o /dev/null -D "$work/head.h" -w '%{http_code}' -I "$url")"
 check "HEAD status" "$code" 200
 check "HEAD Content-Length" "$(header content-length "$work/head.h")" "$(wc -c <"$image" | tr -d ' ')"
@@ -118,8 +127,19 @@ grep -Eq '"source":"[0-9a-f]{64}"' "$work/info.json" && pass "source HMAC record
 stored_sha="$(sed -nE 's/.*"sha256":"([0-9a-f]{64})".*/\1/p' "$work/info.json")"
 stored_at="$(sed -nE 's/.*"uploaded":"([^"]+)".*/\1/p' "$work/info.json")"
 if [ "$owned" = 1 ] && [ "$stored_sha" = "$(shasum -a 256 "$image" | cut -d' ' -f1)" ] && [[ "$stored_at" > "$run_started" ]]; then
-  check "DELETE with admin token" "$(c "$admin_token" -o /dev/null -w '%{http_code}' -X DELETE "$url")" 200
+  check "DELETE with admin token" "$(c "$admin_token" -o "$work/delete.json" -w '%{http_code}' -X DELETE "$url")" 200
+  grep -q '"cache_purged":true' "$work/delete.json" && pass "DELETE purged the zone cache" || fail "DELETE did not purge the cache: $(cat "$work/delete.json")"
   check "GET after delete" "$(c "" -o /dev/null -w '%{http_code}' "$url")" 404
+  if [ -n "$cache_origin" ]; then
+    # Purges propagate within seconds; poll briefly rather than fail on the first stale read.
+    origin_code=""
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+      origin_code="$(c "" -o /dev/null -w '%{http_code}' "$cache_origin/$key")"
+      [ "$origin_code" = 404 ] && break
+      sleep 2
+    done
+    check "cached origin copy gone after purge" "$origin_code" 404
+  fi
 else
   fail "not deleting $key: this run did not create it (owned=$owned, uploaded=$stored_at)"
 fi

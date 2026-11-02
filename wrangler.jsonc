@@ -15,7 +15,7 @@
   ],
   "vars": {
     // Origin hostname for cache-through image serving: an R2 custom domain on the bucket, e.g. "https://r2.sugi.moe". Empty means images are read from the bucket binding directly and never enter the zone cache.
-    "CACHE_ORIGIN": "",
+    "CACHE_ORIGIN": "https://r2.sugi.moe",
     // sugi.moe zone, used to purge cached copies of deleted images (needs the CF_PURGE_TOKEN secret).
     "ZONE_ID": "0ec67ba827776b3d9e3452483205b04c"
   },
