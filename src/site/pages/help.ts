@@ -21,6 +21,17 @@ export function faqPage(ctx: Ctx): Page {
   const maxMb = MAX_FILE_BYTES / MiB;
   const singleMb = SINGLE_REQUEST_MAX_BYTES / MiB;
   const items = [
+    ...(b.sourceUrl
+      ? [
+          faqItem(
+            t("sugi 是开源的吗？", "Is sugi open source?"),
+            t(
+              `是的，sugi 以 MIT 许可开源，代码在 <a href="${esc(b.sourceUrl)}" rel="noopener">这里</a>。你也可以把它部署到自己的 Cloudflare 账号，做一个自己的图床。`,
+              `Yes. sugi is open source under the MIT license; the code is <a href="${esc(b.sourceUrl)}" rel="noopener">here</a>. You can also deploy it to your own Cloudflare account and run an image host of your own.`,
+            ),
+          ),
+        ]
+      : []),
     faqItem(
       t("sugi 是什么意思？", "What does “sugi” mean?"),
       t(

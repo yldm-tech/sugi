@@ -118,6 +118,19 @@ ${
       description: siteDescription(ctx),
       ...(b.operator ? { publisher: { "@id": `${origin}/#organization` } } : {}),
     },
+    ...(b.sourceUrl
+      ? [
+          {
+            "@context": "https://schema.org",
+            "@type": "SoftwareSourceCode",
+            name: "sugi",
+            codeRepository: b.sourceUrl,
+            license: "https://opensource.org/licenses/MIT",
+            programmingLanguage: "TypeScript",
+            runtimePlatform: "Cloudflare Workers",
+          },
+        ]
+      : []),
     ...(b.operator
       ? [
           {
@@ -127,6 +140,7 @@ ${
             name: b.operator,
             url: `${origin}/`,
             logo: `${origin}${ICONS.png512}`,
+            ...(b.sourceUrl ? { sameAs: [b.sourceUrl.replace(/\/[^/]+\/?$/, "")] } : {}),
             ...(b.contactEmail ? { email: b.contactEmail } : {}),
           },
         ]

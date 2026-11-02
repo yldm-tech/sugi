@@ -26,6 +26,7 @@ export default defineConfig(async () => {
             CONTACT_EMAIL: "hi@sugi.moe",
             ABUSE_EMAIL: "abuse@sugi.moe",
             CSAM_SCANNING: "1",
+            SOURCE_URL: "https://github.com/yldm-tech/sugi",
             EMAIL_ROUTING: "1",
             WAF_RATE_LIMIT: "1",
             STORAGE_LOCATION: "APAC",

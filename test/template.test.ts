@@ -15,6 +15,7 @@ const TEMPLATE: Partial<Env> = {
   CONTACT_EMAIL: "",
   ABUSE_EMAIL: "",
   CSAM_SCANNING: "0",
+  SOURCE_URL: "",
   EMAIL_ROUTING: "0",
   WAF_RATE_LIMIT: "0",
   STORAGE_LOCATION: "",

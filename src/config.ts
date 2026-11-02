@@ -23,6 +23,10 @@ export interface Brand {
   resendRegion: string | null;
   /** Sender of login emails, e.g. "sugi.moe <login@sugi.moe>". */
   mailFrom: string | null;
+  /** Public source code of this deployment (e.g. https://github.com/you/sugi); linked from the footer, FAQ and developer page. */
+  sourceUrl: string | null;
+  /** "Deploy to Cloudflare" link for the source, when it is on GitHub or GitLab. */
+  deployUrl: string | null;
   /** Use the sugi.moe-branded Open Graph images (only for the sugi.moe deployment itself). */
   officialArtwork: boolean;
 }
@@ -50,6 +54,10 @@ export function brand(env: Env): Brand {
     storageLocation: blank(env.STORAGE_LOCATION),
     resendRegion: blank(env.RESEND_REGION),
     mailFrom: blank(env.MAIL_FROM),
+    sourceUrl: blank(env.SOURCE_URL),
+    deployUrl: /^https:\/\/(github\.com|gitlab\.com)\/[^/]+\/[^/]+\/?$/.test(blank(env.SOURCE_URL) ?? "")
+      ? `https://deploy.workers.cloudflare.com/?url=${encodeURIComponent(blank(env.SOURCE_URL)!.replace(/\/$/, ""))}`
+      : null,
     officialArtwork: siteName === "sugi.moe" && env.MAIN_ORIGIN === "https://sugi.moe",
   };
 }

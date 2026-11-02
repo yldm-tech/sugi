@@ -59,7 +59,7 @@ describe("email login", () => {
   it("shows only the live login methods", async () => {
     const page = await (await call(new Request(`${MAIN}/login?lang=en`), ON)).text();
     expect(page).toContain('action="/auth/email"');
-    expect(page).not.toMatch(/GitHub|Google|passkey/i);
+    expect(page).not.toMatch(/\/auth\/(github|google)|data-passkey|Log in with (GitHub|Google)/i);
     const privacy = await (await call(new Request(`${MAIN}/privacy?lang=en`), ON)).text();
     expect(privacy).toContain("your email (when you log in with email)");
     expect(privacy).not.toMatch(/GitHub|Google|passkey|API token/);
