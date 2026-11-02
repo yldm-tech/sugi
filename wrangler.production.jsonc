@@ -49,6 +49,7 @@
     "ALERT_5XX_PER_HOUR": "20",
     "ALERT_DAILY_UPLOAD_BYTES": "21474836480",
     "VIDEO_UPLOADS": "account",
+    "MAINLAND_CHINA_FAQ": "1",
     "FEATURE_ACCOUNTS": "1",
     "ACCOUNT_FEATURES": "email,github,google,passkey,sync,tokens",
     "FEATURE_CLI": "1",
