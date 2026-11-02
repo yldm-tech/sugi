@@ -83,6 +83,8 @@ describe("template deployment", () => {
 
 describe("runtime migrations", () => {
   it("splits every migration into statements and is idempotent", async () => {
+    const files = (env as unknown as { TEST_MIGRATIONS: { name: string }[] }).TEST_MIGRATIONS.map((m) => m.name);
+    expect(MIGRATIONS.map(([n]) => n)).toEqual(files.map((n) => (n.endsWith(".sql") ? n : `${n}.sql`)));
     for (const [name, sql] of MIGRATIONS) expect(statements(sql).length, name).toBeGreaterThan(0);
     await ensureSchema(env.DB);
     await ensureSchema(env.DB);
