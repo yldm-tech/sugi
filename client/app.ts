@@ -1,5 +1,6 @@
 // sugi.moe browser script: uploads, "My files", the hamster, and page-to-page navigation without full reloads (so running uploads keep going). Ported from the design's React component to plain DOM code. No inline styles: the page CSP only allows nonce'd style elements, so dynamic values go through the CSSOM.
 import { stripMetadata } from "./exif";
+import { initPasskeys } from "./passkey";
 
 // ---------------------------------------------------------------- config
 
@@ -7,7 +8,7 @@ interface Config {
   lang: "zh" | "en";
   page: string;
   gated: boolean;
-  flags: { accounts: boolean; cli: boolean; donate: boolean };
+  flags: { accounts: boolean; account: string[]; cli: boolean; donate: boolean };
   origins: { main: string; files: string; tmp: string };
   limits: { maxFile: number; single: number; rate: number; ratePeriod: number };
   t: Record<string, string>;
@@ -1519,3 +1520,5 @@ window.addEventListener("keydown", (e) => {
 });
 
 initPage();
+
+if (CFG.flags.account?.includes("passkey")) initPasskeys(toast);

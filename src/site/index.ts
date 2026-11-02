@@ -80,7 +80,15 @@ export async function handleSite(request: Request, env: Env, pathname: string): 
           (r) => r.provider,
         )
       : [];
-    ctx.user = p ? { email: p.user.email, name: displayName(p.user), providers } : null;
+    const passkeys =
+      p && ctx.flags.account.includes("passkey")
+        ? (
+            await env.DB.prepare("SELECT id, name, created_at FROM passkeys WHERE user_id = ? ORDER BY created_at")
+              .bind(p.user.id)
+              .all<{ id: string; name: string | null; created_at: number }>()
+          ).results
+        : [];
+    ctx.user = p ? { email: p.user.email, name: displayName(p.user), providers, passkeys } : null;
   }
   const page = await resolvePage(ctx, pathname);
   const headers: Record<string, string> = {

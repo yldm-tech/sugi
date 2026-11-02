@@ -16,7 +16,8 @@ import { installScript } from "./site/install";
 import { handleMcp } from "./mcp";
 import { handleInboxRead, receiveEmail, sweepInbox } from "./inbox";
 import { handleMagicRequest, handleMagicVerify } from "./auth/email";
-import { handleLogout, handleMe } from "./auth/me";
+import { handleDeletePasskey, handleLogout, handleMe } from "./auth/me";
+import { handlePasskeyLoginOptions, handlePasskeyLoginVerify, handlePasskeyRegisterOptions, handlePasskeyRegisterVerify } from "./auth/passkey";
 import { handleOAuthCallback, handleOAuthStart, type Provider } from "./auth/oauth";
 
 // Only the default handler may be exported from this module: workerd treats every named export of the main module as an entrypoint.
@@ -105,6 +106,11 @@ async function routeApi(request: Request, env: Env, pathname: string): Promise<R
     if (method === "DELETE") return handleFileDelete(request, env, file[1]);
     throw methodNotAllowed("GET, DELETE");
   }
+  const myPasskey = /^\/api\/me\/passkeys\/([A-Za-z0-9_-]{1,512})$/.exec(pathname);
+  if (myPasskey) {
+    if (method === "DELETE") return handleDeletePasskey(request, env, myPasskey[1]);
+    throw methodNotAllowed("DELETE");
+  }
   if (pathname === "/api/me") {
     if (method === "GET") return handleMe(request, env);
     throw methodNotAllowed("GET");
@@ -151,6 +157,12 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (pathname === "/upload") {
     if (method === "POST" || method === "PUT") return handleLegacyUpload(request, env);
     throw methodNotAllowed("POST, PUT");
+  }
+  const passkey = /^\/auth\/passkey\/(login|register)\/(options|verify)$/.exec(pathname);
+  if (passkey) {
+    if (method !== "POST") throw methodNotAllowed("POST");
+    if (passkey[1] === "login") return passkey[2] === "options" ? handlePasskeyLoginOptions(request, env) : handlePasskeyLoginVerify(request, env);
+    return passkey[2] === "options" ? handlePasskeyRegisterOptions(request, env) : handlePasskeyRegisterVerify(request, env);
   }
   const oauth = /^\/auth\/(github|google)(\/callback)?$/.exec(pathname);
   if (oauth) {

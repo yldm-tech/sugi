@@ -35,6 +35,21 @@ function providerButtons(ctx: Ctx, skip: string, link = false): string {
   return `<div class="row-actions center">${live.map(([id, name]) => `<a class="mini" href="/auth/${id}">${link ? t(`关联 ${name}`, `Link ${name}`) : t(`用 ${name} 登录`, `Log in with ${name}`)}</a>`).join("")}</div>`;
 }
 
+function passkeySection(ctx: Ctx): string {
+  const t = tr(ctx);
+  const keys = ctx.user?.passkeys ?? [];
+  const fail = esc(t("操作没有成功，再试一次吧。", "That did not work; please try again."));
+  const list = keys.length
+    ? `<ul class="keys">${keys
+        .map(
+          (k) =>
+            `<li><span>${esc(k.name === "synced passkey" ? t("同步的通行密钥", "Synced passkey") : t("设备上的通行密钥", "Device passkey"))} · ${new Date(k.created_at).toISOString().slice(0, 10)}</span><button type="button" class="mini danger" data-passkey-delete="${esc(k.id)}" data-fail="${fail}">${t("删除", "Remove")}</button></li>`,
+        )
+        .join("")}</ul>`
+    : `<p class="small">${t("还没有通行密钥。用指纹、面容或设备密码就能登录，不用等邮件。", "No passkeys yet. Log in with your fingerprint, face or device PIN instead of waiting for an email.")}</p>`;
+  return `<div class="stack8"><p class="optlabel">${t("通行密钥", "Passkeys")}</p>${list}<div class="row-actions"><button type="button" class="mini" data-passkey-register data-fail="${fail}">${t("添加通行密钥", "Add a passkey")}</button></div></div>`;
+}
+
 export function loginPage(ctx: Ctx): Page {
   const t = tr(ctx);
   const q = ctx.query;
@@ -54,10 +69,15 @@ export function loginPage(ctx: Ctx): Page {
       ? `<p class="gate">${t(error[0], error[1])}</p>`
       : "";
   const providers = providerButtons(ctx, "");
+  const passkey = ctx.flags.account.includes("passkey")
+    ? `<div class="row-actions center"><button type="button" class="mini" data-passkey-login data-fail="${esc(t("通行密钥登录没有成功，再试一次吧。", "Logging in with a passkey did not work; please try again."))}">${t("用通行密钥登录", "Log in with a passkey")}</button></div>
+<p class="small center">${t("还没有账号？", "No account yet?")} <button type="button" class="linkbtn" data-passkey-register data-fail="${esc(t("没能创建通行密钥，再试一次吧。", "The passkey could not be created; please try again."))}">${t("用通行密钥创建一个", "Create one with a passkey")}</button></p>`
+    : "";
   const html = loginFrame(
     ctx,
     `<div class="center"><h1 class="h2">${t(`登录 ${esc(brand(ctx.env).siteName)}`, `Log in to ${esc(brand(ctx.env).siteName)}`)}</h1><p class="lead">${t("不登录也能传。登录后，新上传的文件会记在你的账号下。", "You can upload without an account. Once you log in, new uploads are recorded under your account.")}</p></div>
 ${notice}
+${passkey}
 ${providers}
 ${form}
 <p class="small">${t('登录即表示同意 <a href="/terms" data-nav>使用条款</a> 和 <a href="/privacy" data-nav>隐私政策</a>。', 'By logging in you agree to the <a href="/terms" data-nav>terms</a> and the <a href="/privacy" data-nav>privacy policy</a>.')}</p>`,
@@ -83,6 +103,7 @@ export function accountPage(ctx: Ctx): Page {
 <p class="lead">${u.email ? t("邮箱", "Email") : t("名字", "Name")}${t("：", ": ")}<strong>${esc(u.email ?? u.name)}</strong></p>
 ${u.providers.length ? `<p class="small">${t("登录方式", "Log in with")}${t("：", ": ")}${u.providers.map((p) => esc(PROVIDER_NAMES[p] ?? p)).join(" · ")}</p>` : ""}
 ${providerButtons(ctx, u.providers.join(","), true)}
+${ctx.flags.account.includes("passkey") ? passkeySection(ctx) : ""}
 <p class="small">${t("登录状态下新上传的文件会记在这个账号下。在多台设备上查看和管理它们的功能还在路上。", "New uploads made while logged in are recorded under this account. Seeing and managing them across devices is on its way.")}</p>
 <form method="post" action="/auth/logout"><button class="mini" type="submit">${t("退出登录", "Log out")}</button></form>`;
   return { id: "account", title: pageTitle(ctx, "我的账号", "Account"), main: loginFrame(ctx, inner), noindex: true };

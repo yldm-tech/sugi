@@ -43,7 +43,7 @@
     "CACHE_ORIGIN": "https://r2.sugi.moe",
     "ZONE_ID": "0ec67ba827776b3d9e3452483205b04c",
     "FEATURE_ACCOUNTS": "1",
-    "ACCOUNT_FEATURES": "email,github,google",
+    "ACCOUNT_FEATURES": "email,github,google,passkey",
     "FEATURE_CLI": "1",
     "FEATURE_DONATE": "0"
   },
