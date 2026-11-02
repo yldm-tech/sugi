@@ -88,6 +88,9 @@ const pages = [
   ["mine-albums", "/mine#albums"],
   ["file", `/f/${files[0].id}`],
   ["album", `/a/${album.id}`],
+  // ?report=failed opens the report form with its notice.
+  ["file-report", `/f/${files[0].id}?report=failed`],
+  ["album-report", `/a/${album.id}?report=failed`],
   ["dev", "/dev"],
   ["dev-cli", "/dev#cli"],
   ["dev-mcp", "/dev#mcp"],

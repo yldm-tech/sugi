@@ -97,8 +97,10 @@ admin -H 'content-type: application/json' -d '{"source":"<hmac>","dry_run":true}
 
 管理员删除就是下架：对象换成空的墓碑，链接从此返回 451（Unavailable For Legal Reasons），id 不再分配，出过图的地址都清缓存，并在 D1 的审计日志里留下记录。可以加 `?reason=...` 写明原因，加 `?block_content=1` 阻止同样的字节（20 MB 以内的文件）再次上传。
 
-同样的管理功能也能通过 MCP 用：带 `Authorization: Bearer <ADMIN_TOKEN>` 连接 `https://<域名>/mcp`，会多出 `inspect`、`takedown`（可加 `block_content`，打包链接可加 `include_files`）、`list_by_source`、`takedown_by_source`（默认只预演）、`block_source` / `unblock_source`、`unblock_content`、`list_blocks`、`takedown_log`。处理举报的顺序：`inspect` 查链接，`takedown` 下架，`list_by_source` 看同一上传者还传了什么，必要时 `takedown_by_source` 或 `block_source`。管理员令牌也不受限流；用了 WAF 规则的话，把它和 `TRUSTED_TOKEN` 一起写进跳过规则。
+同样的管理功能也能通过 MCP 用：带 `Authorization: Bearer <ADMIN_TOKEN>` 连接 `https://<域名>/mcp`，会多出 `inspect`、`takedown`（可加 `block_content`，打包链接可加 `include_files`）、`list_by_source`、`takedown_by_source`（默认只预演）、`block_source` / `unblock_source`、`unblock_content`、`list_blocks`、`takedown_log`、`list_reports`、`resolve_report`。处理举报的顺序：`inspect` 查链接，`takedown` 下架，`list_by_source` 看同一上传者还传了什么，必要时 `takedown_by_source` 或 `block_source`。管理员令牌也不受限流；用了 WAF 规则的话，把它和 `TRUSTED_TOKEN` 一起写进跳过规则。
 
+
+访客可以用文件页和打包链接页最下面的「举报」表单举报（或者 `POST /api/reports`，JSON `{"target", "reason", "details", "contact"}`，原因可选 `csam`、`illegal`、`copyright`、`privacy`、`spam`、`other`）。举报存在 D1 里，每个来源每小时最多 5 条、每天 20 条，全站每天 300 条，举报本身不会删除任何东西。配置了 `ABUSE_EMAIL`（或 `CONTACT_EMAIL`）和发信之后，新举报会汇总发到那个邮箱，最多一小时一封（涉及 CSAM 时标题带 URGENT）。`list_reports` 列出举报；`resolve_report` 用 `action: "takedown"` 时和 `takedown` 一样下架，并把同一链接上所有未处理的举报一起结掉，`action: "dismiss"` 保留内容并记进审计日志。举报人的来源 HMAC 7 天后抹掉，处理完的举报一年后删除。
 ### 额度和监控
 
 - 每日上传额度（按 UTC 日、单位字节，`0` 表示不限）：`QUOTA_ANON_BYTES_PER_DAY`（没登录时每个来源，默认 1 GB）、`QUOTA_ACCOUNT_BYTES_PER_DAY`（每个账号，5 GB）、`QUOTA_GLOBAL_BYTES_PER_DAY`（全站，50 GB，超过后只接受可信令牌和管理员上传）。超出个人额度返回 429，超出全站额度返回 507。

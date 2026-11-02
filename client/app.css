@@ -2574,6 +2574,60 @@ html.night .theme-night {
   font-weight: 400;
 }
 
+/* ---- report form (file and album pages) ---- */
+.report-box summary {
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--muted);
+}
+.report-box[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.report-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.report-form fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.report-form legend {
+  padding: 0;
+  margin-bottom: 4px;
+}
+.report-form .check {
+  font-size: 15px;
+  font-weight: 400;
+}
+.report-form textarea,
+.report-form input[type="email"] {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: inherit;
+  font-size: 15px;
+  color: var(--ink);
+  background: #fff;
+  border: 2.5px solid var(--line);
+  border-radius: 18px;
+  padding: 10px 14px;
+  outline: none;
+}
+.report-form textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+.report-form textarea:focus,
+.report-form input[type="email"]:focus {
+  border-color: var(--green);
+}
+
 /* ---- brand icons (from @yldm-tech/ai-logo) ---- */
 .brand-icon {
   flex: none;

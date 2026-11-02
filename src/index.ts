@@ -16,6 +16,7 @@ import { installScript } from "./site/install";
 import { handleMcp } from "./mcp";
 import { checkAlerts, countOps, DAILY_REPORT_CRON, handleHealthz, sendDailyReport, sweepOps } from "./ops";
 import { sweepUsage } from "./quota";
+import { handleReport, notifyReports, sweepReports } from "./reports";
 import { handleInboxRead, receiveEmail, sweepInbox } from "./inbox";
 import { handleMagicRequest, handleMagicVerify } from "./auth/email";
 import {
@@ -145,6 +146,10 @@ async function routeApi(request: Request, env: Env, pathname: string): Promise<R
     if (method === "DELETE") return handleDeleteAccount(request, env);
     throw methodNotAllowed("GET, DELETE");
   }
+  if (pathname === "/api/reports") {
+    if (method === "POST") return handleReport(request, env);
+    throw methodNotAllowed("POST");
+  }
   if (pathname === "/api/albums") {
     if (method === "POST") return handleAlbumCreate(request, env);
     throw methodNotAllowed("POST");
@@ -271,7 +276,10 @@ export default {
         await sweepInbox(env);
         await sweepUsage(env);
         await sweepOps(env);
+        await sweepReports(env);
         await checkAlerts(env);
+        // A failed digest stays unsent and is retried on the next run.
+        await notifyReports(env).catch(() => undefined);
       })(),
     );
   },

@@ -2,8 +2,9 @@ import { type Album, albumUrl } from "../../albums";
 import { pageUrl, publicUrl, type StoredFile } from "../../files";
 import { esc } from "../i18n";
 import { brand } from "../../config";
-import { type Ctx, homeTitle, type Page, pageTitle, tr } from "../layout";
+import { type Ctx, homeTitle, mailLink, type Page, pageTitle, tr } from "../layout";
 import { qrSvg } from "../qr";
+import { REPORT_CONTACT_MAX, REPORT_DETAILS_MAX } from "../../reports";
 import { hamsterFace, peekHamster } from "../svg";
 
 function fmtSize(b: number): string {
@@ -39,6 +40,45 @@ function mediaTag(url: string, f: StoredFile, alt: string): string {
   return `<img src="${esc(url)}" alt="${esc(alt)}" decoding="async">`;
 }
 
+// The report form, folded away under a small link at the bottom of file and album pages. It posts a plain form (answered with a redirect back here, ?report=sent|rate|failed) and app.ts sends it with fetch instead when scripts run.
+function reportBox(ctx: Ctx, target: string, album: boolean): string {
+  const t = tr(ctx);
+  const abuse = brand(ctx.env).abuseEmail;
+  const outcome = ctx.query?.get("report");
+  const notice =
+    outcome === "sent"
+      ? t("收到了，谢谢你。运营者会尽快查看。", "Thanks, we got it. The operator will look at it soon.")
+      : outcome === "rate"
+        ? t("举报得太频繁了，过一会儿再试。", "Too many reports; please try again later.")
+        : outcome === "failed"
+          ? t("举报没有提交成功，再试一次吧。", "The report did not go through; please try again.")
+          : "";
+  const reasons: [string, string, string][] = [
+    ["csam", "涉及未成年人的色情内容", "Sexual content involving a minor"],
+    ["illegal", "其他违法内容", "Other illegal content"],
+    ["copyright", "侵犯我的版权", "Infringes my copyright"],
+    ["privacy", "泄露了个人隐私", "Exposes someone's private information"],
+    ["spam", "垃圾信息或诈骗", "Spam or fraud"],
+    ["other", "其他问题", "Something else"],
+  ];
+  return `<details class="report-box" id="report"${notice ? " open" : ""}><summary>${album ? t("举报这个打包链接", "Report this album") : t("举报这个文件", "Report this file")}</summary>
+${notice ? `<p class="gate" role="status">${notice}</p>` : ""}${
+  outcome === "sent"
+    ? ""
+    : `<form class="report-form" method="post" action="/api/reports" data-report data-done="${esc(t("收到了，谢谢你。运营者会尽快查看。", "Thanks, we got it. The operator will look at it soon."))}" data-rate="${esc(t("举报得太频繁了，过一会儿再试。", "Too many reports; please try again later."))}" data-fail="${esc(t("举报没有提交成功，再试一次吧。", "The report did not go through; please try again."))}">
+<input type="hidden" name="target" value="${esc(target)}">
+<fieldset><legend class="optlabel">${t("哪里有问题？", "What is wrong with it?")}</legend>
+${reasons.map(([v, zh, en]) => `<label class="check"><input type="radio" name="reason" value="${v}" required> ${t(zh, en)}</label>`).join("\n")}
+</fieldset>
+<textarea name="details" rows="3" maxlength="${REPORT_DETAILS_MAX}" aria-label="${t("补充说明", "Details")}" placeholder="${t("补充说明（可以不填），比如你是版权方、图里是谁", "Details (optional), e.g. that you hold the copyright or who is shown")}"></textarea>
+<input type="email" name="contact" maxlength="${REPORT_CONTACT_MAX}" autocomplete="email" aria-label="${t("你的邮箱", "Your email")}" placeholder="${t("你的邮箱（可以不填，需要回复时用）", "Your email (optional, if you want a reply)")}">
+<p class="small">${t("举报由运营者人工处理，不会自动删除内容。", "A person reviews every report; nothing is removed automatically.")}${abuse ? t(`紧急情况也可以写信到 ${mailLink(abuse)}。`, ` In urgent cases you can also write to ${mailLink(abuse)}.`) : ""}</p>
+<div class="row-actions"><button type="submit" class="mini">${t("提交举报", "Send report")}</button></div>
+</form>`
+}
+</details>`;
+}
+
 export function filePage(ctx: Ctx, f: StoredFile): Page {
   const t = tr(ctx);
   const url = publicUrl(ctx.env, f);
@@ -61,6 +101,7 @@ ${formats.map(([label, text]) => `<div class="fmt"><span class="l">${label}</spa
 </div>
 <button type="button" class="btn warn" id="file-delete" hidden>${t("删除这个文件", "Delete this file")}</button>
 <a class="more" href="/" data-nav>${t("也来屯一个 →", "Stash one too →")}</a>
+${reportBox(ctx, `f/${f.id}`, false)}
 </div>
 </section>`;
   // A permanent public image can preview itself; videos and temporary files use the site image.
@@ -90,6 +131,7 @@ export function albumPage(ctx: Ctx, a: Album): Page {
 </div>
 ${a.files.length ? `<div class="grid gallery">${items}</div>` : `<div class="empty"><div class="kao sm">(・_・;)</div><div class="cute">${t("里面的文件都被删掉啦", "Every file in here has been deleted")}</div></div>`}
 <button type="button" class="btn warn" id="album-delete" hidden>${t("删除这个打包链接", "Delete this album link")}</button>
+${reportBox(ctx, `a/${a.id}`, true)}
 </section>`;
   return { id: "album", title: `${title} · ${brand(ctx.env).siteName}`, main: html, noindex: true, ogTitle: homeTitle(ctx) };
 }

@@ -50,7 +50,9 @@ describe("admin MCP tools", () => {
       "inspect",
       "list_blocks",
       "list_by_source",
+      "list_reports",
       "read_test_inbox",
+      "resolve_report",
       "takedown",
       "takedown_by_source",
       "takedown_log",
@@ -63,6 +65,25 @@ describe("admin MCP tools", () => {
     expect(refused === null || refused.isError).toBe(true);
     const init = await rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "t", version: "1" } }, ADMIN);
     expect(init.instructions).toContain("Handling an abuse report");
+  });
+
+  it("list_reports and resolve_report handle reports from the site", async () => {
+    const f = await upload();
+    const sent = await call(
+      new Request(`${MAIN}/api/reports`, {
+        method: "POST",
+        body: JSON.stringify({ target: f.page, reason: "spam", details: "ads" }),
+        headers: { "content-type": "application/json", "cf-connecting-ip": freshIp() },
+      }),
+    );
+    expect(sent.status).toBe(202);
+    const open = await admin("list_reports", {});
+    const mine = open.reports.find((r: { target: string }) => r.target === `file:${f.id}`);
+    expect(mine).toMatchObject({ reason: "spam", details: "ads", link: `https://sugi.moe/f/${f.id}`, open_reports_on_target: 1, resolution: null });
+    const done = await admin("resolve_report", { id: mine.id, action: "takedown", note: "spam" });
+    expect(done).toMatchObject({ resolution: "removed", resolved_reports: [mine.id] });
+    const resolved = await admin("list_reports", { status: "resolved" });
+    expect(resolved.reports.some((r: { id: number }) => r.id === mine.id)).toBe(true);
   });
 
   it("the admin token is never rate limited", async () => {
