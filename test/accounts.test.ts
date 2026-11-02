@@ -1,7 +1,7 @@
 import { env } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
-import { ADMIN, call, freshIp, MAIN, png, UPLOAD_AUTH } from "./helpers";
+import { ADMIN, call, freshIp, MAIN, png, UPLOAD_AUTH, upload } from "./helpers";
 
 const ON: Partial<Env> = { FEATURE_ACCOUNTS: "1", ACCOUNT_FEATURES: "email", RESEND_API_KEY: "re_test_key" };
 const ORIGIN = { origin: "https://sugi.moe" };
@@ -455,5 +455,71 @@ describe("deleting the account", () => {
     expect(await res2.json()).toMatchObject({ deleted: true, deleted_files: 1 });
     expect((await call(new Request(up2.url))).status).toBe(404);
     expect(await (await call(new Request(`${MAIN}/account?lang=en`, { headers: { cookie: allCookie } }), ON)).text()).toContain('action="/auth/email"');
+  });
+});
+
+describe("my files across devices", () => {
+  const SY: Partial<Env> = { ...ON, ACCOUNT_FEATURES: "email,sync" };
+  const json = async (path: string, cookie: string) => (await call(new Request(`${MAIN}${path}`, { headers: { cookie } }), SY)).json<any>();
+
+  it("lists the account's files and albums, claims earlier uploads by token, and deletes by session", async () => {
+    const cookie = `sugi_session=${await logIn("sync@example.com")}`;
+    expect((await call(new Request(`${MAIN}/api/me/files`, { headers: { cookie } }), ON)).status).toBe(404);
+
+    const mine = await (
+      await call(
+        new Request(`${MAIN}/api/upload`, {
+          method: "PUT",
+          body: png(),
+          headers: { cookie, ...ORIGIN, ...UPLOAD_AUTH, accept: "application/json", "cf-connecting-ip": freshIp() },
+        }),
+        SY,
+      )
+    ).json<{ id: string }>();
+    const album = await (
+      await call(
+        new Request(`${MAIN}/api/albums`, {
+          method: "POST",
+          body: JSON.stringify({ files: [mine.id], title: "synced" }),
+          headers: { cookie, ...ORIGIN, ...UPLOAD_AUTH, "content-type": "application/json", accept: "application/json", "cf-connecting-ip": freshIp() },
+        }),
+        SY,
+      )
+    ).json<{ id: string }>();
+    expect((await json("/api/me/files", cookie)).files.map((f: { id: string }) => f.id)).toEqual([mine.id]);
+    expect((await json("/api/me/albums", cookie)).albums).toMatchObject([{ id: album.id, title: "synced", files: 1 }]);
+
+    // An upload made before logging in joins the account when its delete token is shown; a wrong token does not.
+    const earlier = await upload(png());
+    const other = await upload(png());
+    const claim = (body: unknown, headers: Record<string, string> = ORIGIN) =>
+      call(
+        new Request(`${MAIN}/api/me/claim`, {
+          method: "POST",
+          body: JSON.stringify(body),
+          headers: { cookie, ...headers, "content-type": "application/json" },
+        }),
+        SY,
+      );
+    expect((await claim({ files: [{ id: earlier.id, token: earlier.delete_token }] }, {})).status).toBe(401);
+    const res = await (
+      await claim({
+        files: [
+          { id: earlier.id, token: earlier.delete_token },
+          { id: other.id, token: "d_wrong" },
+        ],
+      })
+    ).json<{ files: string[] }>();
+    expect(res.files).toEqual([earlier.id]);
+    expect((await json("/api/me/files", cookie)).files.map((f: { id: string }) => f.id).sort()).toEqual([mine.id, earlier.id].sort());
+
+    // Files in the account can be deleted with the session, without the token.
+    expect((await call(new Request(`${MAIN}/api/files/${earlier.id}`, { method: "DELETE", headers: { cookie, ...ORIGIN } }), SY)).status).toBe(200);
+    expect((await call(new Request(`${MAIN}/api/files/${other.id}`, { method: "DELETE", headers: { cookie, ...ORIGIN } }), SY)).status).toBe(403);
+    expect((await json("/api/me/files", cookie)).files.map((f: { id: string }) => f.id)).toEqual([mine.id]);
+
+    const page = await (await call(new Request(`${MAIN}/mine?lang=en`, { headers: { cookie } }), SY)).text();
+    expect(page).toContain('id="claim-bar"');
+    expect(page).toContain("files in your account");
   });
 });

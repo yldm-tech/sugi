@@ -9,6 +9,7 @@ interface Config {
   page: string;
   gated: boolean;
   flags: { accounts: boolean; account: string[]; cli: boolean; donate: boolean };
+  user?: boolean;
   origins: { main: string; files: string; tmp: string };
   limits: { maxFile: number; single: number; rate: number; ratePeriod: number };
   t: Record<string, string>;
@@ -75,6 +76,8 @@ interface HistItem {
   expiresAt: number | null;
   createdAt: number;
   thumb?: string | null;
+  /** Known to the logged-in account (my-files sync); account-only items have no token and are not stored locally. */
+  account?: boolean;
 }
 interface AlbumItem {
   id: string;
@@ -83,6 +86,9 @@ interface AlbumItem {
   token: string;
   fileIds: string[];
   createdAt: number;
+  account?: boolean;
+  covers?: string[];
+  count?: number;
 }
 
 function load<T>(key: string, fallback: T): T {
@@ -110,8 +116,9 @@ function savePrefs() {
 function persist() {
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
-      localStorage.setItem("sugi.history.v1", JSON.stringify(hist));
-      localStorage.setItem("sugi.albums.v1", JSON.stringify(albums));
+      // Items that only the account knows about are fetched again on every visit, never stored in the browser.
+      localStorage.setItem("sugi.history.v1", JSON.stringify(hist.filter((x) => x.token).map(({ account, ...x }) => x)));
+      localStorage.setItem("sugi.albums.v1", JSON.stringify(albums.filter((x) => x.token).map(({ account, covers, count, ...x }) => x)));
       return;
     } catch {
       // Quota: drop thumbnails from the oldest half and retry; links and tokens matter more than previews.
@@ -606,11 +613,12 @@ async function deleteFiles(ids: string[]): Promise<number> {
   let n = 0;
   for (const id of ids) {
     const item = hist.find((x) => x.id === id);
-    if (!item?.token) {
+    if (!item?.token && !item?.account) {
       toast(T.noToken);
       continue;
     }
-    const r = await xhr("DELETE", `/api/files/${encodeURIComponent(id)}`, null, { "Sugi-Token": item.token });
+    // Files in the account can be deleted with the login session instead of the token.
+    const r = await xhr("DELETE", `/api/files/${encodeURIComponent(id)}`, null, item.token ? { "Sugi-Token": item.token } : {});
     // 404 means it is already gone (expired or deleted elsewhere): forget it locally too.
     if (r.status === 200 || r.status === 404 || r.status === 502) {
       hist = hist.filter((x) => x.id !== id);
@@ -1154,7 +1162,7 @@ function renderMine() {
           "div",
           { class: "meta" },
           h("span", { class: "n", text: x.name }),
-          h("span", { class: "s" }, h("span", { text: fmtSize(x.size) }), h("span", { class: "local", text: T.localOnly })),
+          h("span", { class: "s" }, h("span", { text: fmtSize(x.size) }), h("span", { class: "local", text: x.account ? T.inAccount : T.localOnly })),
         ),
         h(
           "div",
@@ -1184,7 +1192,7 @@ function renderMine() {
       for (let i = 0; i < 3; i++) {
         const c = h("div");
         const x = its[i];
-        const src = x && (x.thumb || (x.kind === "image" && !expInfo(x.expiresAt).expired ? x.url : null));
+        const src = x ? x.thumb || (x.kind === "image" && !expInfo(x.expiresAt).expired ? x.url : null) : a.covers?.[i];
         if (src) c.append(h("img", { src, alt: "", loading: "lazy" }));
         covers.append(c);
       }
@@ -1196,7 +1204,7 @@ function renderMine() {
           "a",
           { class: "info", href: `/a/${a.id}`, "data-nav": true },
           h("span", { class: "t", text: a.title || T.untitled }),
-          h("span", { class: "m", text: fmt(T.albumMeta, { n: a.fileIds.length, date: new Date(a.createdAt).toLocaleDateString(LOCALE) }) }),
+          h("span", { class: "m", text: fmt(T.albumMeta, { n: a.count ?? a.fileIds.length, date: new Date(a.createdAt).toLocaleDateString(LOCALE) }) }),
         ),
         h(
           "div",
@@ -1211,7 +1219,7 @@ function renderMine() {
 
 async function deleteAlbum(a: AlbumItem): Promise<boolean> {
   if (!confirm(T.confirmDelete)) return false;
-  const r = await xhr("DELETE", `/api/albums/${encodeURIComponent(a.id)}`, null, { "Sugi-Token": a.token });
+  const r = await xhr("DELETE", `/api/albums/${encodeURIComponent(a.id)}`, null, a.token ? { "Sugi-Token": a.token } : {});
   if (r.status === 200 || r.status === 404) {
     albums = albums.filter((x) => x.id !== a.id);
     persist();
@@ -1290,6 +1298,87 @@ function initMine() {
     }
   });
   renderMine();
+  if (CFG.user && CFG.flags.account?.includes("sync")) void syncAccount();
+}
+
+interface AccountFile {
+  id: string;
+  url: string;
+  page: string;
+  name: string | null;
+  size: number;
+  type: string;
+  created_at: string;
+  expires_at: string | null;
+}
+
+// My-files sync: merge the account's files and albums into the lists, and offer to add this browser's uploads to the account.
+async function syncAccount() {
+  const [f, a] = await Promise.all([xhr("GET", "/api/me/files", null, {}), xhr("GET", "/api/me/albums", null, {})]);
+  if (f.status !== 200 || a.status !== 200) {
+    toast(T.syncFailed);
+    return;
+  }
+  const mine = new Map((f.body.files as AccountFile[]).map((x) => [x.id, x]));
+  hist = hist.map((x) => (mine.has(x.id) ? { ...x, account: true } : x));
+  const known = new Set(hist.map((x) => x.id));
+  for (const x of mine.values()) {
+    if (known.has(x.id)) continue;
+    const ext = x.url.slice(x.url.lastIndexOf(".") + 1);
+    hist.push({
+      id: x.id,
+      url: x.url,
+      page: x.page,
+      name: x.name || `${x.id}.${ext}`,
+      size: x.size,
+      ext,
+      kind: x.type.startsWith("video/") ? "video" : "image",
+      token: "",
+      expiresAt: x.expires_at ? Date.parse(x.expires_at) : null,
+      createdAt: Date.parse(x.created_at),
+      account: true,
+    });
+  }
+  hist.sort((p, q) => q.createdAt - p.createdAt);
+  const myAlbums = a.body.albums as { id: string; url: string; title: string; created_at: string; files: number; covers: string[] }[];
+  const inAccount = new Set(myAlbums.map((x) => x.id));
+  albums = albums.map((x) => (inAccount.has(x.id) ? { ...x, account: true } : x));
+  const knownA = new Set(albums.map((x) => x.id));
+  for (const x of myAlbums)
+    if (!knownA.has(x.id))
+      albums.push({
+        id: x.id,
+        url: x.url,
+        title: x.title,
+        token: "",
+        fileIds: [],
+        createdAt: Date.parse(x.created_at),
+        account: true,
+        covers: x.covers,
+        count: x.files,
+      });
+  renderMine();
+  const loose = hist.filter((x) => x.token && !x.account);
+  const looseAlbums = albums.filter((x) => x.token && !x.account);
+  const bar = $("#claim-bar");
+  if (!bar || (!loose.length && !looseAlbums.length)) return;
+  $("#claim-text")!.textContent = fmt(T.claimN, { n: loose.length + looseAlbums.length });
+  bar.hidden = false;
+  $("#claim-btn")!.onclick = async () => {
+    const r = await xhr(
+      "POST",
+      "/api/me/claim",
+      JSON.stringify({ files: loose.map((x) => ({ id: x.id, token: x.token })), albums: looseAlbums.map((x) => ({ id: x.id, token: x.token })) }),
+      { "Content-Type": "application/json" },
+    );
+    if (r.status !== 200) {
+      toast(fmt(T.claimFailed, { msg: r.body?.error || r.status }));
+      return;
+    }
+    bar.hidden = true;
+    toast(fmt(T.claimed, { n: r.body.files.length + r.body.albums.length }));
+    void syncAccount();
+  };
 }
 
 // ---------------------------------------------------------------- pages: file, album, dev
