@@ -1,7 +1,8 @@
 import { MCP_MAX_BYTES } from "../../mcp";
 import { ALBUM_MAX_FILES, MAX_FILE_BYTES, RATE_LIMIT, RATE_LIMIT_PERIOD_SECONDS, SINGLE_REQUEST_MAX_BYTES, UPLOAD_LINK_MAX, UPLOAD_LINK_TTL_SECONDS, WAF_LIMIT, WAF_PERIOD_SECONDS } from "../../limits";
 import { esc } from "../i18n";
-import { Ctx, Page, tr } from "../layout";
+import { brand } from "../../config";
+import { Ctx, mailLink, Page, pageTitle, tr } from "../layout";
 import { LOST_HAMSTER, peekHamster } from "../svg";
 
 const MiB = 1024 * 1024;
@@ -107,7 +108,7 @@ ${rows.map(([path, desc]) => `<div class="apirow"><code>${esc(path)}</code><span
   )}</p>
 </section>
 ${ctx.flags.cli ? cliPanel(ctx) + mcpPanel(ctx) : ""}`;
-  return { id: "dev", title: t("开发者 · sugi.moe", "Developers · sugi.moe"), main: html, description: t("sugi.moe 的 HTTP API：curl 一行上传图片和视频，返回直链和删除凭证；支持临时文件、链接搬运、打包链接和分片上传。", "The sugi.moe HTTP API: upload images and videos with one curl command and get a direct link and a delete token; temporary files, link import, albums and chunked uploads.") };
+  return { id: "dev", title: pageTitle(ctx, "开发者", "Developers"), main: html, description: t(`${brand(ctx.env).siteName} 的 HTTP API：curl 一行上传图片和视频，返回直链和删除凭证；支持临时文件、链接搬运、打包链接和分片上传。`, `The ${brand(ctx.env).siteName} HTTP API: upload images and videos with one curl command and get a direct link and a delete token; temporary files, link import, albums and chunked uploads.`) };
 }
 
 function cliPanel(ctx: Ctx): string {
@@ -192,25 +193,29 @@ const stripTags = (html: string) => html.replace(/<[^>]+>/g, "").replace(/&#(\d+
 
 export function faqPage(ctx: Ctx): Page {
   const t = tr(ctx);
+  const b = brand(ctx.env);
+  const host = (o: string) => o.replace(/^https?:\/\//, "");
+  const contact = mailLink(b.contactEmail);
+  const abuse = mailLink(b.abuseEmail);
   const maxMb = MAX_FILE_BYTES / MiB;
   const singleMb = SINGLE_REQUEST_MAX_BYTES / MiB;
   const items = [
     faqItem(t("sugi 是什么意思？", "What does “sugi” mean?"), t("日语里有两个意思：「杉」是柳杉，所以仓仓头上顶着一棵杉树苗；「〜すぎ」是“太……了”，かわいすぎ 就是太可爱了。仓仓是一只什么都往腮帮子里屯的仓鼠，屯太多的时候会说「屯すぎ！」。", "Two things in Japanese: 杉 (sugi) is the Japanese cedar, which is why the hamster has a cedar sprout on its head, and 〜すぎ (-sugi) means “too much”, as in かわいすぎ, “way too cute”. The hamster stuffs everything into its cheeks, and when it has stuffed too much it says “too much!”.")),
     faqItem(t("一定要注册吗？", "Do I need an account?"), ctx.flags.accounts ? t("不用。不登录也能传，记录只保存在当前浏览器里。想换设备也不丢，可以登录，之前传的文件能一键认领。", "No. You can upload without logging in; your history stays in this browser. Log in if you want it on every device, and claim your earlier uploads in one click.") : t("不用，sugi 现在没有账号，打开就能传。上传记录和删除凭证保存在你当前用的浏览器里（「我的文件」），可以随时导出一份备份。", "No. sugi has no accounts right now; just open it and upload. Your history and delete tokens are kept in this browser (“My files”), and you can export them at any time.")),
-    faqItem(t("文件会保存多久？", "How long are files kept?"), t("选「永久」的文件会一直保存，除非违反使用条款被删除，或者你用删除凭证自己删掉。选 1 小时、12 小时或 3 天的，链接放在 tmp.sugi.moe 下，到期后链接立刻失效，文件会在之后十分钟左右内被清理。", "Files kept “forever” stay until they break the terms or you delete them with their delete token. Files kept for 1 hour, 12 hours or 3 days get a tmp.sugi.moe link that stops working the moment it expires; the file itself is cleaned up within about ten minutes after that.")),
+    faqItem(t("文件会保存多久？", "How long are files kept?"), t(`选「永久」的文件会一直保存，除非违反使用条款被删除，或者你用删除凭证自己删掉。选 1 小时、12 小时或 3 天的，链接放在 ${host(ctx.env.TMP_ORIGIN)} 下，到期后链接立刻失效，文件会在之后十分钟左右内被清理。`, `Files kept “forever” stay until they break the terms or you delete them with their delete token. Files kept for 1 hour, 12 hours or 3 days get a ${host(ctx.env.TMP_ORIGIN)} link that stops working the moment it expires; the file itself is cleaned up within about ten minutes after that.`)),
     faqItem(t("能传什么格式？", "What can I upload?"), t(`图片和短视频：PNG、JPEG、WebP、GIF、AVIF、MP4、WebM。格式按文件内容判断，不看扩展名。单个文件最大 ${maxMb} MB，超过 ${singleMb} MB 的网页会自动分片上传。其他格式（SVG、HTML、PDF、压缩包、可执行文件等）一律不收。`, `Images and short videos: PNG, JPEG, WebP, GIF, AVIF, MP4 and WebM, recognised by their content rather than the file name. Up to ${maxMb} MB per file; the website splits anything over ${singleMb} MB into chunks for you. Everything else (SVG, HTML, PDF, archives, executables…) is refused.`)),
     faqItem(t("上传的文件谁能看到？", "Who can see my uploads?"), t("所有上传都是公开的，任何拿到链接的人都能打开。链接是随机生成的，不会被列出来，但「可爱链接名」组合少，更容易被猜到。不要上传含个人信息、证件、密码或密钥的图片。", "Every upload is public: anyone with the link can open it. Links are random and never listed anywhere, but cute link names come from a much smaller pool and are easier to guess. Do not upload pictures that show personal details, IDs, passwords or keys.")),
-    faqItem(t("怎么删除自己传的文件？", "How do I delete something I uploaded?"), t("在「我的文件」页找到文件点 ×。删除凭证只存在上传时用的那个浏览器里，换了浏览器或清理了浏览器数据就删不了，记得先导出记录。用 API 上传的，用返回的 delete_token 调 DELETE /api/files/:id。旧版链接（sugi.moe/一串十六进制.png）没有删除凭证，要删的话写信到 <a href=\"mailto:hi@sugi.moe\">hi@sugi.moe</a>。", "Find it under “My files” and press ×. The delete token lives only in the browser you uploaded from, so if you switch browsers or clear its data you can no longer delete it; export your history first. For API uploads, call DELETE /api/files/:id with the delete_token you got back. Links in the old format (sugi.moe/<hex>.png) have no delete token; write to <a href=\"mailto:hi@sugi.moe\">hi@sugi.moe</a> to have one removed.")),
+    faqItem(t("怎么删除自己传的文件？", "How do I delete something I uploaded?"), t(`在「我的文件」页找到文件点 ×。删除凭证只存在上传时用的那个浏览器里，换了浏览器或清理了浏览器数据就删不了，记得先导出记录。用 API 上传的，用返回的 delete_token 调 DELETE /api/files/:id。旧版链接（${host(ctx.env.MAIN_ORIGIN)}/一串十六进制.png）没有删除凭证，要删的话${contact ? `写信到 ${contact}` : "请联系这个网站的运营者"}。`, `Find it under “My files” and press ×. The delete token lives only in the browser you uploaded from, so if you switch browsers or clear its data you can no longer delete it; export your history first. For API uploads, call DELETE /api/files/:id with the delete_token you got back. Links in the old format (${host(ctx.env.MAIN_ORIGIN)}/<hex>.png) have no delete token; ${contact ? `write to ${contact}` : "contact the operator of this site"} to have one removed.`)),
     faqItem(t("换设备还能看到记录吗？", "Can I see my history on another device?"), t("看不到，记录只在当前浏览器里。可以在「我的文件」页点「导出记录」存一份。", "No, the history lives in this browser only. Use “Export” on the “My files” page to save a copy.")),
     faqItem(t("照片里的位置信息会被抹掉吗？", "Is the location in my photos removed?"), t("在网页上传时，默认勾选的「抹掉照片位置信息」会在你的浏览器里、上传之前删掉 JPEG、PNG、WebP 里的 EXIF 和 XMP 元数据（GPS、相机型号、拍摄时间都在里面），JPEG 只保留照片方向。AVIF 和视频不处理，用 API 上传的文件也不会被改动。", "When you upload on the website, the “Strip photo location” option (on by default) removes the EXIF and XMP metadata from JPEG, PNG and WebP files in your browser before upload; that is where GPS position, camera model and capture time live. For JPEG only the orientation is kept. AVIF files, videos and anything uploaded through the API are left untouched.")),
     faqItem(t("sugi 会记录我的什么？", "What does sugi record about me?"), t("不保存你的 IP 地址。每个文件会记下上传时间、文件名（如果有）和上传者 IP 的 HMAC 指纹（用服务器密钥算出来，不能反推出 IP），只用来在出现滥用时找出并清除同一来源的上传。网站没有统计脚本，也没有广告。sugi 运行在 Cloudflare 上，请求会经过 Cloudflare 的网络。详见 <a href=\"/privacy\" data-nav>隐私政策</a>。", "Not your IP address. With each file we keep its upload time, its file name if it had one, and an HMAC fingerprint of the uploader's IP made with a server-side key, which cannot be turned back into the IP. The fingerprint is only used to find and remove everything from the same source when there is abuse. The site has no analytics and no ads. sugi runs on Cloudflare, so requests pass through Cloudflare's network. See the <a href=\"/privacy\" data-nav>privacy policy</a>.")),
     faqItem(t("链接能直接贴到论坛、博客里吗？", "Can I embed the links in forums and blogs?"), t("可以，所有链接都是直链，支持外链和热链。上传完可以直接复制成 Markdown、HTML 或 BBCode。", "Yes. Every link is a direct link and hotlinking is allowed. You can copy them as Markdown, HTML or BBCode right after uploading.")),
-    faqItem(t("看到不好的内容怎么办？", "I found something bad. What do I do?"), t("把链接发到 <a href=\"mailto:abuse@sugi.moe\">abuse@sugi.moe</a>，确认违规后会删除。通过 Cloudflare 缓存提供的内容还会由 Cloudflare 的 CSAM 扫描工具检测。", "Send the link to <a href=\"mailto:abuse@sugi.moe\">abuse@sugi.moe</a> and it will be removed once confirmed. Content served through Cloudflare's cache is also checked by Cloudflare's CSAM Scanning Tool.")),
+    faqItem(t("看到不好的内容怎么办？", "I found something bad. What do I do?"), t(`${abuse ? `把链接发到 ${abuse}` : "把链接发给这个网站的运营者"}，确认违规后会删除。${b.csamScanning ? "通过 Cloudflare 缓存提供的内容还会由 Cloudflare 的 CSAM 扫描工具检测。" : ""}`, `${abuse ? `Send the link to ${abuse}` : "Send the link to the operator of this site"} and it will be removed once confirmed.${b.csamScanning ? " Content served through Cloudflare's cache is also checked by Cloudflare's CSAM Scanning Tool." : ""}`)),
     faqItem(t("仓仓靠什么活下去？", "Who pays for the hamster?"), ctx.flags.donate ? t("服务器和流量都是大家投喂的。如果仓仓帮到了你，可以 <a href=\"/donate\" data-nav>投喂一点瓜子</a>。", "Servers and bandwidth are paid for by people like you. If the hamster helped, you can <a href=\"/donate\" data-nav>toss it a few seeds</a>.") : t("目前由维护者自费运行，没有广告，也不卖数据。", "For now the maintainers pay for it themselves. There are no ads and no data is sold.")),
   ];
   const html = `<section class="stack8">
 <h1 class="h1">${t("问问仓仓", "Ask the hamster")}</h1>
-<p class="lead">${t('没找到答案的话，写信到 <a href="mailto:hi@sugi.moe">hi@sugi.moe</a>。', 'Didn\'t find your answer? Write to <a href="mailto:hi@sugi.moe">hi@sugi.moe</a>.')}</p>
+${contact ? `<p class="lead">${t(`没找到答案的话，写信到 ${contact}。`, `Didn't find your answer? Write to ${contact}.`)}</p>` : ""}
 </section>
 <section class="faq">
 ${items.map((i) => `<details class="card"><summary>${i.q}</summary><p>${i.a}</p></details>`).join("\n")}
@@ -223,11 +228,13 @@ ${items.map((i) => `<details class="card"><summary>${i.q}</summary><p>${i.a}</p>
       mainEntity: items.map((i) => ({ "@type": "Question", name: stripTags(i.q), acceptedAnswer: { "@type": "Answer", text: stripTags(i.a) } })),
     },
   ];
-  return { id: "faq", title: t("问问题 · sugi.moe", "FAQ · sugi.moe"), main: html, jsonLd, description: t("关于 sugi.moe 的常见问题：文件保存多久、能传什么格式、怎么删除、我们记录什么。", "Common questions about sugi.moe: how long files are kept, what you can upload, how to delete, and what we record.") };
+  return { id: "faq", title: pageTitle(ctx, "问问题", "FAQ"), main: html, jsonLd, description: t(`关于 ${b.siteName} 的常见问题：文件保存多久、能传什么格式、怎么删除、我们记录什么。`, `Common questions about ${b.siteName}: how long files are kept, what you can upload, how to delete, and what we record.`) };
 }
 
 export function termsPage(ctx: Ctx): Page {
   const t = tr(ctx);
+  const b = brand(ctx.env);
+  const abuse = mailLink(b.abuseEmail);
   const maxMb = MAX_FILE_BYTES / MiB;
   const items = [
     t("禁止上传违法内容，包括但不限于儿童性剥削内容、侵犯他人版权的内容、他人的隐私信息。", "Do not upload anything illegal, including but not limited to child sexual abuse material, content that infringes someone else's copyright, and other people's private information."),
@@ -238,16 +245,16 @@ export function termsPage(ctx: Ctx): Page {
     t('为了处理滥用，每次上传会保存上传时间和上传者 IP 的 HMAC 指纹，不保存 IP 本身。详见 <a href="/privacy" data-nav>隐私政策</a>。', 'To deal with abuse we keep, for every upload, its time and an HMAC fingerprint of the uploader\'s IP, never the IP itself. See the <a href="/privacy" data-nav>privacy policy</a>.'),
     t("仓仓会尽力保管好每个文件，但不保证永不丢失，也不保证服务一直可用，重要文件请自己留备份。临时文件到期后会被删除。", "The hamster takes good care of every file, but cannot promise that nothing is ever lost or that the service is always up. Keep your own copy of anything important. Temporary files are deleted when they expire."),
     ...(ctx.flags.accounts ? [t("未满 16 岁请不要注册账号。", "If you are under 16, please do not create an account.")] : []),
-    t('举报请写信到 <a href="mailto:abuse@sugi.moe">abuse@sugi.moe</a>。', 'Report abuse to <a href="mailto:abuse@sugi.moe">abuse@sugi.moe</a>.'),
+    ...(abuse ? [t(`举报请写信到 ${abuse}。`, `Report abuse to ${abuse}.`)] : []),
   ];
   const html = `<section class="stack8">
 <h1 class="h1">${t("使用条款", "Terms of use")}</h1>
-<p class="lead">${t("sugi.moe 由 YLDM Co., Ltd. 运营。用 sugi.moe 就代表你同意下面这些规则。", "sugi.moe is operated by YLDM Co., Ltd. By using sugi.moe you agree to the rules below.")}</p>
+<p class="lead">${b.operator ? t(`${esc(b.siteName)} 由 ${esc(b.operator)} 运营。用 ${esc(b.siteName)} 就代表你同意下面这些规则。`, `${esc(b.siteName)} is operated by ${esc(b.operator)}. By using ${esc(b.siteName)} you agree to the rules below.`) : t(`用 ${esc(b.siteName)} 就代表你同意下面这些规则。`, `By using ${esc(b.siteName)} you agree to the rules below.`)}</p>
 </section>
 <ol class="card terms">
 ${items.map((i) => `<li>${i}</li>`).join("\n")}
 </ol>`;
-  return { id: "terms", title: t("使用条款 · sugi.moe", "Terms · sugi.moe"), main: html, description: t("使用 sugi.moe 的规则：能传什么、不能传什么、文件会保存多久。", "The rules for using sugi.moe: what you may upload, what you may not, and how long files are kept.") };
+  return { id: "terms", title: pageTitle(ctx, "使用条款", "Terms"), main: html, description: t(`使用 ${b.siteName} 的规则：能传什么、不能传什么、文件会保存多久。`, `The rules for using ${b.siteName}: what you may upload, what you may not, and how long files are kept.`) };
 }
 
 export function notFoundPage(ctx: Ctx): Page {
@@ -259,7 +266,7 @@ export function notFoundPage(ctx: Ctx): Page {
 <p>${t("这个文件可能已经过期，被主人删掉了，或者链接抄错了一个字母。", "It may have expired, been deleted by its owner, or the link has a typo.")}</p>
 <div class="acts"><a class="btn big" href="/" data-nav>${t("回首页", "Home")}</a><a class="btn big ghost" href="/mine" data-nav>${t("看看我的文件", "My files")}</a></div>
 </section>`;
-  return { id: "notfound", title: t("找不到啦 · sugi.moe", "Not found · sugi.moe"), main: html, status: 404, noindex: true };
+  return { id: "notfound", title: pageTitle(ctx, "找不到啦", "Not found"), main: html, status: 404, noindex: true };
 }
 
 // Visual only until accounts ship (FEATURE_ACCOUNTS); the buttons are not wired to anything yet.
@@ -272,7 +279,7 @@ ${peekHamster(110, 100, false)}<div class="paw l"></div><div class="paw r"></div
 <p class="small">${t("登录功能还在路上。", "Logging in is on its way.")}</p>
 <p class="small">${t('登录即表示同意 <a href="/terms" data-nav>使用条款</a> 和 <a href="/privacy" data-nav>隐私政策</a>。', 'By logging in you agree to the <a href="/terms" data-nav>terms</a> and the <a href="/privacy" data-nav>privacy policy</a>.')}</p>
 </div></div></section>`;
-  return { id: "login", title: t("登录 · sugi.moe", "Log in · sugi.moe"), main: html };
+  return { id: "login", title: pageTitle(ctx, "登录", "Log in"), main: html };
 }
 
 // Hidden behind FEATURE_DONATE. Amounts, payment methods and the thank-you wall come from real data supplied by the maintainers; nothing is invented here.
@@ -294,5 +301,5 @@ export function donatePage(ctx: Ctx, data: DonateData = DONATE_DATA): Page {
 ${data.tiers.length ? `<section class="features">${data.tiers.map((x) => `<div class="card feature"><div class="ic">${esc(x.icon)}</div><div class="t">${esc(x.name)} · ${esc(x.price)}</div><div class="d">${esc(x.desc)}</div></div>`).join("")}</section>` : ""}
 ${data.methods.length ? `<section class="row-actions">${data.methods.map((m) => `<a class="btn" href="${esc(m.url)}" rel="noopener">${esc(m.label)} →</a>`).join("")}</section>` : ""}
 ${data.supporters.length ? `<section class="stack"><h2 class="h2">${t("谢谢这些好心人", "Thank you")} <span class="heart">♡</span></h2><div class="badges">${data.supporters.map((s) => `<span class="badge">${esc(s)}</span>`).join("")}</div></section>` : ""}`;
-  return { id: "donate", title: t("投喂仓仓 · sugi.moe", "Feed the hamster · sugi.moe"), main: html };
+  return { id: "donate", title: pageTitle(ctx, "投喂仓仓", "Feed the hamster"), main: html };
 }

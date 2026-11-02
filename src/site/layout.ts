@@ -3,7 +3,8 @@ import { MAX_FILE_BYTES, RATE_LIMIT, RATE_LIMIT_PERIOD_SECONDS, SINGLE_REQUEST_M
 import { esc, jsonForScript, Lang } from "./i18n";
 import { clientStrings } from "./strings";
 import { HEART, LOGO, MOON, SUN } from "./svg";
-import { ICONS, OG_IMAGES } from "./og-images";
+import { ICONS, OG_IMAGES, OG_IMAGES_GENERIC } from "./og-images";
+import { brand } from "../config";
 
 export interface Flags {
   accounts: boolean;
@@ -74,9 +75,10 @@ function navLink(ctx: Ctx, href: string, ids: PageId[], current: PageId, label: 
 
 export function header(ctx: Ctx, current: PageId): string {
   const t = tr(ctx);
+  const b = brand(ctx.env);
   const other: Lang = ctx.lang === "zh" ? "en" : "zh";
   return `<header class="top">
-<a class="brand" href="/" data-nav aria-label="sugi.moe">${LOGO}<span class="brand-word">sugi${HEART}moe</span></a>
+<a class="brand" href="/" data-nav aria-label="${esc(b.siteName)}">${LOGO}<span class="brand-word">${esc(b.logo[0])}${HEART}${esc(b.logo[1])}</span></a>
 <nav class="nav" id="nav">
 ${navLink(ctx, "/", ["home"], current, t("上传", "Upload"))}
 ${navLink(ctx, "/mine", ["mine", "album"], current, t("我的文件", "My files"))}
@@ -93,7 +95,7 @@ ${ctx.flags.accounts ? navLink(ctx, "/login", ["login"], current, t("登录", "L
 export function footer(ctx: Ctx): string {
   const t = tr(ctx);
   return `<footer class="foot">
-<span class="c">© 2026 sugi.moe · <span title="すぎ = ${t("太……了", "too much")}">kawaii すぎ</span> <span class="heart">♡</span></span>
+<span class="c">© ${new Date().getUTCFullYear()} ${esc(brand(ctx.env).siteName)} · <span title="すぎ = ${t("太……了", "too much")}">kawaii すぎ</span> <span class="heart">♡</span></span>
 <nav>
 <a href="/faq" data-nav>${t("问问题", "FAQ")}</a>
 <a href="/terms" data-nav>${t("使用条款", "Terms")}</a>
@@ -112,8 +114,23 @@ export function clientConfig(ctx: Ctx, page: PageId) {
     flags: ctx.flags,
     origins: { main: ctx.env.MAIN_ORIGIN, files: ctx.env.FILES_ORIGIN, tmp: ctx.env.TMP_ORIGIN },
     limits: { maxFile: MAX_FILE_BYTES, single: SINGLE_REQUEST_MAX_BYTES, rate: RATE_LIMIT, ratePeriod: RATE_LIMIT_PERIOD_SECONDS },
-    t: clientStrings(ctx.lang),
+    t: clientStrings(ctx.lang, brand(ctx.env).siteName),
   };
+}
+
+/** "<page> · <site name>" */
+export function pageTitle(ctx: Ctx, zh: string, en: string): string {
+  return `${tr(ctx)(zh, en)} · ${brand(ctx.env).siteName}`;
+}
+
+/** The home page title, also used for user content previews. */
+export function homeTitle(ctx: Ctx): string {
+  return `${brand(ctx.env).siteName} · ${tr(ctx)("可爱过头的图床", "the cutest image host")}`;
+}
+
+/** A mailto link, or null when the address is not configured. */
+export function mailLink(addr: string | null): string | null {
+  return addr ? `<a href="mailto:${esc(addr)}">${esc(addr)}</a>` : null;
 }
 
 export function siteDescription(ctx: Ctx): string {
@@ -131,10 +148,12 @@ function langUrl(ctx: Ctx, lang: Lang | null): string {
 // <title>, description, canonical and hreflang alternates (?lang=zh / ?lang=en, x-default = Accept-Language), robots, Open Graph, Twitter card and JSON-LD.
 export function seoHead(ctx: Ctx, page: Page): string {
   const t = tr(ctx);
+  const b = brand(ctx.env);
+  const images = b.officialArtwork ? OG_IMAGES : OG_IMAGES_GENERIC;
   const description = page.description ?? siteDescription(ctx);
   const canonical = langUrl(ctx, ctx.lang);
   const family = INDEXABLE[page.id] ?? "home";
-  const image = page.ogImage ?? `${ctx.env.MAIN_ORIGIN}${OG_IMAGES[`${family}-${ctx.lang}`] ?? OG_IMAGES[`home-${ctx.lang}`]}`;
+  const image = page.ogImage ?? `${ctx.env.MAIN_ORIGIN}${images[`${family}-${ctx.lang}`] ?? images[`home-${ctx.lang}`]}`;
   const ogTitle = page.ogTitle ?? page.title;
   const custom = Boolean(page.ogImage);
   const tags = [
@@ -142,7 +161,7 @@ export function seoHead(ctx: Ctx, page: Page): string {
     `<meta name="description" content="${esc(description)}">`,
     page.noindex ? `<meta name="robots" content="noindex, nofollow">` : `<link rel="canonical" href="${esc(canonical)}">`,
     ...(page.noindex ? [] : [`<link rel="alternate" hreflang="zh" href="${esc(langUrl(ctx, "zh"))}">`, `<link rel="alternate" hreflang="en" href="${esc(langUrl(ctx, "en"))}">`, `<link rel="alternate" hreflang="x-default" href="${esc(langUrl(ctx, null))}">`]),
-    `<meta property="og:site_name" content="sugi.moe">`,
+    `<meta property="og:site_name" content="${esc(b.siteName)}">`,
     `<meta property="og:type" content="website">`,
     `<meta property="og:title" content="${esc(ogTitle)}">`,
     `<meta property="og:description" content="${esc(description)}">`,

@@ -361,7 +361,7 @@ export async function handleUploadPost(request: Request, env: Env): Promise<Resp
 function isOwnHost(env: Env, host: string): boolean {
   const own = [env.MAIN_ORIGIN, env.FILES_ORIGIN, env.TMP_ORIGIN, env.CACHE_ORIGIN].filter(Boolean).map((o) => new URL(o).hostname);
   const h = host.toLowerCase();
-  return h === "localhost" || own.some((o) => h === o || h.endsWith("." + o)) || h.endsWith(".sugi.moe") || h === "sugi.moe";
+  return h === "localhost" || own.some((o) => h === o || h.endsWith("." + o));
 }
 
 function checkRemoteUrl(env: Env, raw: string): URL {
@@ -384,7 +384,7 @@ export async function importUrl(env: Env, uploader: Uploader, opts: UploadOption
   let res: Response | null = null;
   for (let hop = 0; hop <= IMPORT_MAX_REDIRECTS; hop++) {
     try {
-      res = await fetch(target.toString(), { redirect: "manual", signal, headers: { "user-agent": "sugi.moe-importer/1 (+https://sugi.moe/faq)", accept: "image/*,video/*;q=0.9,*/*;q=0.1" } });
+      res = await fetch(target.toString(), { redirect: "manual", signal, headers: { "user-agent": `sugi-importer/1 (+${env.MAIN_ORIGIN}/faq)`, accept: "image/*,video/*;q=0.9,*/*;q=0.1" } });
     } catch {
       throw new HttpError(502, "could not fetch that link");
     }

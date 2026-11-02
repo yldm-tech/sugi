@@ -1,81 +1,76 @@
+// sugi: a self-hostable image and short-video host on Cloudflare Workers, R2 and D1.
+//
+// This is the template configuration: it deploys into any Cloudflare account as is (one-click "Deploy to Cloudflare" or `npm run deploy`). The R2 bucket and the D1 database are created on the first deploy, the schema is applied on the first request, and the site works on its *.workers.dev address with no custom domain. See README.md for every setting.
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "sugi",
-  // Evan@yldm.tech's Account, which also holds the sugi.moe zone; a Worker custom domain must live in the zone's account.
-  "account_id": "e2b27aea5f599efdbe0a7016a2580d05",
+  "name": "my-sugi",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
-  "workers_dev": false,
+  "workers_dev": true,
   "preview_urls": false,
-  // Builds the browser bundle into public/static before every `wrangler dev` and `wrangler deploy`.
+  // The privacy policy says the Worker keeps no request logs; keep Workers Logs off unless you change that text.
+  "observability": { "enabled": false },
   "build": {
     "command": "node scripts/build-client.mjs"
   },
-  "routes": [
-    {
-      "pattern": "sugi.moe",
-      "custom_domain": true
-    },
-    // Direct links for permanent uploads.
-    {
-      "pattern": "files.sugi.moe",
-      "custom_domain": true
-    },
-    // Direct links for uploads that expire (1 hour to 3 days).
-    {
-      "pattern": "tmp.sugi.moe",
-      "custom_domain": true
-    }
-  ],
-  // Static files (fonts, the browser bundle, the cursor). The Worker runs first for every request so that it can add security headers and route by hostname; it hands /static/* to this binding itself.
+  // Static files (fonts, the browser bundle, the CLI, icons). The Worker runs first for every request so it can add security headers and route by hostname.
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
     "run_worker_first": true
   },
-  // Deletes expired temporary uploads; an R2 lifecycle rule on the t/ prefix is the backstop.
+  // Deletes expired temporary uploads.
   "triggers": {
     "crons": ["*/10 * * * *"]
   },
   "vars": {
-    // Origin hostname for cache-through image serving: an R2 custom domain on the bucket, e.g. "https://r2.sugi.moe". Empty means images are read from the bucket binding directly and never enter the zone cache.
-    "CACHE_ORIGIN": "https://r2.sugi.moe",
-    // sugi.moe zone, used to purge cached copies of deleted images (needs the CF_PURGE_TOKEN secret).
-    "ZONE_ID": "0ec67ba827776b3d9e3452483205b04c",
-    // Public origins. The Worker routes requests by hostname: the main origin serves the site and the API, the other two serve uploaded files only.
-    "MAIN_ORIGIN": "https://sugi.moe",
-    "FILES_ORIGIN": "https://files.sugi.moe",
-    "TMP_ORIGIN": "https://tmp.sugi.moe",
-    // Feature flags for parts of the design that ship in later phases. "1" turns a feature on.
+    // Name shown in titles and the logo ("sugi.moe" becomes "sugi♥moe"). Empty: the hostname.
+    "SITE_NAME": "",
+    // Public origins. Empty MAIN_ORIGIN: whatever host the request came in on (e.g. https://my-sugi.<you>.workers.dev). Empty FILES_ORIGIN / TMP_ORIGIN: files are served from /_files and /_tmp on the main host. With your own domain, point them at dedicated hostnames such as https://files.example.org.
+    "MAIN_ORIGIN": "",
+    "FILES_ORIGIN": "",
+    "TMP_ORIGIN": "",
+    // Who runs this instance and how to reach them; shown on the terms and privacy pages, which you are responsible for.
+    "OPERATOR_NAME": "",
+    "CONTACT_EMAIL": "",
+    "ABUSE_EMAIL": "",
+    // Set to "1" only after enabling Cloudflare's CSAM Scanning Tool on your zone; the FAQ and privacy policy then say so.
+    "CSAM_SCANNING": "0",
+    // Set to "1" if mail to CONTACT_EMAIL / ABUSE_EMAIL goes through Cloudflare Email Routing; the privacy policy then lists it.
+    "EMAIL_ROUTING": "0",
+    // Optional statements for the privacy policy: where the R2 bucket stores data, and the Resend region used for login emails.
+    "STORAGE_LOCATION": "",
+    "RESEND_REGION": "",
+    // Sender of login emails (accounts only), e.g. "My site <login@example.org>".
+    "MAIL_FROM": "",
+    // Optional: an R2 custom domain on the bucket to serve files through your zone's cache, plus the zone id for purging (needs the CF_PURGE_TOKEN secret).
+    "CACHE_ORIGIN": "",
+    "ZONE_ID": "",
+    // Features: the CLI and MCP server are on; accounts and the donation page are off.
     "FEATURE_ACCOUNTS": "0",
     "FEATURE_CLI": "1",
     "FEATURE_DONATE": "0"
   },
+  // Created on the first deploy (named after the Worker). The schema is applied by the Worker itself.
   "d1_databases": [
     {
-      // Album metadata.
       "binding": "DB",
-      "database_name": "sugi",
-      "database_id": "61f7d685-83be-4cad-9a56-b6ce9887affb",
+      "database_name": "my-sugi",
       "migrations_dir": "migrations"
     }
   ],
   "r2_buckets": [
     {
-      "binding": "BUCKET",
-      "bucket_name": "sugi"
+      "binding": "BUCKET"
     }
   ],
-  // The Rate Limiting binding only accepts a period of 10 or 60 seconds, so "60 per hour" is expressed as a burst-friendly 10 uploads per 60 seconds per client. Counters are per Cloudflare location and eventually consistent, so treat this as abuse damping rather than an exact quota.
+  // Per-client upload limit: 10 per 60 seconds (the binding only supports 10- or 60-second periods). namespace_id only needs to be unique within your account.
   "ratelimits": [
     {
       "name": "UPLOAD_LIMITER",
       "namespace_id": "48613",
-      "simple": {
-        "limit": 10,
-        "period": 60
-      }
+      "simple": { "limit": 10, "period": 60 }
     }
   ]
-  // Secrets (set with `wrangler secret put` or `wrangler deploy --secrets-file`, never in this file): IP_HASH_SECRET (required for uploads; also keys upload session tokens), ADMIN_TOKEN (enables admin endpoints), UPLOAD_TOKEN (while set, uploads need `Authorization: Bearer <token>`), TRUSTED_TOKEN (maintainers: passes the gate, skips rate limits), CF_PURGE_TOKEN (zone cache purge).
+  // Secrets (see .dev.vars.example): IP_HASH_SECRET and ADMIN_TOKEN are required. Optional: UPLOAD_TOKEN, TRUSTED_TOKEN, CF_PURGE_TOKEN, RESEND_API_KEY, GITHUB_CLIENT_ID/SECRET, GOOGLE_CLIENT_ID/SECRET.
 }

@@ -1,6 +1,6 @@
 import { ASSETS } from "../generated/assets";
 
-// POSIX sh installer for the sugi CLI, served at /install.sh. It downloads the script from the same origin and refuses it unless the SHA-256 matches the one baked in at build time.
+// POSIX sh installer for the sugi CLI, served at /install.sh. It downloads the script from the same origin and refuses it unless the SHA-256 matches the one baked in at build time. The published CLI defaults to https://sugi.moe; for any other server the installer rewrites that one default line after the checksum check, so the installed command talks to the server it came from.
 export function installScript(env: Env): string {
   return `#!/bin/sh
 # Installs the sugi command-line tool (${ASSETS.cliVersion}) from ${env.MAIN_ORIGIN}.
@@ -16,7 +16,7 @@ command -v curl >/dev/null 2>&1 || { echo "sugi: curl is required" >&2; exit 1; 
 command -v bash >/dev/null 2>&1 || { echo "sugi: bash is required" >&2; exit 1; }
 
 tmp="\$(mktemp "\${TMPDIR:-/tmp}/sugi-install.XXXXXX")"
-trap 'rm -f "\$tmp"' EXIT INT TERM
+trap 'rm -f "\$tmp" "\$tmp.base"' EXIT INT TERM
 curl -fsSL --connect-timeout 15 --max-time 120 -o "\$tmp" "\$origin${ASSETS.cli}"
 
 if command -v sha256sum >/dev/null 2>&1; then actual="\$(sha256sum "\$tmp" | cut -d' ' -f1)"
@@ -26,6 +26,11 @@ fi
 if [ "\$actual" != "\$expected" ]; then
   echo "sugi: checksum mismatch (got \$actual, expected \$expected); not installing" >&2
   exit 1
+fi
+
+if [ "\$origin" != "https://sugi.moe" ]; then
+  awk -v o="\$origin" '\$0 == "BASE=\\"\${SUGI_URL:-https://sugi.moe}\\"" { print "BASE=\\"\${SUGI_URL:-" o "}\\""; next } { print }' "\$tmp" >"\$tmp.base"
+  mv "\$tmp.base" "\$tmp"
 fi
 
 mkdir -p "\$dir"

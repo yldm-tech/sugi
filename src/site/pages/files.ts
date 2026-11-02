@@ -1,7 +1,8 @@
 import { Album, albumUrl } from "../../albums";
 import { pageUrl, publicUrl, StoredFile } from "../../files";
 import { esc } from "../i18n";
-import { Ctx, Page, tr } from "../layout";
+import { brand } from "../../config";
+import { Ctx, homeTitle, Page, pageTitle, tr } from "../layout";
 import { qrSvg } from "../qr";
 import { hamsterFace, peekHamster } from "../svg";
 
@@ -64,7 +65,7 @@ ${formats.map(([label, text]) => `<div class="fmt"><span class="l">${label}</spa
 </section>`;
   // A permanent public image can preview itself; videos and temporary files use the site image.
   const ogImage = f.type.kind === "image" && f.expires === null ? url : undefined;
-  return { id: "file", title: `${name} · sugi.moe`, main: html, noindex: true, ogImage, ogTitle: t("sugi.moe · 可爱过头的图床", "sugi.moe · the cutest image host") };
+  return { id: "file", title: `${name} · ${brand(ctx.env).siteName}`, main: html, noindex: true, ogImage, ogTitle: homeTitle(ctx) };
 }
 
 export function albumPage(ctx: Ctx, a: Album): Page {
@@ -87,7 +88,7 @@ export function albumPage(ctx: Ctx, a: Album): Page {
 ${a.files.length ? `<div class="grid gallery">${items}</div>` : `<div class="empty"><div class="kao sm">(・_・;)</div><div class="cute">${t("里面的文件都被删掉啦", "Every file in here has been deleted")}</div></div>`}
 <button type="button" class="btn warn" id="album-delete" hidden>${t("删除这个打包链接", "Delete this album link")}</button>
 </section>`;
-  return { id: "album", title: `${title} · sugi.moe`, main: html, noindex: true, ogTitle: t("sugi.moe · 可爱过头的图床", "sugi.moe · the cutest image host") };
+  return { id: "album", title: `${title} · ${brand(ctx.env).siteName}`, main: html, noindex: true, ogTitle: homeTitle(ctx) };
 }
 
 // Everything on this page comes from localStorage, so the server only renders the frame and the empty state; app.ts fills it in.
@@ -117,5 +118,5 @@ export function minePage(ctx: Ctx): Page {
 <div class="empty" id="albums-empty"><div class="kao">(・ω・)ノ</div><div class="cute h2">${t("还没有打包链接", "No album links yet")}</div><div class="lead">${t("在「文件」里点选几张，就能打包成一个匿名分享链接，打开就是一页图。", "Pick a few under “Files” to bundle them into one anonymous share link that opens as a page of pictures.")}</div></div>
 <div class="albums" id="albums-grid"></div>
 </section>`;
-  return { id: "mine", title: t("我的文件 · sugi.moe", "My files · sugi.moe"), main: html, noindex: true };
+  return { id: "mine", title: pageTitle(ctx, "我的文件", "My files"), main: html, noindex: true };
 }

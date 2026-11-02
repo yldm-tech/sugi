@@ -182,6 +182,8 @@ describe("CLI distribution", () => {
     expect(cli.status).toBe(200);
     expect(cli.headers.get("cache-control")).toBe("no-cache");
     const body = new Uint8Array(await cli.arrayBuffer());
+    // install.sh rewrites exactly this line for servers other than sugi.moe.
+    expect(new TextDecoder().decode(body).split("\n")).toContain('BASE="${SUGI_URL:-https://sugi.moe}"');
     const digest = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", body)), (b) => b.toString(16).padStart(2, "0")).join("");
     expect(digest).toBe(ASSETS.cliSha256);
   });

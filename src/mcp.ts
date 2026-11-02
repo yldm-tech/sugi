@@ -2,6 +2,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { z } from "zod";
+import { brand } from "./config";
 import { createAlbum } from "./albums";
 import { deleteFile, findFile, importUrl, parseOptions, publicInfo, storeBytes, UploadResult } from "./files";
 import { authorizeUpload, HttpError, isAdmin, isTrusted } from "./http";
@@ -50,7 +51,7 @@ const FORMATS = "PNG, JPEG, WebP, GIF, AVIF, MP4 and WebM only (no SVG, HTML, PD
 function instructions(env: Env): string {
   const host = env.MAIN_ORIGIN;
   return [
-    `This server hosts images and short videos on ${host.replace(/^https?:\/\//, "")} and returns direct links. Accepted: ${FORMATS}, up to ${MAX_FILE_BYTES / MB} MB per file. Every upload is public to anyone with the link.`,
+    `This server hosts images and short videos on ${brand(env).siteName} and returns direct links. Accepted: ${FORMATS}, up to ${MAX_FILE_BYTES / MB} MB per file. Every upload is public to anyone with the link.`,
     "Pick the upload path by where the file is:",
     `1. Local files, and you can run shell commands: use the sugi CLI, it is fastest and handles any number of files and big files: \`sugi up <files...>\` (prints one link per file; add \`-e 1h|12h|72h\` for temporary links, \`--json\` for delete tokens). Install it once with \`curl -fsSL ${host}/install.sh | sh\`.`,
     `2. Local files without the CLI: call create_upload with count = number of files, then upload each file to its own link with \`curl -T <path> '<upload_url>'\` (or \`curl -F file=@<path> '<upload_url>'\`). Links work once, expire after ${UPLOAD_LINK_TTL_SECONDS / 60} minutes and take files up to ${SINGLE_REQUEST_MAX_BYTES / MB} MB.`,

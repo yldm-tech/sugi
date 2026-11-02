@@ -1,3 +1,4 @@
+import { brand } from "../config";
 import { flagsOf } from "./layout";
 import { ICONS } from "./og-images";
 
@@ -33,10 +34,11 @@ export function sitemapXml(env: Env): Response {
   return new Response(xml, { headers: { "content-type": "application/xml; charset=utf-8", "cache-control": "public, max-age=3600" } });
 }
 
-export function webManifest(): Response {
+export function webManifest(env: Env): Response {
+  const name = brand(env).siteName;
   const manifest = {
-    name: "sugi.moe",
-    short_name: "sugi",
+    name,
+    short_name: name.split(".")[0] || name,
     description: "Anonymous image and short video host",
     start_url: "/",
     scope: "/",
