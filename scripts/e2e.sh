@@ -1,21 +1,22 @@
 #!/usr/bin/env bash
-# End-to-end check against a deployed sugi instance. Uploads a real image, verifies the round trip and headers, verifies that HTML/SVG and (while the gate is on) anonymous uploads are rejected, then deletes the test object.
+# End-to-end check against a deployed sugi instance. Uploads a synthetic image that is unique to this run, verifies the round trip and headers, verifies that HTML/SVG and (while the gate is on) anonymous uploads are rejected, runs rate limit bursts, then deletes only the objects this run created.
 #
-# Usage: scripts/e2e.sh BASE_URL IMAGE.png
+# Keys are content hashes, so uploading a real file and deleting its key would delete anyone's identical upload. This script therefore never takes an input file: every image it uploads is generated here with random content, and it only deletes a key after the service confirmed (201, deduplicated:false) that this run created it.
+#
+# Usage: scripts/e2e.sh BASE_URL
 # Tokens come from ~/.config/sugi/secrets.env (or SUGI_SECRETS_FILE) and are only ever passed to curl through stdin.
 
 set -euo pipefail
 
-base="${1:?usage: e2e.sh BASE_URL IMAGE.png}"
+base="${1:?usage: e2e.sh BASE_URL}"
 base="${base%/}"
-image="${2:?usage: e2e.sh BASE_URL IMAGE.png}"
 secrets="${SUGI_SECRETS_FILE:-$HOME/.config/sugi/secrets.env}"
 here="$(cd "$(dirname "$0")/.." && pwd)"
 
 upload_token="$(sed -n 's/^UPLOAD_TOKEN=//p' "$secrets")"
 admin_token="$(sed -n 's/^ADMIN_TOKEN=//p' "$secrets")"
 trusted_token="$(sed -n 's/^TRUSTED_TOKEN=//p' "$secrets")"
-burst="${SUGI_E2E_BURST:-60}"
+burst="${SUGI_E2E_BURST:-100}"
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -38,6 +39,25 @@ c() {
 
 header() { grep -i "^$1:" "$2" | head -n1 | cut -d' ' -f2- | tr -d '\r'; }
 
+# A valid 16x16 RGB PNG with random pixels and a tEXt chunk naming this run, so its hash cannot match any real upload.
+make_png() {
+  timeout 30 python3 -I - "$1" "$2" <<'EOF'
+import os, struct, sys, zlib
+def chunk(kind, data):
+    return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+w = h = 16
+raw = b"".join(b"\x00" + os.urandom(w * 3) for _ in range(h))
+png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 2, 0, 0, 0)) + chunk(b"tEXt", b"Comment\x00sugi-e2e " + sys.argv[2].encode()) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
+open(sys.argv[1], "wb").write(png)
+EOF
+}
+
+run_id="$(date -u +%Y%m%dT%H%M%SZ)-$(openssl rand -hex 8)"
+# Ten minutes of slack for clock skew between this machine and Cloudflare; the 201 response is the primary proof of ownership.
+run_started="$(date -u -v-10M +%Y-%m-%dT%H:%M:%S 2>/dev/null || date -u -d '-10 min' +%Y-%m-%dT%H:%M:%S)"
+image="$work/e2e.png"
+make_png "$image" "$run_id"
+
 echo "== $base"
 
 code="$(c "" -o "$work/index.html" -D "$work/index.h" -w '%{http_code}' "$base/")"
@@ -47,10 +67,16 @@ grep -q 'abuse@sugi.moe' "$work/index.html" && pass "index mentions abuse contac
 code="$(c "" -o "$work/anon.txt" -w '%{http_code}' -T "$image" "$base/upload")"
 check "anonymous upload rejected while gate is on" "$code" 401
 
-url="$(SUGI_URL="$base" SUGI_TRUSTED_TOKEN="$trusted_token" "$here/bin/sugi-upload" "$image")"
 expected_key="$(shasum -a 256 "$image" | cut -c1-16).png"
-check "sugi-upload returns content-addressed URL" "$url" "$base/$expected_key"
-key="${url##*/}"
+code="$(c "$trusted_token" -o "$work/first.json" -w '%{http_code}' -H 'Accept: application/json' -T "$image" "$base/upload")"
+check "first upload of the run's synthetic image creates it" "$code" 201
+owned=0
+if [ "$code" = 201 ] && grep -q '"deduplicated":false' "$work/first.json" && grep -q "\"key\":\"$expected_key\"" "$work/first.json"; then owned=1; fi
+url="$base/$expected_key"
+key="$expected_key"
+
+client_url="$(SUGI_URL="$base" SUGI_TRUSTED_TOKEN="$trusted_token" "$here/bin/sugi-upload" "$image")"
+check "sugi-upload returns content-addressed URL" "$client_url" "$url"
 
 code="$(c "" -o "$work/back.png" -D "$work/get.h" -w '%{http_code}' "$url")"
 check "GET image status" "$code" 200
@@ -88,16 +114,24 @@ code="$(c "$admin_token" -o "$work/info.json" -w '%{http_code}' "$base/admin/inf
 check "admin info" "$code" 200
 grep -Eq '"source":"[0-9a-f]{64}"' "$work/info.json" && pass "source HMAC recorded" || fail "source HMAC missing"
 
-check "DELETE with admin token" "$(c "$admin_token" -o /dev/null -w '%{http_code}' -X DELETE "$url")" 200
-check "GET after delete" "$(c "" -o /dev/null -w '%{http_code}' "$url")" 404
+# Second guard before deleting: the stored object must be this run's bytes and must have been stored after the run started.
+stored_sha="$(sed -nE 's/.*"sha256":"([0-9a-f]{64})".*/\1/p' "$work/info.json")"
+stored_at="$(sed -nE 's/.*"uploaded":"([^"]+)".*/\1/p' "$work/info.json")"
+if [ "$owned" = 1 ] && [ "$stored_sha" = "$(shasum -a 256 "$image" | cut -d' ' -f1)" ] && [[ "$stored_at" > "$run_started" ]]; then
+  check "DELETE with admin token" "$(c "$admin_token" -o /dev/null -w '%{http_code}' -X DELETE "$url")" 200
+  check "GET after delete" "$(c "" -o /dev/null -w '%{http_code}' "$url")" 404
+else
+  fail "not deleting $key: this run did not create it (owned=$owned, uploaded=$stored_at)"
+fi
 
-# Rate limits: a burst well above both the Worker limiter and the zone WAF rule must all pass with the trusted token, and must start returning 429 without it. Every burst object comes from this client, so one purge-by-source cleans them all up.
+# Rate limits: a burst well above both the Worker limiter and the zone WAF rule must all pass with the trusted token, and must start returning 429 without it. Cleanup deletes exactly the keys that came back 201, never by source, because purge-by-source would also remove real uploads made from this machine.
 burst_upload() {
   local token="$1" tag="$2" i codes=""
   for i in $(seq 1 "$burst"); do
-    printf '\x89PNG\r\n\x1a\nsugi-e2e-%s-%s-%s' "$tag" "$i" "$(date +%s%N)" >"$work/burst.png"
-    codes="$codes $(c "$token" -o "$work/burst.out" -w '%{http_code}' -T "$work/burst.png" "$base/upload")"
-    [ ! -s "$work/burst.key" ] && grep -q '^https://' "$work/burst.out" && sed 's#.*/##' "$work/burst.out" >"$work/burst.key"
+    printf '\x89PNG\r\n\x1a\nsugi-e2e-%s-%s-%s-%s' "$run_id" "$tag" "$i" "$(openssl rand -hex 16)" >"$work/burst.png"
+    code="$(c "$token" -o "$work/burst.out" -w '%{http_code}' -T "$work/burst.png" "$base/upload")"
+    codes="$codes $code"
+    if [ "$code" = 201 ]; then sed 's#.*/##' "$work/burst.out" >>"$work/burst.keys"; fi
   done
   echo "$codes"
 }
@@ -106,11 +140,13 @@ check "trusted burst of $burst: non-201 responses" "$(echo $trusted_codes | tr '
 untrusted_codes="$(burst_upload "$upload_token" untrusted)"
 n429="$(echo $untrusted_codes | tr ' ' '\n' | grep -c '^429$' || true)"
 if [ "$n429" -gt 0 ]; then pass "untrusted burst of $burst hit 429 ($n429 times, first at #$(echo $untrusted_codes | tr ' ' '\n' | grep -n '^429$' | head -n1 | cut -d: -f1))"; else fail "untrusted burst of $burst never got 429"; fi
-if [ -s "$work/burst.key" ]; then
-  burst_key="$(cat "$work/burst.key")"
-  src="$(c "$admin_token" "$base/admin/info/$burst_key" | sed -E 's/.*"source":"([0-9a-f]+)".*/\1/')"
-  purged="$(c "$admin_token" -H 'content-type: application/json' -d "{\"source\":\"$src\"}" "$base/admin/purge-by-source" | grep -oE '"count":[0-9]+' | cut -d: -f2)"
-  pass "purged $purged burst objects"
+if [ -s "$work/burst.keys" ]; then
+  created="$(wc -l <"$work/burst.keys" | tr -d ' ')"
+  deleted=0
+  while read -r k; do
+    [ "$(c "$admin_token" -o /dev/null -w '%{http_code}' -X DELETE "$base/$k")" = 200 ] && deleted=$((deleted + 1))
+  done <"$work/burst.keys"
+  check "deleted every burst object this run created" "$deleted" "$created"
 fi
 
 if [ "$failures" -ne 0 ]; then

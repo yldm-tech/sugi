@@ -93,11 +93,13 @@ npx wrangler dev    # 本地调试，secrets 放 .dev.vars（已 gitignore）
 
 部署：`npx wrangler deploy`。部署不会删除已有 secrets。
 
-线上端到端检查（会上传一张真实图片，校验往返字节和响应头、HTML/SVG 被拒、闸门开启时匿名上传被拒、删除；然后用可信令牌和普通令牌各连发 `SUGI_E2E_BURST`（默认 60）次，可信令牌必须全部 201，普通令牌必须出现 429，最后按来源清掉这些测试对象）：
+线上端到端检查：每次运行现场生成一张随机像素、带本次运行 ID 的合成 PNG，校验往返字节和响应头、HTML/SVG 被拒、闸门开启时匿名上传被拒、删除；然后用可信令牌和普通令牌各连发 `SUGI_E2E_BURST`（默认 100）次，可信令牌必须全部 201，普通令牌必须出现 429。
 
 ```sh
-scripts/e2e.sh https://sugi.moe ~/msime-screenshots/settings-description-tooltip/after-macos-settings.png
+scripts/e2e.sh https://sugi.moe
 ```
+
+**不要拿真实图片做测试再删掉。** 键是内容哈希，删一个键等于删掉所有人上传的同一份内容。脚本因此不接受输入文件，只删除本次运行确认由自己创建的对象（上传返回 201 且 `deduplicated:false`，删除前再核对 `sha256` 和上传时间）；连发产生的对象逐个按键删除，不用 `purge-by-source`，因为按来源清除会连带删掉同一台机器上的真实上传。
 
 闸门关闭以后，脚本里“anonymous upload rejected”这一项会按预期失败。
 
