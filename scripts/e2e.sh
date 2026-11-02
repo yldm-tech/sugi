@@ -17,6 +17,8 @@ upload_token="$(sed -n 's/^UPLOAD_TOKEN=//p' "$secrets")"
 admin_token="$(sed -n 's/^ADMIN_TOKEN=//p' "$secrets")"
 trusted_token="$(sed -n 's/^TRUSTED_TOKEN=//p' "$secrets")"
 burst="${SUGI_E2E_BURST:-100}"
+# Set to 0 when checking an instance without the zone WAF rate limiting rule (e.g. workers.dev, which the zone rules do not cover).
+expect_waf="${SUGI_E2E_EXPECT_WAF:-1}"
 # The R2 custom domain the Worker reads images through (wrangler.jsonc CACHE_ORIGIN); set to empty to skip the cache checks.
 cache_origin="${SUGI_CACHE_ORIGIN-https://r2.sugi.moe}"
 
@@ -105,15 +107,15 @@ check "HEAD Content-Length" "$(header content-length "$work/head.h")" "$(wc -c <
 code="$(c "" -o /dev/null -w '%{http_code}' -H "If-None-Match: $etag" "$url")"
 check "conditional GET" "$code" 304
 
-code="$(c "$upload_token" -o "$work/dup.json" -w '%{http_code}' -H 'Accept: application/json' -T "$image" "$base/upload")"
+code="$(c "$trusted_token" -o "$work/dup.json" -w '%{http_code}' -H 'Accept: application/json' -T "$image" "$base/upload")"
 check "re-upload of same content" "$code" 200
 grep -q '"deduplicated":true' "$work/dup.json" && pass "re-upload reported as deduplicated" || fail "re-upload not deduplicated: $(cat "$work/dup.json")"
 
 printf '<!doctype html><html><body><script>alert(1)</script></body></html>\n' >"$work/evil.html"
 printf '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>\n' >"$work/evil.svg"
-check "HTML rejected (multipart, claimed image/png)" "$(c "$upload_token" -o /dev/null -w '%{http_code}' -F "file=@$work/evil.html;type=image/png;filename=x.png" "$base/upload")" 415
-check "SVG rejected (multipart)" "$(c "$upload_token" -o /dev/null -w '%{http_code}' -F "file=@$work/evil.svg" "$base/upload")" 415
-check "SVG rejected (raw PUT)" "$(c "$upload_token" -o /dev/null -w '%{http_code}' -T "$work/evil.svg" "$base/upload")" 415
+check "HTML rejected (multipart, claimed image/png)" "$(c "$trusted_token" -o /dev/null -w '%{http_code}' -F "file=@$work/evil.html;type=image/png;filename=x.png" "$base/upload")" 415
+check "SVG rejected (multipart)" "$(c "$trusted_token" -o /dev/null -w '%{http_code}' -F "file=@$work/evil.svg" "$base/upload")" 415
+check "SVG rejected (raw PUT)" "$(c "$trusted_token" -o /dev/null -w '%{http_code}' -T "$work/evil.svg" "$base/upload")" 415
 
 check "unknown key" "$(c "" -o /dev/null -w '%{http_code}' "$base/0000000000000000.png")" 404
 check "DELETE without admin token" "$(c "" -o /dev/null -w '%{http_code}' -X DELETE "$url")" 401
@@ -152,6 +154,8 @@ burst_upload() {
     code="$(c "$token" -o "$work/burst.out" -w '%{http_code}' -T "$work/burst.png" "$base/upload")"
     codes="$codes $code"
     if [ "$code" = 201 ]; then sed 's#.*/##' "$work/burst.out" >>"$work/burst.keys"; fi
+    # Cloudflare's own rate limiting block page says "error code: 1015"; the Worker's 429 says "too many uploads".
+    if [ "$code" = 429 ] && [ ! -s "$work/first429-$tag" ]; then { echo "$i"; head -c 200 "$work/burst.out"; } >"$work/first429-$tag"; fi
   done
   echo "$codes"
 }
@@ -159,7 +163,11 @@ trusted_codes="$(burst_upload "$trusted_token" trusted)"
 check "trusted burst of $burst: non-201 responses" "$(echo $trusted_codes | tr ' ' '\n' | grep -vc '^201$' || true)" 0
 untrusted_codes="$(burst_upload "$upload_token" untrusted)"
 n429="$(echo $untrusted_codes | tr ' ' '\n' | grep -c '^429$' || true)"
-if [ "$n429" -gt 0 ]; then pass "untrusted burst of $burst hit 429 ($n429 times, first at #$(echo $untrusted_codes | tr ' ' '\n' | grep -n '^429$' | head -n1 | cut -d: -f1))"; else fail "untrusted burst of $burst never got 429"; fi
+if [ "$n429" -gt 0 ]; then pass "untrusted burst of $burst hit 429 ($n429 times, first at #$(head -n1 "$work/first429-untrusted"))"; else fail "untrusted burst of $burst never got 429"; fi
+if [ "$expect_waf" = 1 ]; then
+  first_at="$(head -n1 "$work/first429-untrusted" 2>/dev/null || echo none)"
+  if [ "$first_at" != none ] && [ "$first_at" -le 6 ] && grep -q 'error code: 1015' "$work/first429-untrusted"; then pass "zone WAF rule blocked the untrusted burst at #$first_at (error 1015)"; else fail "zone WAF rule did not block the untrusted burst within 6 requests (first 429 at #$first_at)"; fi
+fi
 if [ -s "$work/burst.keys" ]; then
   created="$(wc -l <"$work/burst.keys" | tr -d ' ')"
   deleted=0

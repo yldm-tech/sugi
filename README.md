@@ -68,6 +68,13 @@ bin/sugi-upload before.png after.png
 - **频率限制**用 Workers Rate Limiting 绑定（`wrangler.jsonc` 的 `ratelimits`），按来源 HMAC 计数，**每 60 秒 10 次**。这个绑定只支持 10 秒或 60 秒两种周期，所以没法直接写“每小时 60 次”，选了 60 秒 10 次：一次连传几张图不会被拦，持续上传的速率上限是每分钟 10 张。令牌校验在限流之前，没带对令牌的请求不消耗额度。注意这个绑定是按 Cloudflare 节点计数、最终一致的，不是精确配额：2026-11-02 在线上 16 秒内连发 60 次，前 42 次都放行，第 43 次起才开始返回 429。它能压住持续刷量，挡不住短时间的突发，所以 zone 上再加一条 WAF 速率规则（见下）。
 - **可信令牌 `TRUSTED_TOKEN`**：维护者和 agent 用，和 `UPLOAD_TOKEN`、`ADMIN_TOKEN` 互相独立，同样用常量时间比较。带 `Authorization: Bearer <TRUSTED_TOKEN>` 的上传跳过 Worker 限流，并且在闸门开启时也能上传；它不能调用管理接口。没设置时没有任何效果。不按 IP 做白名单，因为维护者的 IP 会变，agent 还跑在另一台 Mac 上。
 - **WAF 速率规则**（zone `sugi.moe`，Free 计划）：Free 计划只给 1 条速率规则，表达式只能匹配路径，计数周期和封禁时长都只能是 10 秒，按 IP 计数。规则是 `http.request.uri.path eq "/upload"`，每个 IP 每 10 秒最多 5 次，超出后封 10 秒（返回 429）。`/upload` 只接受 POST/PUT，其他方法本来就是 405，所以不按方法区分。Free 计划的速率规则表达式里不能写请求头，可信令牌的豁免放在一条自定义规则里：`http.request.uri.path eq "/upload" and any(http.request.headers["authorization"][*] eq "Bearer <TRUSTED_TOKEN>")` 时执行 Skip，跳过 `http_ratelimit` 阶段（自定义规则阶段在速率规则阶段之前执行）。WAF 无法验证令牌，只能按字面值匹配，**所以 `TRUSTED_TOKEN` 的值也写在这条 zone 规则里，轮换时必须两处一起改**。
+
+  | 规则 | 阶段 | ruleset ID | rule ID |
+  | --- | --- | --- | --- |
+  | sugi trusted uploads skip rate limit（自定义规则，Skip） | `http_request_firewall_custom` | `27e91a99f7b8408fabc6039282a8087e` | `d16fcfbd3bc34e69a2bcbc3a5549a5fc` |
+  | sugi upload rate limit per IP（速率规则，Block） | `http_ratelimit` | `ad7a86bc252e4cd08ddc0c1ca0e7678d` | `268641d130ef4e5d96184b7f1f57aa4d` |
+
+  2026-11-02 线上验证：普通令牌连发，第 6 次起被 WAF 拦下（429，`error code: 1015`，`Retry-After: 10`）；可信令牌连发 30 次和 100 次全部 201，在同一 IP 正处于封禁期时也照常放行。WAF 规则只作用于 `sugi.moe` 这个 zone，**不覆盖 `sugi.evan-e2b.workers.dev`**，那条路径只有 Worker 内的限流。
 - **首页**：纯 HTML 加一段内联脚本，不引用任何外部资源，不用框架。首页有自己的 CSP：`default-src 'none'; script-src 'nonce-<随机>'; style-src 'nonce-<随机>'; img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`，每次响应换一个 nonce，只有带这个 nonce 的那一段脚本和样式能执行；浏览器端的提示文字放在一个 `type="application/json"` 的数据块里，不执行。因为 nonce 每次不同，首页是 `Cache-Control: private, no-cache`，并带 `Vary: Accept-Language`。图片响应的 CSP 保持原样不变。
 - **鉴权**：`Authorization: Bearer <token>`，比较前先对两边各做一次 SHA-256，再用 `crypto.subtle.timingSafeEqual` 比较，长度和内容都不会从耗时上泄露。
 
@@ -154,7 +161,7 @@ SRC=$(printf %s "$IP" | openssl dgst -sha256 -hmac "$IP_HASH_SECRET" -r | cut -d
 2. `npx wrangler deploy --secrets-file ~/.config/sugi/secrets.env`，文件里的 secrets 随新版本一起生效，没写在文件里的不会被删。
 3. `npx wrangler secret list` 确认它们都是 `secret_text`。
 
-轮换 `UPLOAD_TOKEN`、`ADMIN_TOKEN` 会立即让旧令牌失效。轮换 `TRUSTED_TOKEN` 时，**同一轮里**还要改 zone 的 WAF 自定义规则（Security → WAF → Custom rules → “sugi trusted uploads skip rate limit”）里的字面值，否则新令牌会被 WAF 限流，而旧令牌的值仍能绕过 WAF（但过不了 Worker）；各台机器的 secrets.env 也要同步更新。`CF_PURGE_TOKEN` 在 Dashboard → My Profile → API Tokens 里 Roll，再按上面两步更新。轮换 `IP_HASH_SECRET` 要小心：之后的新上传用新密钥算 `source`，旧对象的 `source` 不变，所以同一个 IP 在轮换前后会是两个不同的 `source`。按 IP 清理旧上传时还需要旧密钥，轮换前把旧值另存一份（同样权限 600）。
+轮换 `UPLOAD_TOKEN`、`ADMIN_TOKEN` 会立即让旧令牌失效。轮换 `TRUSTED_TOKEN` 时，**同一轮里**还要改 zone 的 WAF 自定义规则（Security → WAF → Custom rules → “sugi trusted uploads skip rate limit”，或者用 ops token 调 `PATCH /zones/0ec67ba827776b3d9e3452483205b04c/rulesets/27e91a99f7b8408fabc6039282a8087e/rules/d16fcfbd3bc34e69a2bcbc3a5549a5fc` 更新 `expression`）里的字面值，否则新令牌会被 WAF 限流，而旧令牌的值仍能绕过 WAF（但过不了 Worker）；各台机器的 secrets.env 也要同步更新。`CF_PURGE_TOKEN` 在 Dashboard → My Profile → API Tokens 里 Roll，再按上面两步更新。轮换 `IP_HASH_SECRET` 要小心：之后的新上传用新密钥算 `source`，旧对象的 `source` 不变，所以同一个 IP 在轮换前后会是两个不同的 `source`。按 IP 清理旧上传时还需要旧密钥，轮换前把旧值另存一份（同样权限 600）。
 
 ## 剩余上线步骤
 
@@ -162,23 +169,20 @@ SRC=$(printf %s "$IP" | openssl dgst -sha256 -hmac "$IP_HASH_SECRET" -r | cut -d
 
 - 域名 sugi.moe 已在 Namecheap 注册，nameserver 指向 Cloudflare（`oaklyn` / `yisroel.ns.cloudflare.com`），zone 已在 Evan@yldm.tech's Account 激活（2026-11-02）。
 - Worker 已挂上自定义域 `sugi.moe`（`wrangler.jsonc` 的 `routes`），线上端到端检查通过。
-- bucket 已挂上 R2 自定义域 `r2.sugi.moe`，响应经 zone 缓存（实测 HIT）。
+- bucket 已挂上 R2 自定义域 `r2.sugi.moe`，`CACHE_ORIGIN` 已打开，图片经 zone 缓存出图；`CF_PURGE_TOKEN`（只有 sugi.moe 的 Cache Purge 权限）已设为 Worker secret，删除会清缓存，e2e 验证了缓存命中和删除后清除。
+- WAF 自定义规则和速率规则已建好（见“设计”一节的表格），用 `~/.config/sugi/ops.env` 里的 `CF_WAF_TOKEN`（Zone WAF Edit，只限 sugi.moe，2026-11-09 过期）。
 - Email Routing 已在 sugi.moe 启用（MX 和 SPF 记录由 Cloudflare 添加），规则 `abuse@sugi.moe` 转发到 `suzukaze.haduki@gmail.com`，该目标地址在 API 里显示已验证。
-- `TRUSTED_TOKEN` 已上线。
+- `TRUSTED_TOKEN` 已上线；网页上传界面已上线。
 
 还没做，按顺序：
 
-1. **创建两个 Cloudflare API token**（wrangler 的 OAuth 登录没有创建 token 的权限，也没有改 WAF 规则的权限）。Dashboard → My Profile → API Tokens → Create Token → Custom token：
-   - `sugi-worker-cache-purge`：Permissions 只加一条 Zone / Cache Purge / Purge；Zone Resources 选 Include / Specific zone / sugi.moe；Client IP Address Filtering 留空（Worker 的出口 IP 不固定）；TTL 不设。写进 `~/.config/sugi/secrets.env`，一行 `CF_PURGE_TOKEN=...`。
-   - `sugi-ops-waf`：Permissions 只加一条 Zone / Zone WAF / Edit；Zone Resources 选 Include / Specific zone / sugi.moe；TTL 设短一点（例如一天），规则建好后可以删掉。写进 `~/.config/sugi/ops.env`，一行 `CF_OPS_TOKEN=...`，权限 600。**不要**写进 secrets.env。
-2. **打开走缓存出图**：把 `wrangler.jsonc` 的 `CACHE_ORIGIN` 设为 `"https://r2.sugi.moe"`，执行 `npx wrangler deploy --secrets-file ~/.config/sugi/secrets.env`，跑一遍 `scripts/e2e.sh`，确认删除返回 `"cache_purged": true`。
-3. **开启 CSAM Scanning Tool**（没有公开 API，只能在 Dashboard 操作）：Dashboard → Evan@yldm.tech's Account → sugi.moe → Caching → Configuration → CSAM Scanning Tool → Configure，通知邮箱填 `suzukaze.haduki@gmail.com`，按提示完成验证并启用。命中时每天发一封汇总邮件，Cloudflare 会尽量直接拦截命中的 URL（Worker 会把拦截结果透传出去）。
-4. **建 WAF 规则**（用 `CF_OPS_TOKEN`）：一条自定义规则做可信令牌豁免（Skip `http_ratelimit`），一条速率规则（`/upload`，每 IP 10 秒 5 次，封 10 秒），见“设计”一节。用可信令牌连发验证不被拦，用普通令牌连发验证出现 429。
-5. 发一封测试邮件到 `abuse@sugi.moe`，确认 `suzukaze.haduki@gmail.com` 能收到。
-6. **开放匿名上传**（等维护者确认以上全部完成之后）：
+1. **开启 CSAM Scanning Tool**（没有公开 API，只能在 Dashboard 操作）：Dashboard → Evan@yldm.tech's Account → sugi.moe → Caching → Configuration → CSAM Scanning Tool → Configure，通知邮箱填 `suzukaze.haduki@gmail.com`，按提示完成验证并启用。命中时每天发一封汇总邮件，Cloudflare 会尽量直接拦截命中的 URL（Worker 会把拦截结果透传出去）。
+2. 发一封测试邮件到 `abuse@sugi.moe`，确认 `suzukaze.haduki@gmail.com` 能收到。
+3. 建议关掉 workers.dev 入口（`wrangler.jsonc` 里 `"workers_dev": false` 后部署）：它不经过 zone 的 WAF 规则，开放匿名后会成为绕过 WAF 限流的入口。
+4. **开放匿名上传**（等维护者确认以上全部完成之后）：
 
    ```sh
    npx wrangler secret delete UPLOAD_TOKEN
    ```
 
-   同时**从 `~/.config/sugi/secrets.env` 删掉 `UPLOAD_TOKEN` 那一行**，否则下次 `wrangler deploy --secrets-file` 会把闸门重新打开。之后访问 <https://sugi.moe/> 确认“上传需要令牌”的提示消失，用不带令牌的 `curl -T shot.png https://sugi.moe/upload` 验证一次。
+   同时**从 `~/.config/sugi/secrets.env` 删掉 `UPLOAD_TOKEN` 那一行**，否则下次 `wrangler deploy --secrets-file` 会把闸门重新打开。之后访问 <https://sugi.moe/> 确认“暂未开放匿名上传”的提示消失，用不带令牌的 `curl -T image.png https://sugi.moe/upload` 验证一次。之后 `scripts/e2e.sh` 里“anonymous upload rejected”一项会按预期失败。
