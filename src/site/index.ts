@@ -12,8 +12,8 @@ import { devPage } from "./pages/dev";
 import { donatePage } from "./pages/donate";
 import { faqPage, notFoundPage, termsPage } from "./pages/help";
 import { displayName, resolvePrincipal } from "../auth/core";
-import { magicLinkValid } from "../auth/email";
-import { storageSnapshot } from "../ops";
+import { emailConfigured, magicLinkValid } from "../auth/email";
+import { mailCounts, storageSnapshot } from "../ops";
 
 export const LANG_COOKIE = "sugi_lang";
 
@@ -54,7 +54,12 @@ async function resolvePage(ctx: Ctx, pathname: string): Promise<Page> {
       return verifyPage(ctx, token, token !== "" && (await magicLinkValid(ctx.env, token)));
     }
     case "/donate":
-      return ctx.flags.donate ? donatePage(ctx, await storageSnapshot(ctx.env)) : notFoundPage(ctx);
+      return ctx.flags.donate
+        ? donatePage(ctx, {
+            storage: await storageSnapshot(ctx.env),
+            mail: emailConfigured(ctx.env) ? await mailCounts(ctx.env) : null,
+          })
+        : notFoundPage(ctx);
   }
   const file = /^\/f\/([a-z0-9-]{1,64})$/.exec(pathname);
   if (file) {

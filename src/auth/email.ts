@@ -2,6 +2,7 @@
 import { brand } from "../config";
 import { hmacSha256Hex } from "../crypto";
 import { HttpError, jsonResponse } from "../http";
+import { countOps } from "../ops";
 import { accountFeature, accountsOn, createSession, hashSecret, loginWithIdentity, resolvePrincipal, sameOrigin, secret } from "./core";
 
 export const MAGIC_TTL_MS = 15 * 60 * 1000;
@@ -37,6 +38,7 @@ export async function sendEmail(env: Env, mail: Mail): Promise<void> {
   const binding = (env as unknown as { EMAIL?: SendEmailBinding }).EMAIL;
   if (binding) {
     await binding.send({ to: mail.to, from: from.replace(/^.*<|>$/g, ""), subject: mail.subject, text: mail.text, html: mail.html });
+    await countOps(env, "mail");
     return;
   }
   if (!env.RESEND_API_KEY) throw new HttpError(503, "email login is not configured");
@@ -45,7 +47,8 @@ export async function sendEmail(env: Env, mail: Mail): Promise<void> {
     headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, "content-type": "application/json" },
     body: JSON.stringify({ from, to: [mail.to], subject: mail.subject, text: mail.text, html: mail.html }),
   });
-  if (res.ok) return;
+  // Every email sent is counted, so the donate page can show how much of the provider's free tier is used.
+  if (res.ok) return countOps(env, "mail");
   const body = await res.json<{ name?: string; message?: string }>().catch(() => ({}) as { name?: string });
   // Resend answers 429 both for its per-second rate limit and for daily/monthly quota errors.
   if (res.status === 429 || /quota/i.test(body.name ?? "")) throw new EmailQuotaError();

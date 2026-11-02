@@ -149,7 +149,7 @@ describe("pages", () => {
     expect(flagged).toContain('href="/login"');
     // The donate page invents nothing: no tiers, no progress bar, no made-up supporters.
     const donate = await (await page("/donate", zh, on)).text();
-    expect(donate).not.toMatch(/¥|yuki|Momo|progress/);
+    expect(donate).not.toMatch(/¥|yuki|Momo/);
   });
 
   it("the donate page shows the payment method and only costs it can compute", async () => {
@@ -164,13 +164,19 @@ describe("pages", () => {
     expect(html).toContain('<img class="donate-qr" src="https://files.sugi.moe/qrcode.webp"');
     expect(html).toContain('<a class="btn phone-only" href="https://qr.alipay.com/test"');
     expect(html).toContain("sugi.moe 是 YLDM Co., Ltd. 业余运营的小服务");
-    expect(html).toMatch(/现在存了 \d+ 个文件/);
-    expect(html).toContain("US$0 / 月");
-    // No renewal price and no thank-you list until the operator gives them.
-    expect(html).not.toContain("每年续费");
+    // Nothing is paid yet: no "actually paid" block and no $0 anywhere.
+    expect(html).not.toMatch(/US\$0(?![.\d])/);
+    expect(html).not.toContain("现在每月实际花费");
+    expect(html).toContain("免费额度用了多少");
+    expect(html).toMatch(/<progress max="1000" value="\d+">/);
+    expect(html).toContain("超过免费额度后要付的钱");
+    expect(html).toContain("Workers Paid");
     expect(html).not.toContain("谢谢这些好心人");
     const full = await (await page("/donate", zh, { ...cfg, DONATE_DOMAIN_COST_USD: "18.5", DONATE_THANKS: "阿明, Kiki" })).text();
-    expect(full).toContain("US$18.50 / 年");
+    expect(full).toContain("现在每月实际花费");
+    expect(full).toContain("每年 US$18.50");
+    expect(full).toContain("约 US$1.54 / 月");
+    expect(full).not.toMatch(/US\$0(?![.\d])/);
     expect(full).toContain('<span class="badge">阿明</span><span class="badge">Kiki</span>');
     // The FAQ links to it.
     expect(await (await page("/faq", zh, cfg)).text()).toContain('<a href="/donate" data-nav>投喂仓仓</a>');

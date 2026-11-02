@@ -2830,6 +2830,51 @@ html.night .theme-night {
   color: var(--ink);
   white-space: nowrap;
 }
+.usage {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.use-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+  color: var(--ink2);
+  margin-bottom: 6px;
+}
+.use-head .num {
+  white-space: nowrap;
+  font-weight: 700;
+  color: var(--ink);
+}
+.usage progress {
+  appearance: none;
+  width: 100%;
+  height: 10px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--pale);
+  overflow: hidden;
+}
+.usage progress::-webkit-progress-bar {
+  background: var(--pale);
+  border-radius: 999px;
+}
+.usage progress::-webkit-progress-value {
+  background: var(--green);
+  border-radius: 999px;
+}
+.usage progress::-moz-progress-bar {
+  background: var(--green);
+  border-radius: 999px;
+}
+.costs a {
+  color: inherit;
+}
 /* The "Open in Alipay" button is for phones; on a computer the QR code is the way. */
 @media (min-width: 761px) and (hover: hover) and (pointer: fine) {
   .phone-only {
