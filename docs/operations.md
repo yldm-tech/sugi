@@ -62,6 +62,14 @@
 - 存储翻倍，但目前远在免费额度内：主 bucket 约 42 MB（见投喂页的实测），备份同样大小，两者合计远低于每月 10 GB 免费存储。超出后备份按 US$0.015/GB·月计，例如永久文件 100 GB 时备份每月多 US$1.50（不含免费额度）。
 - 操作次数：每次 cron 两次 list（Class A）、最多 200 次 head（Class B），每月约 8,600 次 Class A、约 86 万次 Class B，加上每个新文件一次 put（Class A），都在免费额度（每月 100 万次 A、1,000 万次 B）内。R2 没有出口流量费，bucket 之间复制也不收流量费。
 
+## 费用
+
+投喂页上不放成本和用量，运营者自己看这里（价格 2026-11-02 核对）：
+
+- **现在**：Workers、D1 在免费计划内；R2 每月前 10 GB 存储、100 万次写、1000 万次读免费（主 bucket 加备份目前合计约 85 MB）；Resend 免费额度每天 100 封、每月 3,000 封；域名 sugi.moe 每年续费（Namecheap，价格待补）。
+- **超出后**：[Workers Paid](https://developers.cloudflare.com/workers/platform/pricing/) 每月 US$5 起（每天请求超过 10 万次时需要；也能放开 CPU 限制，让超过 20 MB 的文件也算内容哈希、下架后挡住重传）；[R2](https://developers.cloudflare.com/r2/pricing/) 存储每 GB·月 US$0.015，写每百万次 US$4.50，读每百万次 US$0.36，流量免费；[Resend Pro](https://resend.com/pricing) 每月 US$20，含 5 万封。
+- 存储量随时可以用管理员 MCP 的 `ops_report`（`storage_bytes`）和 `backup_status` 查。
+
 ## Secrets
 
 Secrets 只存在两处：Cloudflare 的 Worker secrets，以及本机 `~/.config/sugi/secrets.env`（权限 600）。`TRUSTED_TOKEN` 例外，它的值还在 zone 的 WAF 自定义规则里。`secrets.env` 会被 `wrangler deploy --secrets-file` 整个上传，所以只放 Worker 要用的东西；改 WAF 用的 ops token 放在 `~/.config/sugi/ops.env`。

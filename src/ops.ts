@@ -63,28 +63,6 @@ async function storageUsed(env: Env): Promise<{ objects: number; bytes: number }
   return { objects, bytes };
 }
 
-export interface StorageSnapshot {
-  objects: number;
-  bytes: number;
-  /** When it was measured (ms). */
-  at: number;
-}
-
-const STORAGE_MAX_AGE_MS = 6 * 3600e3;
-
-/** The bucket's size as last measured; measures it now when there is no measurement or it is older than `maxAgeMs`. Run from the cron so page views normally only read it. */
-export async function storageSnapshot(env: Env, now = Date.now(), maxAgeMs = STORAGE_MAX_AGE_MS): Promise<StorageSnapshot> {
-  const row = await env.DB.prepare("SELECT value, at FROM ops_state WHERE name = 'storage'").first<{ value: string; at: number }>();
-  if (row && now - row.at < maxAgeMs) return { ...(JSON.parse(row.value) as { objects: number; bytes: number }), at: row.at };
-  const used = await storageUsed(env);
-  await env.DB.prepare(
-    "INSERT INTO ops_state (name, value, at) VALUES ('storage', ?, ?) ON CONFLICT (name) DO UPDATE SET value = excluded.value, at = excluded.at",
-  )
-    .bind(JSON.stringify(used), now)
-    .run();
-  return { ...used, at: now };
-}
-
 /** The numbers of one UTC day, for the daily report (and tests). */
 export async function dailyNumbers(env: Env, day: string): Promise<Record<string, number | null>> {
   const usage = await env.DB.prepare("SELECT bytes, uploads, rejected FROM usage_daily WHERE day = ? AND scope = 'global'")
@@ -192,20 +170,9 @@ export async function checkAlerts(env: Env, now = Date.now()): Promise<string[]>
   return sent;
 }
 
-/** Cron: drop counters older than 40 days (a calendar month of email counts must survive). */
+/** Cron: drop counters older than two weeks. */
 export async function sweepOps(env: Env, now = Date.now()): Promise<void> {
   await env.DB.prepare("DELETE FROM ops_counters WHERE hour < ?")
-    .bind(hourOf(now - 40 * 86400e3))
+    .bind(hourOf(now - 14 * 86400e3))
     .run();
-}
-
-/** Emails sent today and this calendar month (UTC), and since when they have been counted (the counter may be younger than the month). */
-export async function mailCounts(env: Env, now = Date.now()): Promise<{ today: number; month: number; countedSince: string }> {
-  const day = today(now);
-  const monthStart = `${day.slice(0, 7)}-01T00`;
-  const today_ = await sumOps(env, "mail", `${day}T00`, `${day}T23`);
-  const month = await sumOps(env, "mail", monthStart, `${day}T23`);
-  const first = await env.DB.prepare("SELECT MIN(hour) AS h FROM ops_counters WHERE name = 'mail'").first<{ h: string | null }>();
-  const since = first?.h && first.h > monthStart ? first.h.slice(0, 10) : monthStart.slice(0, 10);
-  return { today: today_, month, countedSince: since };
 }
