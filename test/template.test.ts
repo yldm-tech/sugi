@@ -33,7 +33,8 @@ describe("template deployment", () => {
     for (const path of ["/", "/faq", "/terms", "/privacy", "/dev", "/mine", "/nope"]) {
       for (const init of [{}, zh]) {
         const html = await (await get(path, init)).text();
-        for (const needle of ["sugi.moe", "YLDM", "hi@", "abuse@", "CSAM", "Resend", "邮件转发", "email forwarding", "防火墙", "firewall"]) expect(html, `${path} ${needle}`).not.toContain(needle);
+        for (const needle of ["sugi.moe", "YLDM", "hi@", "abuse@", "CSAM", "Resend", "邮件转发", "email forwarding", "防火墙", "firewall"])
+          expect(html, `${path} ${needle}`).not.toContain(needle);
       }
     }
     const home = await (await get("/")).text();
@@ -58,7 +59,11 @@ describe("template deployment", () => {
 
   it("serves uploads from paths on its own host", async () => {
     const up = async (query = "") => {
-      const res = await get(`/api/upload${query}`, { method: "PUT", body: png(), headers: { "cf-connecting-ip": freshIp(), accept: "application/json", ...TRUSTED } });
+      const res = await get(`/api/upload${query}`, {
+        method: "PUT",
+        body: png(),
+        headers: { "cf-connecting-ip": freshIp(), accept: "application/json", ...TRUSTED },
+      });
       expect(res.status).toBe(201);
       return res.json<{ url: string; page: string }>();
     };
@@ -75,7 +80,9 @@ describe("template deployment", () => {
     const install = await (await get("/install.sh")).text();
     expect(install).toContain(`origin="\${SUGI_URL:-${HOST}}"`);
     // After the checksum check the installer points the CLI's default server at this host.
-    expect(install).toContain(`awk -v o="$origin" '$0 == "BASE=\\"\${SUGI_URL:-https://sugi.moe}\\"" { print "BASE=\\"\${SUGI_URL:-" o "}\\""; next } { print }'`);
+    expect(install).toContain(
+      `awk -v o="$origin" '$0 == "BASE=\\"\${SUGI_URL:-https://sugi.moe}\\"" { print "BASE=\\"\${SUGI_URL:-" o "}\\""; next } { print }'`,
+    );
     expect(await (await get("/robots.txt")).text()).toContain(`${HOST}/sitemap.xml`);
     expect(await (await get("/sitemap.xml")).text()).toContain(`<loc>${HOST}/?lang=en</loc>`);
   });

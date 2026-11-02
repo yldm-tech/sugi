@@ -43,17 +43,30 @@ export async function receiveEmail(message: ForwardableEmailMessage, env: Env): 
   const body = await readCapped(message.raw);
   const now = Date.now();
   await env.DB.batch([
-    env.DB.prepare("INSERT INTO e2e_inbox (received_at, mail_from, subject, body) VALUES (?, ?, ?, ?)").bind(now, message.from, message.headers.get("subject"), body),
+    env.DB.prepare("INSERT INTO e2e_inbox (received_at, mail_from, subject, body) VALUES (?, ?, ?, ?)").bind(
+      now,
+      message.from,
+      message.headers.get("subject"),
+      body,
+    ),
     env.DB.prepare("DELETE FROM e2e_inbox WHERE id NOT IN (SELECT id FROM e2e_inbox ORDER BY id DESC LIMIT ?)").bind(INBOX_MAX_ROWS),
   ]);
 }
 
 export async function sweepInbox(env: Env, now = Date.now()): Promise<void> {
-  await env.DB.prepare("DELETE FROM e2e_inbox WHERE received_at < ?").bind(now - INBOX_TTL_MS).run();
+  await env.DB.prepare("DELETE FROM e2e_inbox WHERE received_at < ?")
+    .bind(now - INBOX_TTL_MS)
+    .run();
 }
 
 export async function latestMessage(env: Env): Promise<Record<string, unknown> | null> {
-  const row = await env.DB.prepare("SELECT id, received_at, mail_from, subject, body FROM e2e_inbox ORDER BY id DESC LIMIT 1").first<{ id: number; received_at: number; mail_from: string | null; subject: string | null; body: string }>();
+  const row = await env.DB.prepare("SELECT id, received_at, mail_from, subject, body FROM e2e_inbox ORDER BY id DESC LIMIT 1").first<{
+    id: number;
+    received_at: number;
+    mail_from: string | null;
+    subject: string | null;
+    body: string;
+  }>();
   if (!row) return null;
   const text = decodeQuotedPrintable(row.body);
   const links = [...new Set(text.match(/https:\/\/[^\s"'<>]+/g) ?? [])].map((u) => u.replace(/&amp;/g, "&"));

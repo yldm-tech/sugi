@@ -1,4 +1,5 @@
 import { env } from "cloudflare:test";
+import { expect } from "vitest";
 import worker from "../src/index";
 
 export const MAIN = "https://sugi.test";
@@ -44,7 +45,8 @@ const ascii = (s: string) => Array.from(s, (c) => c.charCodeAt(0));
 export const png = (size = 128) => withPayload([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], size);
 export const jpeg = (size = 128) => withPayload([0xff, 0xd8, 0xff, 0xe0], size);
 export const mp4 = (size = 256) => withPayload([0, 0, 0, 0x18, ...ascii("ftypisom"), 0, 0, 2, 0, ...ascii("isomiso2")], size);
-export const webm = (size = 256) => withPayload([0x1a, 0x45, 0xdf, 0xa3, 0x9f, 0x42, 0x86, 0x81, 0x01, 0x42, 0xf7, 0x81, 0x01, 0x42, 0x82, 0x84, ...ascii("webm")], size);
+export const webm = (size = 256) =>
+  withPayload([0x1a, 0x45, 0xdf, 0xa3, 0x9f, 0x42, 0x86, 0x81, 0x01, 0x42, 0xf7, 0x81, 0x01, 0x42, 0x82, 0x84, ...ascii("webm")], size);
 export const avif = (size = 256) => withPayload([0, 0, 0, 0x1c, ...ascii("ftypavif"), 0, 0, 0, 0, ...ascii("avifmif1miaf")], size);
 
 export function put(path: string, body: BodyInit, headers: Record<string, string> = {}): Request {
@@ -72,4 +74,11 @@ export async function hmacHex(secret: string, msg: string): Promise<string> {
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(msg));
   return Array.from(new Uint8Array(sig), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** Requests made in a loop of 21 against the 10-per-60-seconds limiter: the first 10 succeed and a 429 follows. The limiter counts in fixed windows, so a loop that straddles a window boundary may get a fresh allowance once; 21 requests still always reach a 429. */
+export function expectRateLimited(statuses: number[]): void {
+  expect(statuses.slice(0, 10)).toEqual(Array(10).fill(201));
+  expect(statuses).toContain(429);
+  expect(statuses.every((s) => s === 201 || s === 429)).toBe(true);
 }

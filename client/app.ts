@@ -21,6 +21,7 @@ function fmt(s: string, vars: Record<string, string | number> = {}): string {
   return s.replace(/\{(\w+)\}/g, (_, k) => (vars[k] === undefined ? "" : String(vars[k])));
 }
 
+// biome-ignore lint/suspicious/noExplicitAny: event handlers of any event type
 type Attrs = Record<string, string | number | boolean | null | undefined | ((e: any) => void)>;
 function h<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Attrs = {}, ...kids: (Node | string | null | undefined | false)[]): HTMLElementTagNameMap[K] {
   const el = document.createElement(tag);
@@ -92,7 +93,10 @@ function load<T>(key: string, fallback: T): T {
   }
 }
 
-const prefs: Prefs = Object.assign({ night: null, cuteNames: true, sound: false, autoCopy: true, stripExif: true, fmt: "url", expiry: "perm" } as Prefs, load("sugi.prefs.v1", {}));
+const prefs: Prefs = Object.assign(
+  { night: null, cuteNames: true, sound: false, autoCopy: true, stripExif: true, fmt: "url", expiry: "perm" } as Prefs,
+  load("sugi.prefs.v1", {}),
+);
 let hist: HistItem[] = load("sugi.history.v1", []);
 let albums: AlbumItem[] = load("sugi.albums.v1", []);
 
@@ -150,6 +154,7 @@ async function copy(text: string, msg = T.copied) {
 let audio: AudioContext | null = null;
 function chirp() {
   try {
+    // biome-ignore lint/suspicious/noExplicitAny: older Safari exposes webkitAudioContext only
     const C = window.AudioContext || (window as any).webkitAudioContext;
     if (!C) return;
     audio = audio || new C();
@@ -212,7 +217,12 @@ function expInfo(expiresAt: number | null, now = Date.now()): { label: string; c
   if (!expiresAt) return { label: T.expPerm, cls: "", expired: false };
   const d = expiresAt - now;
   if (d <= 0) return { label: T.expGone, cls: "gone", expired: true };
-  const label = d < 3600e3 ? fmt(T.expMin, { n: Math.ceil(d / 60e3) }) : d < 86400e3 ? fmt(T.expHour, { n: Math.ceil(d / 3600e3) }) : fmt(T.expDay, { n: Math.ceil(d / 86400e3) });
+  const label =
+    d < 3600e3
+      ? fmt(T.expMin, { n: Math.ceil(d / 60e3) })
+      : d < 86400e3
+        ? fmt(T.expHour, { n: Math.ceil(d / 3600e3) })
+        : fmt(T.expDay, { n: Math.ceil(d / 86400e3) });
   return { label, cls: "tmp", expired: false };
 }
 
@@ -285,13 +295,14 @@ function makeThumb(file: File): Promise<string | null> {
   });
 }
 
+// biome-ignore lint/suspicious/noExplicitAny: error bodies are untrusted JSON of unknown shape
 function errorFor(status: number, body: any, retryAfter: string | null): string {
   if (status === 401) return T.errGated;
   if (status === 413) return T.errTooBig;
   if (status === 415) return T.errType;
   if (status === 429) return fmt(T.errRate, { s: retryAfter || "60" });
   if (status === 0) return T.errNetwork;
-  return fmt(T.errFailed, { status, msg: (body && body.error) || "" });
+  return fmt(T.errFailed, { status, msg: body?.error || "" });
 }
 
 function queryFor(u: Upload, extra: Record<string, string> = {}): string {
@@ -304,11 +315,18 @@ function queryFor(u: Upload, extra: Record<string, string> = {}): string {
 
 interface XhrResult {
   status: number;
+  // biome-ignore lint/suspicious/noExplicitAny: untrusted JSON of unknown shape
   body: any;
   retryAfter: string | null;
 }
 
-function xhr(method: string, url: string, body: Blob | FormData | string | null, headers: Record<string, string>, onProgress?: (loaded: number) => void): Promise<XhrResult> {
+function xhr(
+  method: string,
+  url: string,
+  body: Blob | FormData | string | null,
+  headers: Record<string, string>,
+  onProgress?: (loaded: number) => void,
+): Promise<XhrResult> {
   return new Promise((resolve) => {
     const x = new XMLHttpRequest();
     x.open(method, url);
@@ -316,6 +334,7 @@ function xhr(method: string, url: string, body: Blob | FormData | string | null,
     for (const [k, v] of Object.entries(headers)) x.setRequestHeader(k, v);
     if (onProgress) x.upload.onprogress = (e) => onProgress(e.loaded);
     x.onload = () => {
+      // biome-ignore lint/suspicious/noExplicitAny: untrusted JSON of unknown shape
       let parsed: any = null;
       try {
         parsed = JSON.parse(x.responseText);
@@ -432,7 +451,21 @@ function addFiles(list: FileList | File[] | null | undefined) {
   let fly = 0;
   for (const file of arr) {
     const name = file.name || `paste-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "")}.png`;
-    const u: Upload = { key: `u${++uploadSeq}`, file, remote: null, name, size: file.size, ext: extOf(name) || (file.type.split("/")[1] ?? ""), kind: kindOf(file, name), pct: 0, status: "queued", error: null, thumb: null, local: null, res: null };
+    const u: Upload = {
+      key: `u${++uploadSeq}`,
+      file,
+      remote: null,
+      name,
+      size: file.size,
+      ext: extOf(name) || (file.type.split("/")[1] ?? ""),
+      kind: kindOf(file, name),
+      pct: 0,
+      status: "queued",
+      error: null,
+      thumb: null,
+      local: null,
+      res: null,
+    };
     if (file.size > CFG.limits.maxFile) {
       u.status = "err";
       u.error = T.errTooBig;
@@ -467,7 +500,21 @@ function addUrl(raw: string) {
     return;
   }
   const seg = decodeURIComponent(url.split(/[?#]/)[0].split("/").pop() || "remote");
-  const u: Upload = { key: `u${++uploadSeq}`, file: null, remote: url, name: seg, size: 0, ext: extOf(seg), kind: /\.(mp4|webm)$/i.test(seg) ? "video" : "image", pct: 0, status: "queued", error: null, thumb: null, local: null, res: null };
+  const u: Upload = {
+    key: `u${++uploadSeq}`,
+    file: null,
+    remote: url,
+    name: seg,
+    size: 0,
+    ext: extOf(seg),
+    kind: /\.(mp4|webm)$/i.test(seg) ? "video" : "image",
+    pct: 0,
+    status: "queued",
+    error: null,
+    thumb: null,
+    local: null,
+    res: null,
+  };
   uploads.unshift(u);
   spawnFly(1);
   touch();
@@ -507,7 +554,11 @@ function renderResults() {
   const list = $("#results-list")!;
   list.replaceChildren(
     ...uploads.map((u) => {
-      const body = h("div", { class: "body" }, h("div", { class: "nameline" }, h("span", { class: "name", text: u.name }), h("span", { class: "size", text: u.size ? fmtSize(u.size) : "" })));
+      const body = h(
+        "div",
+        { class: "body" },
+        h("div", { class: "nameline" }, h("span", { class: "name", text: u.name }), h("span", { class: "size", text: u.size ? fmtSize(u.size) : "" })),
+      );
       let tail: HTMLElement;
       if (u.status === "done" && u.res) {
         body.append(h("a", { class: "url", href: u.res.url, target: "_blank", rel: "noopener", text: u.res.url }));
@@ -533,7 +584,13 @@ function renderResults() {
         body.append(h("div", { class: "bar" }, h("div", { class: "track" }, fill), runner));
         tail = h("span", { class: "pct", text: `${Math.round(u.pct)}%` });
       }
-      return h("div", { class: "item" + (u.status === "err" ? " err" : "") }, thumbNode(u, "thumb", u.status === "done" && u.res ? () => openPreview(u.res!, u.local) : undefined), body, tail);
+      return h(
+        "div",
+        { class: `item${u.status === "err" ? " err" : ""}` },
+        thumbNode(u, "thumb", u.status === "done" && u.res ? () => openPreview(u.res!, u.local) : undefined),
+        body,
+        tail,
+      );
     }),
   );
 }
@@ -560,7 +617,7 @@ async function deleteFiles(ids: string[]): Promise<number> {
       uploads = uploads.filter((u) => u.res?.id !== id);
       n++;
     } else {
-      toast(fmt(T.deleteFailed, { msg: (r.body && r.body.error) || r.status }));
+      toast(fmt(T.deleteFailed, { msg: r.body?.error || r.status }));
     }
   }
   persist();
@@ -573,7 +630,7 @@ async function createAlbum(ids: string[], title: string): Promise<AlbumItem | nu
   if (!ids.length) return null;
   const r = await xhr("POST", "/api/albums", JSON.stringify({ files: ids, title }), { "Content-Type": "application/json" });
   if (r.status !== 201 || !r.body) {
-    toast(fmt(T.albumFailed, { msg: r.status === 401 ? T.errGated : (r.body && r.body.error) || r.status }));
+    toast(fmt(T.albumFailed, { msg: r.status === 401 ? T.errGated : r.body?.error || r.status }));
     return null;
   }
   const a: AlbumItem = { id: r.body.id, url: r.body.url, title: r.body.title || "", token: r.body.delete_token, fileIds: ids, createdAt: Date.now() };
@@ -602,10 +659,20 @@ function openPreview(item: HistItem, local?: string | null) {
   const side = h(
     "div",
     { class: "side" },
-    h("div", { class: "hd" }, h("div", {}, h("div", { class: "n", text: item.name }), h("div", { class: "m", text: meta })), h("button", { type: "button", class: "close", title: T.close, "aria-label": T.close, text: "×", onclick: closePreview })),
+    h(
+      "div",
+      { class: "hd" },
+      h("div", {}, h("div", { class: "n", text: item.name }), h("div", { class: "m", text: meta })),
+      h("button", { type: "button", class: "close", title: T.close, "aria-label": T.close, text: "×", onclick: closePreview }),
+    ),
     ...FMTS.map((f) => {
       const text = fmtLink(item, f.id);
-      return h("div", { class: "fl" }, h("span", { text: f.label }), h("div", { class: "fmt" }, h("code", { text }), h("button", { type: "button", text: T.copy, onclick: () => void copy(text) })));
+      return h(
+        "div",
+        { class: "fl" },
+        h("span", { text: f.label }),
+        h("div", { class: "fmt" }, h("code", { text }), h("button", { type: "button", text: T.copy, onclick: () => void copy(text) })),
+      );
     }),
     h(
       "div",
@@ -633,7 +700,11 @@ function openPreview(item: HistItem, local?: string | null) {
       }),
     ),
   );
-  const modal = h("div", { class: "modal", id: "preview", role: "dialog", "aria-modal": "true", onclick: (e: MouseEvent) => e.target === modal && closePreview() }, h("div", { class: "sheet" }, pv, side));
+  const modal = h(
+    "div",
+    { class: "modal", id: "preview", role: "dialog", "aria-modal": "true", onclick: (e: MouseEvent) => e.target === modal && closePreview() },
+    h("div", { class: "sheet" }, pv, side),
+  );
   $("#overlays")!.append(modal);
 }
 
@@ -684,7 +755,16 @@ function updateMascot() {
   setOp("m-sweat", mood === "busy" ? 1 : 0);
   for (const e of $$("#m-open .eye")) e.setAttribute("ry", mood === "busy" ? "5" : "6.5");
   const mouth = document.getElementById("m-mouth")!;
-  mouth.setAttribute("d", mood === "drag" ? "M94 94 Q100 106 106 94 Z" : mood === "busy" ? "M95 97 Q100 94.5 105 97" : asleep ? "M97 96 Q100 99 103 96" : "M93 95 Q96.5 99 100 95 Q103.5 99 107 95");
+  mouth.setAttribute(
+    "d",
+    mood === "drag"
+      ? "M94 94 Q100 106 106 94 Z"
+      : mood === "busy"
+        ? "M95 97 Q100 94.5 105 97"
+        : asleep
+          ? "M97 96 Q100 99 103 96"
+          : "M93 95 Q96.5 99 100 95 Q103.5 99 107 95",
+  );
   mouth.setAttribute("fill", mood === "drag" ? "#E88F8A" : "none");
   const puff = Math.max(0.001, heavy ? 1 : Math.min(1, doneN / 5 + (uploading ? 0.25 : 0) + (poked ? 0.45 : 0)));
   for (const p of $$("#stage .puff")) p.style.transform = `scale(${puff.toFixed(3)})`;
@@ -702,13 +782,38 @@ function updateMascot() {
   setOp("m-sprout", hat ? 0 : 1);
   $("#m-hat-body")?.setAttribute("fill", hat === "night" ? "#BFD3EE" : "#E8746C");
   $("#m-hat-stripe")?.setAttribute("opacity", hat === "night" ? "0.8" : "0");
-  for (const [id, on] of [["m-cny", fest === "cny"], ["m-hal", fest === "halloween"]] as const) {
+  for (const [id, on] of [
+    ["m-cny", fest === "cny"],
+    ["m-hal", fest === "halloween"],
+  ] as const) {
     const g = document.getElementById(id);
     g?.setAttribute("opacity", on ? "1" : "0");
     g?.setAttribute("pointer-events", on ? "auto" : "none");
   }
 
-  const bubble = asleep ? T.bubbleSleep : wheel ? T.bubbleWheel : heavy ? T.bubbleHeavy : poked ? pokeLine : dragging ? T.bubbleDrag : uploading ? T.bubbleBusy : doneN >= 5 ? T.bubbleMany : doneN ? T.bubbleDone : fest === "cny" ? T.bubbleCny : fest === "halloween" ? T.bubbleHalloween : isNight() ? T.bubbleNight : T.bubbleIdle;
+  const bubble = asleep
+    ? T.bubbleSleep
+    : wheel
+      ? T.bubbleWheel
+      : heavy
+        ? T.bubbleHeavy
+        : poked
+          ? pokeLine
+          : dragging
+            ? T.bubbleDrag
+            : uploading
+              ? T.bubbleBusy
+              : doneN >= 5
+                ? T.bubbleMany
+                : doneN
+                  ? T.bubbleDone
+                  : fest === "cny"
+                    ? T.bubbleCny
+                    : fest === "halloween"
+                      ? T.bubbleHalloween
+                      : isNight()
+                        ? T.bubbleNight
+                        : T.bubbleIdle;
   $("#bubble")!.textContent = bubble;
   const dz = $("#dz-title");
   if (dz) dz.textContent = dragging ? T.dzDrag : uploading ? T.dzBusy : T.dzIdle;
@@ -744,14 +849,19 @@ function renderAmbient(asleep: boolean, wheel: boolean) {
       s.style.animationDelay = `${i * 0.8}s`;
       fx.append(s);
     });
-  } else if (!asleep && hasZ) $$(".z", fx).forEach((z) => z.remove());
+  } else if (!asleep && hasZ)
+    $$(".z", fx).forEach((z) => {
+      z.remove();
+    });
 }
 
 function spawn(nodes: HTMLElement[], life: number) {
   const fx = $("#fx");
   if (!fx) return;
   fx.append(...nodes);
-  setTimeout(() => nodes.forEach((n) => n.remove()), life);
+  setTimeout(() => {
+    for (const n of nodes) n.remove();
+  }, life);
 }
 
 function burst() {
@@ -837,10 +947,18 @@ function onActivity(e?: Event) {
 let tabSig = "";
 function favicon(mood: string, pct: number | null): string {
   const fur = gold ? "#F7D774" : "#FFFFFF";
-  const eyes = mood === "happy" ? "<path d='M14 28 Q17.5 24 21 28 M27 28 Q30.5 24 34 28' fill='none' stroke-width='2.4'/>" : mood === "sleep" ? "<path d='M14 27 Q17.5 30 21 27 M27 27 Q30.5 30 34 27' fill='none' stroke-width='2.4'/>" : "<ellipse cx='17.5' cy='28' rx='2.4' ry='3' fill='#3F4A3C' stroke='none'/><ellipse cx='30.5' cy='28' rx='2.4' ry='3' fill='#3F4A3C' stroke='none'/>";
-  const ring = pct !== null ? `<circle cx='24' cy='24' r='22' fill='none' stroke='#E1E8D5' stroke-width='3.5'/><circle cx='24' cy='24' r='22' fill='none' stroke='#5E9E6E' stroke-width='3.5' stroke-dasharray='${((pct / 100) * 138.2).toFixed(1)} 200' transform='rotate(-90 24 24)'/>` : "";
+  const eyes =
+    mood === "happy"
+      ? "<path d='M14 28 Q17.5 24 21 28 M27 28 Q30.5 24 34 28' fill='none' stroke-width='2.4'/>"
+      : mood === "sleep"
+        ? "<path d='M14 27 Q17.5 30 21 27 M27 27 Q30.5 30 34 27' fill='none' stroke-width='2.4'/>"
+        : "<ellipse cx='17.5' cy='28' rx='2.4' ry='3' fill='#3F4A3C' stroke='none'/><ellipse cx='30.5' cy='28' rx='2.4' ry='3' fill='#3F4A3C' stroke='none'/>";
+  const ring =
+    pct !== null
+      ? `<circle cx='24' cy='24' r='22' fill='none' stroke='#E1E8D5' stroke-width='3.5'/><circle cx='24' cy='24' r='22' fill='none' stroke='#5E9E6E' stroke-width='3.5' stroke-dasharray='${((pct / 100) * 138.2).toFixed(1)} 200' transform='rotate(-90 24 24)'/>`
+      : "";
   const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48' stroke='#4A5646' stroke-width='2.4' stroke-linejoin='round'>${ring}<g transform='translate(0 3)'><circle cx='11' cy='16' r='5.5' fill='${fur}'/><circle cx='37' cy='16' r='5.5' fill='${fur}'/><path d='M6 40 C5 23 13 13 24 13 C35 13 43 23 42 40 Z' fill='${fur}'/>${eyes}<ellipse cx='12.5' cy='33' rx='3.4' ry='2' fill='#F6C3BE' stroke='none'/><ellipse cx='35.5' cy='33' rx='3.4' ry='2' fill='#F6C3BE' stroke='none'/></g></svg>`;
-  return "data:image/svg+xml," + encodeURIComponent(svg);
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
 let pageTitle = document.title;
@@ -1031,7 +1149,12 @@ function renderMine() {
         "div",
         { class: `tile${isSel ? " sel" : ""}${ex.expired ? " gone" : ""}` },
         pic,
-        h("div", { class: "meta" }, h("span", { class: "n", text: x.name }), h("span", { class: "s" }, h("span", { text: fmtSize(x.size) }), h("span", { class: "local", text: T.localOnly }))),
+        h(
+          "div",
+          { class: "meta" },
+          h("span", { class: "n", text: x.name }),
+          h("span", { class: "s" }, h("span", { text: fmtSize(x.size) }), h("span", { class: "local", text: T.localOnly })),
+        ),
         h(
           "div",
           { class: "acts" },
@@ -1068,7 +1191,12 @@ function renderMine() {
         "div",
         { class: "card albumcard" },
         covers,
-        h("a", { class: "info", href: `/a/${a.id}`, "data-nav": true }, h("span", { class: "t", text: a.title || T.untitled }), h("span", { class: "m", text: fmt(T.albumMeta, { n: a.fileIds.length, date: new Date(a.createdAt).toLocaleDateString(LOCALE) }) })),
+        h(
+          "a",
+          { class: "info", href: `/a/${a.id}`, "data-nav": true },
+          h("span", { class: "t", text: a.title || T.untitled }),
+          h("span", { class: "m", text: fmt(T.albumMeta, { n: a.fileIds.length, date: new Date(a.createdAt).toLocaleDateString(LOCALE) }) }),
+        ),
         h(
           "div",
           { class: "acts" },
@@ -1090,7 +1218,7 @@ async function deleteAlbum(a: AlbumItem): Promise<boolean> {
     renderMine();
     return true;
   }
-  toast(fmt(T.deleteFailed, { msg: (r.body && r.body.error) || r.status }));
+  toast(fmt(T.deleteFailed, { msg: r.body?.error || r.status }));
   return false;
 }
 
@@ -1130,7 +1258,10 @@ function initMine() {
     void createAlbum(ids, title).then((a) => a && mineState.selected.clear());
   });
   $("#export-history")!.addEventListener("click", () => {
-    const blob = new Blob([JSON.stringify({ version: 1, exported_at: new Date().toISOString(), files: hist.map((x) => ({ ...x, thumb: undefined })), albums }, null, 2)], { type: "application/json" });
+    const blob = new Blob(
+      [JSON.stringify({ version: 1, exported_at: new Date().toISOString(), files: hist.map((x) => ({ ...x, thumb: undefined })), albums }, null, 2)],
+      { type: "application/json" },
+    );
     const a = h("a", { href: URL.createObjectURL(blob), download: "sugi-history.json" });
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
@@ -1165,8 +1296,10 @@ function initMine() {
 function localizeTimes(root: ParentNode = document) {
   for (const t of $$<HTMLTimeElement>("time[datetime]", root)) {
     const d = new Date(t.dateTime);
-    if (isNaN(d.getTime())) continue;
-    t.textContent = t.hasAttribute("data-date-only") ? d.toLocaleDateString(LOCALE) : d.toLocaleString(LOCALE, { year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    if (Number.isNaN(d.getTime())) continue;
+    t.textContent = t.hasAttribute("data-date-only")
+      ? d.toLocaleDateString(LOCALE)
+      : d.toLocaleString(LOCALE, { year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
   }
   for (const b of $$("[data-expires]", root)) b.textContent = expInfo(Number(b.dataset.expires)).label;
 }
@@ -1281,7 +1414,9 @@ document.addEventListener("click", (e) => {
     if (!box) return;
     const lines = $$("[data-l]", box);
     const cmds = lines.filter((l) => l.hasAttribute("data-c"));
-    const text = (cmds.length ? cmds : lines).map((l) => " ".repeat(Number(l.getAttribute("data-i") || 0)) + ($("[data-t]", l)?.textContent ?? l.textContent)).join("\n");
+    const text = (cmds.length ? cmds : lines)
+      .map((l) => " ".repeat(Number(l.getAttribute("data-i") || 0)) + ($("[data-t]", l)?.textContent ?? l.textContent))
+      .join("\n");
     void copy(text);
   }
 });
@@ -1313,7 +1448,13 @@ function showDragOverlay(on: boolean) {
   let el = $("#dragover");
   if (on && !el) {
     const exp = { perm: T.expPerm, "1h": T.exp1h, "12h": T.exp12h, "72h": T.exp72h }[prefs.expiry];
-    el = h("div", { class: "dragover", id: "dragover" }, h("div", { class: "k", text: "(ﾉ>ω<)ﾉ" }), h("div", { class: "t", text: T.dropTitle }), h("div", { class: "s", text: fmt(T.dropKeep, { label: exp }) }));
+    el = h(
+      "div",
+      { class: "dragover", id: "dragover" },
+      h("div", { class: "k", text: "(ﾉ>ω<)ﾉ" }),
+      h("div", { class: "t", text: T.dropTitle }),
+      h("div", { class: "s", text: fmt(T.dropKeep, { label: exp }) }),
+    );
     $("#overlays")!.append(el);
   } else if (!on && el) el.remove();
   touch();

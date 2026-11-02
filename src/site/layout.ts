@@ -1,6 +1,6 @@
 import { ASSETS } from "../generated/assets";
 import { MAX_FILE_BYTES, RATE_LIMIT, RATE_LIMIT_PERIOD_SECONDS, SINGLE_REQUEST_MAX_BYTES } from "../limits";
-import { esc, jsonForScript, Lang } from "./i18n";
+import { esc, jsonForScript, type Lang } from "./i18n";
 import { clientStrings } from "./strings";
 import { HEART, LOGO, MOON, SUN } from "./svg";
 import { ICONS, OG_IMAGES, OG_IMAGES_GENERIC } from "./og-images";
@@ -52,7 +52,12 @@ export function tr(ctx: Ctx): (zh: string, en: string) => string {
 
 export function flagsOf(env: Env): Flags {
   const accounts = env.FEATURE_ACCOUNTS === "1";
-  const account = accounts ? (env.ACCOUNT_FEATURES ?? "").split(",").map((s) => s.trim()).filter(Boolean) : [];
+  const account = accounts
+    ? (env.ACCOUNT_FEATURES ?? "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : [];
   return { accounts, account, cli: env.FEATURE_CLI === "1", donate: env.FEATURE_DONATE === "1" };
 }
 
@@ -76,7 +81,7 @@ export function pageCsp(env: Env, nonce: string): string {
 // Applied before first paint so the night theme never flashes: an explicit choice wins, otherwise night between 22:00 and 06:00 local time, as in the design.
 const THEME_BOOT = `try{var p=JSON.parse(localStorage.getItem("sugi.prefs.v1")||"null"),h=new Date().getHours(),n=p&&typeof p.night==="boolean"?p.night:(h>=22||h<6);if(n)document.documentElement.classList.add("night")}catch(e){}`;
 
-function navLink(ctx: Ctx, href: string, ids: PageId[], current: PageId, label: string, extraClass = ""): string {
+function navLink(_ctx: Ctx, href: string, ids: PageId[], current: PageId, label: string, extraClass = ""): string {
   const on = ids.includes(current) ? " on" : "";
   return `<a class="pill${extraClass}${on}" href="${href}" data-nav data-for="${ids.join(" ")}">${label}</a>`;
 }
@@ -144,11 +149,22 @@ export function mailLink(addr: string | null): string | null {
 }
 
 export function siteDescription(ctx: Ctx): string {
-  return tr(ctx)("匿名、免费、不用注册的图床：拖进来就能拿到图片和短视频的直链，可以永久保存，也可以 1 小时到 3 天后自动消失。", "Anonymous, free image host with no sign-up: drop in a picture or short video and get a direct link, kept forever or deleted after 1 hour to 3 days.");
+  return tr(ctx)(
+    "匿名、免费、不用注册的图床：拖进来就能拿到图片和短视频的直链，可以永久保存，也可以 1 小时到 3 天后自动消失。",
+    "Anonymous, free image host with no sign-up: drop in a picture or short video and get a direct link, kept forever or deleted after 1 hour to 3 days.",
+  );
 }
 
 /** Pages that search engines may index, with the OG image family they use. */
-export const INDEXABLE: Partial<Record<PageId, string>> = { home: "home", dev: "dev", faq: "faq", terms: "terms", privacy: "privacy", login: "home", donate: "home" };
+export const INDEXABLE: Partial<Record<PageId, string>> = {
+  home: "home",
+  dev: "dev",
+  faq: "faq",
+  terms: "terms",
+  privacy: "privacy",
+  login: "home",
+  donate: "home",
+};
 
 function langUrl(ctx: Ctx, lang: Lang | null): string {
   const base = `${ctx.env.MAIN_ORIGIN}${ctx.path}`;
@@ -170,14 +186,26 @@ export function seoHead(ctx: Ctx, page: Page): string {
     `<title>${esc(page.title)}</title>`,
     `<meta name="description" content="${esc(description)}">`,
     page.noindex ? `<meta name="robots" content="noindex, nofollow">` : `<link rel="canonical" href="${esc(canonical)}">`,
-    ...(page.noindex ? [] : [`<link rel="alternate" hreflang="zh" href="${esc(langUrl(ctx, "zh"))}">`, `<link rel="alternate" hreflang="en" href="${esc(langUrl(ctx, "en"))}">`, `<link rel="alternate" hreflang="x-default" href="${esc(langUrl(ctx, null))}">`]),
+    ...(page.noindex
+      ? []
+      : [
+          `<link rel="alternate" hreflang="zh" href="${esc(langUrl(ctx, "zh"))}">`,
+          `<link rel="alternate" hreflang="en" href="${esc(langUrl(ctx, "en"))}">`,
+          `<link rel="alternate" hreflang="x-default" href="${esc(langUrl(ctx, null))}">`,
+        ]),
     `<meta property="og:site_name" content="${esc(b.siteName)}">`,
     `<meta property="og:type" content="website">`,
     `<meta property="og:title" content="${esc(ogTitle)}">`,
     `<meta property="og:description" content="${esc(description)}">`,
     `<meta property="og:url" content="${esc(canonical)}">`,
     `<meta property="og:image" content="${esc(image)}">`,
-    ...(custom ? [] : [`<meta property="og:image:width" content="1200">`, `<meta property="og:image:height" content="630">`, `<meta property="og:image:alt" content="${esc(t("仓仓趴在纸箱里", "The sugi hamster peeking out of its box"))}">`]),
+    ...(custom
+      ? []
+      : [
+          `<meta property="og:image:width" content="1200">`,
+          `<meta property="og:image:height" content="630">`,
+          `<meta property="og:image:alt" content="${esc(t("仓仓趴在纸箱里", "The sugi hamster peeking out of its box"))}">`,
+        ]),
     `<meta property="og:locale" content="${ctx.lang === "zh" ? "zh_CN" : "en_US"}">`,
     `<meta property="og:locale:alternate" content="${ctx.lang === "zh" ? "en_US" : "zh_CN"}">`,
     `<meta name="twitter:card" content="summary_large_image">`,
@@ -190,7 +218,7 @@ export function seoHead(ctx: Ctx, page: Page): string {
 }
 
 export function documentHtml(ctx: Ctx, page: Page): string {
-  const t = tr(ctx);
+  const _t = tr(ctx);
   const nonce = esc(ctx.nonce);
   return `<!doctype html>
 <html lang="${ctx.lang === "zh" ? "zh-CN" : "en"}">

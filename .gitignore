@@ -7,3 +7,4 @@ public/static/build/
 src/generated/
 
 !.dev.vars.example
+dist/

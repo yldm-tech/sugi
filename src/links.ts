@@ -6,10 +6,11 @@
 //
 // The link is a signed token carrying a reserved file id, so the Worker keeps no state: the R2 write is conditional on the key not existing yet, which makes each link single-use.
 import { constantTimeEqual, hmacSha256Hex } from "./crypto";
-import { parseOptions, readMultipartUpload, sanitizeName, storeBytes, storeStream, tooLargeSingle, UploadOptions } from "./files";
-import { HttpError, jsonResponse, Uploader } from "./http";
+import { parseOptions, sanitizeName, type UploadOptions } from "./files";
+import { readMultipartUpload, storeBytes, storeStream, tooLargeSingle } from "./upload";
+import { HttpError, jsonResponse, type Uploader } from "./http";
 import { base64url, cuteId, randomId } from "./ids";
-import { ExpiryId, SINGLE_REQUEST_MAX_BYTES, UPLOAD_LINK_TTL_SECONDS } from "./limits";
+import { type ExpiryId, SINGLE_REQUEST_MAX_BYTES, UPLOAD_LINK_TTL_SECONDS } from "./limits";
 
 interface LinkClaims {
   id: string;
@@ -46,7 +47,12 @@ async function decode(env: Env, token: string): Promise<LinkClaims> {
 }
 
 /** Makes `count` links for an uploader that has already passed the gate and paid the rate limit. */
-export async function createUploadLinks(env: Env, uploader: Uploader, opts: UploadOptions, count: number): Promise<{ links: UploadLink[]; expires_at: string }> {
+export async function createUploadLinks(
+  env: Env,
+  uploader: Uploader,
+  opts: UploadOptions,
+  count: number,
+): Promise<{ links: UploadLink[]; expires_at: string }> {
   const exp = Date.now() + UPLOAD_LINK_TTL_SECONDS * 1000;
   const ids = new Set<string>();
   while (ids.size < count) ids.add(opts.style === "cute" ? cuteId() : randomId());

@@ -101,7 +101,14 @@ describe("email login", () => {
     expect(await (await call(new Request(`${MAIN}/api/me`, { headers: { cookie } }), ON)).json()).toMatchObject({ email: "cat@example.com" });
 
     // Uploads made while logged in belong to the account.
-    const up = await call(new Request(`${MAIN}/api/upload`, { method: "PUT", body: png(), headers: { cookie, ...ORIGIN, ...UPLOAD_AUTH, accept: "application/json", "cf-connecting-ip": freshIp() } }), ON);
+    const up = await call(
+      new Request(`${MAIN}/api/upload`, {
+        method: "PUT",
+        body: png(),
+        headers: { cookie, ...ORIGIN, ...UPLOAD_AUTH, accept: "application/json", "cf-connecting-ip": freshIp() },
+      }),
+      ON,
+    );
     expect(up.status).toBe(201);
     const { id } = await up.json<{ id: string }>();
     const me = await (await call(new Request(`${MAIN}/api/me`, { headers: { cookie } }), ON)).json<{ id: string }>();
@@ -116,7 +123,8 @@ describe("email login", () => {
   it("logging in again with the same address reaches the same account", async () => {
     const a = await logIn("same@example.com");
     const b = await logIn("SAME@example.com");
-    const idOf = async (c: string) => (await (await call(new Request(`${MAIN}/api/me`, { headers: { cookie: `sugi_session=${c}` } }), ON)).json<{ id: string }>()).id;
+    const idOf = async (c: string) =>
+      (await (await call(new Request(`${MAIN}/api/me`, { headers: { cookie: `sugi_session=${c}` } }), ON)).json<{ id: string }>()).id;
     expect(await idOf(a)).toBe(await idOf(b));
   });
 
@@ -129,7 +137,14 @@ describe("email login", () => {
     const ip = freshIp();
     for (let i = 0; i < 5; i++) await askForLink(`n${i}@example.com`, ip);
     expect((await askForLink("n9@example.com", ip)).headers.get("location")).toBe("https://sugi.moe/login?error=rate");
-    const json = await call(new Request(`${MAIN}/auth/email`, { method: "POST", body: JSON.stringify({ email: "busy@example.com" }), headers: { ...ORIGIN, "content-type": "application/json", "cf-connecting-ip": freshIp() } }), ON);
+    const json = await call(
+      new Request(`${MAIN}/auth/email`, {
+        method: "POST",
+        body: JSON.stringify({ email: "busy@example.com" }),
+        headers: { ...ORIGIN, "content-type": "application/json", "cf-connecting-ip": freshIp() },
+      }),
+      ON,
+    );
     expect(json.status).toBe(429);
   });
 

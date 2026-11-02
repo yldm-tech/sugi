@@ -1,8 +1,8 @@
 // Albums ("打包链接"): an ordered set of uploaded files behind https://sugi.moe/a/<id>. Metadata lives in D1; the files themselves stay where they are, and deleting an album never deletes its files.
 import { constantTimeEqual, sha256Hex } from "./crypto";
-import { describe, fileKey, publicInfo, StoredFile } from "./files";
+import { describe, fileKey, publicInfo, type StoredFile } from "./files";
 import { ownAlbum, ownsAlbum, resolvePrincipal } from "./auth/core";
-import { authorizeUpload, HttpError, isAdmin, jsonResponse, wantsJson, textResponse, Uploader } from "./http";
+import { authorizeUpload, HttpError, isAdmin, jsonResponse, wantsJson, textResponse, type Uploader } from "./http";
 import { albumDeleteToken, isFileId, randomId } from "./ids";
 import { ALBUM_MAX_FILES, ALBUM_TITLE_MAX } from "./limits";
 import { assertAlbumNotRemoved, isTombstone, takedown } from "./moderation";
@@ -20,7 +20,15 @@ export function albumUrl(env: Env, id: string): string {
 
 function cleanTitle(raw: unknown): string {
   if (typeof raw !== "string") return "";
-  return Array.from(raw.replace(/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/g, "").replace(/\s+/g, " ").trim()).slice(0, ALBUM_TITLE_MAX).join("");
+  return Array.from(
+    raw
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping control characters is the point
+      .replace(/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/g, "")
+      .replace(/\s+/g, " ")
+      .trim(),
+  )
+    .slice(0, ALBUM_TITLE_MAX)
+    .join("");
 }
 
 async function readInput(request: Request): Promise<{ files: string[]; title: unknown }> {
@@ -62,7 +70,18 @@ export interface CreatedAlbum {
 /** Validates the file ids and stores the album. Shared by the HTTP API and the MCP tool. */
 export async function createAlbum(env: Env, uploader: Uploader, rawIds: string[], rawTitle: unknown): Promise<CreatedAlbum> {
   // Accept bare ids as well as full links such as https://files.sugi.moe/<id>.png.
-  const files = [...new Set(rawIds.map((v) => v.trim().replace(/^.*\//, "").replace(/\.[a-z0-9]+$/i, "")).filter(Boolean))];
+  const files = [
+    ...new Set(
+      rawIds
+        .map((v) =>
+          v
+            .trim()
+            .replace(/^.*\//, "")
+            .replace(/\.[a-z0-9]+$/i, ""),
+        )
+        .filter(Boolean),
+    ),
+  ];
   const title = cleanTitle(rawTitle);
   if (files.length === 0) throw new HttpError(400, 'give at least one file id in "files"');
   if (files.length > ALBUM_MAX_FILES) throw new HttpError(400, `an album holds at most ${ALBUM_MAX_FILES} files`);
@@ -76,10 +95,21 @@ export async function createAlbum(env: Env, uploader: Uploader, rawIds: string[]
   }
   let id = randomId();
   // Ids of taken-down albums are never handed out again.
-  for (let i = 0; i < 5 && (await env.DB.prepare("SELECT 1 FROM albums WHERE id = ? UNION SELECT 1 FROM tombstones WHERE target = ?").bind(id, `album:${id}`).first()); i++) id = randomId();
+  for (
+    let i = 0;
+    i < 5 && (await env.DB.prepare("SELECT 1 FROM albums WHERE id = ? UNION SELECT 1 FROM tombstones WHERE target = ?").bind(id, `album:${id}`).first());
+    i++
+  )
+    id = randomId();
   const token = albumDeleteToken();
   await env.DB.batch([
-    env.DB.prepare("INSERT INTO albums (id, title, created_at, delete_hash, source) VALUES (?, ?, ?, ?, ?)").bind(id, title, Date.now(), await sha256Hex(new TextEncoder().encode(token)), uploader.source),
+    env.DB.prepare("INSERT INTO albums (id, title, created_at, delete_hash, source) VALUES (?, ?, ?, ?, ?)").bind(
+      id,
+      title,
+      Date.now(),
+      await sha256Hex(new TextEncoder().encode(token)),
+      uploader.source,
+    ),
     ...keys.map((k, i) => env.DB.prepare("INSERT INTO album_files (album_id, position, file_key) VALUES (?, ?, ?)").bind(id, i, k)),
   ]);
   await ownAlbum(env, uploader.userId, id);
@@ -116,7 +146,13 @@ export async function handleAlbumGet(env: Env, id: string): Promise<Response> {
     await assertAlbumNotRemoved(env, id);
     throw new HttpError(404, "not found");
   }
-  return jsonResponse({ id: album.id, url: albumUrl(env, album.id), title: album.title, created_at: new Date(album.created_at).toISOString(), files: album.files.map((f) => publicInfo(env, f)) });
+  return jsonResponse({
+    id: album.id,
+    url: albumUrl(env, album.id),
+    title: album.title,
+    created_at: new Date(album.created_at).toISOString(),
+    files: album.files.map((f) => publicInfo(env, f)),
+  });
 }
 
 // DELETE /api/albums/:id with `Sugi-Token: <delete_token>` (or the admin bearer token, which makes it a takedown). Files are left alone.

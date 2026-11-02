@@ -15,13 +15,15 @@
 
 - **缓存出图和 CSAM Scanning Tool**：`CACHE_ORIGIN=https://r2.sugi.moe`，Worker 经 zone 缓存取文件，所以 Cloudflare 的 CSAM Scanning Tool 能看到每个文件（Dashboard → sugi.moe → Caching → Configuration → CSAM Scanning Tool，通知发到维护者邮箱）。删除时用 `CF_PURGE_TOKEN`（只有 sugi.moe 的 Zone → Cache Purge 权限）清缓存。
 - **R2 生命周期兜底**：规则 `expire-tmp`，`t/` 前缀 4 天后删除。
-- **Email Routing**：`hi@sugi.moe`、`admin@sugi.moe`、`abuse@sugi.moe` 转发给维护者。
+- **Email Routing**：`hi@sugi.moe`、`admin@sugi.moe`、`abuse@sugi.moe` 转发给维护者。另有一条规则（`6bfbafccef50455aac3eead4ed146e22`）只把测试地址 `E2E_INBOX`（`~/.config/sugi/ops.env`，同时在 `secrets.env` 里，部署时带给 Worker）交给 Worker；catch-all 关闭。
+- **账号**：`FEATURE_ACCOUNTS=1`，`ACCOUNT_FEATURES=email`。登录邮件经 Resend（东京区域）从 `login@sugi.moe` 发出，免费额度每天 100 封，和真实用户共用，所以 e2e 每次只发一封。邮件登录的 e2e：向 `E2E_INBOX` 请求登录链接，从 `/admin/e2e-inbox`（或 MCP 的 `read_test_inbox`）取出链接，确认登录、上传归属和退出。
+- **管理员令牌**：带 `ADMIN_TOKEN` 的 MCP 请求会多出管理工具（处理举报的流程见下文），并且和 `TRUSTED_TOKEN` 一样不受限流；WAF 跳过规则里两个令牌都有。
 - **WAF 速率规则**（zone `sugi.moe`，Free 计划只能按路径匹配、周期和封禁都是 10 秒）：`http.request.uri.path in {"/upload" "/api/upload" "/api/uploads"}`，每个 IP 每 10 秒最多 5 次，超出封 10 秒（429，`error code: 1015`）。分片的后续片（`/api/uploads/<n>`）和 complete 不计数。可信令牌的豁免是一条自定义规则：同样的路径并且 `Authorization` 正好等于 `Bearer <TRUSTED_TOKEN>` 时 Skip `http_ratelimit` 阶段。WAF 无法验证令牌，只能按字面值匹配，**所以 `TRUSTED_TOKEN` 的值也写在这条 zone 规则里，轮换时必须两处一起改**。2026-11-02 两条规则从只匹配 `/upload` 扩大到上面三个路径，线上验证：普通令牌第 6 次起被拦，可信令牌不受影响。
 
-  | 规则 | 阶段 | ruleset ID | rule ID |
-  | --- | --- | --- | --- |
+  | 规则                                                     | 阶段                           | ruleset ID                         | rule ID                            |
+  | -------------------------------------------------------- | ------------------------------ | ---------------------------------- | ---------------------------------- |
   | sugi trusted uploads skip rate limit（自定义规则，Skip） | `http_request_firewall_custom` | `27e91a99f7b8408fabc6039282a8087e` | `d16fcfbd3bc34e69a2bcbc3a5549a5fc` |
-  | sugi upload rate limit per IP（速率规则，Block） | `http_ratelimit` | `ad7a86bc252e4cd08ddc0c1ca0e7678d` | `268641d130ef4e5d96184b7f1f57aa4d` |
+  | sugi upload rate limit per IP（速率规则，Block）         | `http_ratelimit`               | `ad7a86bc252e4cd08ddc0c1ca0e7678d` | `268641d130ef4e5d96184b7f1f57aa4d` |
 
 
 ## Secrets

@@ -2,7 +2,7 @@ import { env } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { sweepExpired } from "../src/files";
 import worker from "../src/index";
-import { ADMIN, avif, call, FILES, freshIp, hmacHex, jpeg, MAIN, mp4, png, put, TMP, TRUSTED, upload, UPLOAD_AUTH, webm } from "./helpers";
+import { ADMIN, avif, call, FILES, freshIp, hmacHex, jpeg, MAIN, mp4, png, put, TMP, TRUSTED, upload, UPLOAD_AUTH, webm, expectRateLimited } from "./helpers";
 
 const MiB = 1024 * 1024;
 const RANDOM_URL = /^https:\/\/files\.sugi\.moe\/[a-z0-9]{8}\.png$/;
@@ -37,7 +37,13 @@ describe("PUT /api/upload", () => {
 
   it("returns JSON with a delete token whose hash, not the token, is stored", async () => {
     const r = await upload(png(), "?name=%E7%8C%AB.png");
-    expect(r).toMatchObject({ url: expect.stringMatching(RANDOM_URL), page: `https://sugi.moe/f/${r.id}`, type: "image/png", name: "猫.png", expires_at: null });
+    expect(r).toMatchObject({
+      url: expect.stringMatching(RANDOM_URL),
+      page: `https://sugi.moe/f/${r.id}`,
+      type: "image/png",
+      name: "猫.png",
+      expires_at: null,
+    });
     expect(r.delete_token).toMatch(/^d_[A-Za-z0-9_-]{32}$/);
     const obj = await env.BUCKET.head(`f/${r.id}`);
     expect(obj!.customMetadata!.del).toBe(await sha256Hex(r.delete_token));
@@ -93,7 +99,12 @@ describe("PUT /api/upload", () => {
         c.close();
       },
     });
-    const req = new Request(`${MAIN}/api/upload`, { method: "PUT", body: stream, headers: { "cf-connecting-ip": freshIp(), ...TRUSTED, "x-test-raw": "1" }, duplex: "half" } as RequestInit);
+    const req = new Request(`${MAIN}/api/upload`, {
+      method: "PUT",
+      body: stream,
+      headers: { "cf-connecting-ip": freshIp(), ...TRUSTED, "x-test-raw": "1" },
+      duplex: "half",
+    } as RequestInit);
     expect((await call(req)).status).toBe(411);
   });
 
@@ -104,7 +115,12 @@ describe("PUT /api/upload", () => {
         c.close();
       },
     });
-    const req = new Request(`${MAIN}/api/upload`, { method: "PUT", body, headers: { "cf-connecting-ip": freshIp(), ...TRUSTED, "content-length": String(91 * MiB), "x-test-raw": "1" }, duplex: "half" } as RequestInit);
+    const req = new Request(`${MAIN}/api/upload`, {
+      method: "PUT",
+      body,
+      headers: { "cf-connecting-ip": freshIp(), ...TRUSTED, "content-length": String(91 * MiB), "x-test-raw": "1" },
+      duplex: "half",
+    } as RequestInit);
     const res = await call(req);
     expect(res.status).toBe(413);
     expect(await res.text()).toContain("chunked");
@@ -148,7 +164,11 @@ describe("POST /api/upload (multipart)", () => {
     expect((await call(form({ file: new Blob([png()]), url: "https://example.com/a.png" }))).status).toBe(400);
     expect((await call(form({ file: new Blob(["<svg/>"]) }))).status).toBe(415);
     expect((await call(form({ file: new Blob([png()]), expire: "forever-and-ever" }))).status).toBe(400);
-    const notMultipart = new Request(`${MAIN}/api/upload`, { method: "POST", body: png(), headers: { "cf-connecting-ip": freshIp(), ...TRUSTED, "content-type": "image/png" } });
+    const notMultipart = new Request(`${MAIN}/api/upload`, {
+      method: "POST",
+      body: png(),
+      headers: { "cf-connecting-ip": freshIp(), ...TRUSTED, "content-type": "image/png" },
+    });
     expect((await call(notMultipart)).status).toBe(415);
   });
 });
@@ -166,8 +186,8 @@ describe("upload gate, trusted token and rate limit on /api routes", () => {
   it("rate limits normal uploads per source but never the trusted token", async () => {
     const ip = freshIp();
     const normal: number[] = [];
-    for (let i = 0; i < 11; i++) normal.push((await call(put("/api/upload", png(), { ...UPLOAD_AUTH, "cf-connecting-ip": ip }))).status);
-    expect(normal).toEqual([...Array(10).fill(201), 429]);
+    for (let i = 0; i < 21; i++) normal.push((await call(put("/api/upload", png(), { ...UPLOAD_AUTH, "cf-connecting-ip": ip }))).status);
+    expectRateLimited(normal);
     const trusted: number[] = [];
     for (let i = 0; i < 12; i++) trusted.push((await call(put("/api/upload", png(), { ...TRUSTED, "cf-connecting-ip": ip }))).status);
     expect(trusted.every((s) => s === 201)).toBe(true);
@@ -251,7 +271,10 @@ describe("serving files", () => {
 describe("temporary files expire", () => {
   async function backdate(id: string) {
     const obj = await env.BUCKET.get(`t/${id}`);
-    await env.BUCKET.put(`t/${id}`, await obj!.arrayBuffer(), { httpMetadata: obj!.httpMetadata, customMetadata: { ...obj!.customMetadata, expires: String(Date.now() - 1000) } });
+    await env.BUCKET.put(`t/${id}`, await obj!.arrayBuffer(), {
+      httpMetadata: obj!.httpMetadata,
+      customMetadata: { ...obj!.customMetadata, expires: String(Date.now() - 1000) },
+    });
   }
 
   it("stop being served the moment they expire and are swept by the cron", async () => {
@@ -275,7 +298,11 @@ describe("temporary files expire", () => {
     const r = await upload(png(), "?expire=1h");
     await backdate(r.id);
     const waits: Promise<unknown>[] = [];
-    await worker.scheduled!({ cron: "*/10 * * * *", scheduledTime: Date.now(), noRetry() {} } as ScheduledController, env, { waitUntil: (p: Promise<unknown>) => waits.push(p), passThroughOnException() {}, props: {} } as unknown as ExecutionContext);
+    await worker.scheduled!({ cron: "*/10 * * * *", scheduledTime: Date.now(), noRetry() {} } as ScheduledController, env, {
+      waitUntil: (p: Promise<unknown>) => waits.push(p),
+      passThroughOnException() {},
+      props: {},
+    } as unknown as ExecutionContext);
     await Promise.all(waits);
     expect(await env.BUCKET.head(`t/${r.id}`)).toBeNull();
   });
@@ -329,7 +356,11 @@ describe("GET/DELETE /api/files/:id", () => {
       calls.push(`${String(input)} ${init?.body ?? ""}`);
       return Response.json({ success: true });
     });
-    const res = await call(new Request(`${MAIN}/api/files/${r.id}`, { method: "DELETE", headers: { "sugi-token": r.delete_token } }), { CACHE_ORIGIN: "https://r2.sugi.test", ZONE_ID: "z", CF_PURGE_TOKEN: "p" });
+    const res = await call(new Request(`${MAIN}/api/files/${r.id}`, { method: "DELETE", headers: { "sugi-token": r.delete_token } }), {
+      CACHE_ORIGIN: "https://r2.sugi.test",
+      ZONE_ID: "z",
+      CF_PURGE_TOKEN: "p",
+    });
     expect(res.status).toBe(200);
     expect(calls).toEqual([`https://api.cloudflare.com/client/v4/zones/z/purge_cache {"files":["https://r2.sugi.test/f/${r.id}"]}`]);
   });
@@ -378,7 +409,11 @@ describe("URL import", () => {
   });
 
   it("follows http(s) redirects by hand and refuses other schemes and our own hosts", async () => {
-    const seen = stubRemote((url) => (url.endsWith("/start") ? new Response(null, { status: 302, headers: { location: "/final.png" } }) : new Response(png(), { headers: { "content-length": "128" } })));
+    const seen = stubRemote((url) =>
+      url.endsWith("/start")
+        ? new Response(null, { status: 302, headers: { location: "/final.png" } })
+        : new Response(png(), { headers: { "content-length": "128" } }),
+    );
     expect((await call(importReq("https://example.com/start"))).status).toBe(201);
     expect(seen).toEqual(["https://example.com/start", "https://example.com/final.png"]);
     stubRemote(() => new Response(null, { status: 301, headers: { location: "file:///etc/passwd" } }));
@@ -420,7 +455,9 @@ describe("chunked uploads", () => {
   const PART = 5 * MiB;
 
   async function start(first: Uint8Array, size: number, query = ""): Promise<Response> {
-    return call(new Request(`${MAIN}/api/uploads?size=${size}${query}`, { method: "POST", body: first, headers: { "cf-connecting-ip": freshIp(), ...TRUSTED } }));
+    return call(
+      new Request(`${MAIN}/api/uploads?size=${size}${query}`, { method: "POST", body: first, headers: { "cf-connecting-ip": freshIp(), ...TRUSTED } }),
+    );
   }
 
   it("assembles parts into one file that is served intact", async () => {
@@ -439,13 +476,20 @@ describe("chunked uploads", () => {
       expect(r.status).toBe(200);
       etags.push((await r.json<{ etag: string }>()).etag);
     }
-    const done = await call(new Request(`${MAIN}/api/uploads/complete`, { method: "POST", body: JSON.stringify({ etags }), headers: { "sugi-upload": s.upload, accept: "application/json", "content-type": "application/json" } }));
+    const done = await call(
+      new Request(`${MAIN}/api/uploads/complete`, {
+        method: "POST",
+        body: JSON.stringify({ etags }),
+        headers: { "sugi-upload": s.upload, accept: "application/json", "content-type": "application/json" },
+      }),
+    );
     expect(done.status).toBe(201);
     const r = await done.json<{ url: string; size: number; type: string; name: string; delete_token: string; expires_at: string }>();
     expect(r).toMatchObject({ size: total, type: "video/mp4", name: "clip.mp4" });
     expect(r.url).toBe(`https://tmp.sugi.moe/${s.id}.mp4`);
     const got = await call(new Request(r.url));
-    const digest = async (b: ArrayBuffer | Uint8Array) => Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", b)), (x) => x.toString(16).padStart(2, "0")).join("");
+    const digest = async (b: ArrayBuffer | Uint8Array) =>
+      Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", b)), (x) => x.toString(16).padStart(2, "0")).join("");
     const back = await got.arrayBuffer();
     expect(back.byteLength).toBe(total);
     // Compare digests: a deep equality diff of 10 MB arrays would exhaust the test runner's memory.
@@ -465,13 +509,23 @@ describe("chunked uploads", () => {
   it("checks the session, part numbers, part lengths and etags", async () => {
     const res = await start(png(PART), 2 * PART + 10);
     const s = await res.json<{ upload: string; etag: string }>();
-    const partReq = (n: number, body: Uint8Array, session = s.upload) => call(new Request(`${MAIN}/api/uploads/${n}`, { method: "PUT", body, headers: { "sugi-upload": session } }));
-    expect((await partReq(2, new Uint8Array(10), s.upload.replace(/.$/, (c) => (c === "a" ? "b" : "a")))).status).toBe(401);
+    const partReq = (n: number, body: Uint8Array, session = s.upload) =>
+      call(new Request(`${MAIN}/api/uploads/${n}`, { method: "PUT", body, headers: { "sugi-upload": session } }));
+    expect(
+      (
+        await partReq(
+          2,
+          new Uint8Array(10),
+          s.upload.replace(/.$/, (c) => (c === "a" ? "b" : "a")),
+        )
+      ).status,
+    ).toBe(401);
     expect((await partReq(2, new Uint8Array(10), "garbage")).status).toBe(401);
     expect((await partReq(1, new Uint8Array(PART))).status).toBe(400);
     expect((await partReq(4, new Uint8Array(10))).status).toBe(400);
     expect((await partReq(3, new Uint8Array(11))).status).toBe(400);
-    const complete = (etags: unknown) => call(new Request(`${MAIN}/api/uploads/complete`, { method: "POST", body: JSON.stringify({ etags }), headers: { "sugi-upload": s.upload } }));
+    const complete = (etags: unknown) =>
+      call(new Request(`${MAIN}/api/uploads/complete`, { method: "POST", body: JSON.stringify({ etags }), headers: { "sugi-upload": s.upload } }));
     expect((await complete([s.etag])).status).toBe(400);
     const abort = await call(new Request(`${MAIN}/api/uploads`, { method: "DELETE", headers: { "sugi-upload": s.upload } }));
     expect(abort.status).toBe(200);
@@ -480,7 +534,13 @@ describe("chunked uploads", () => {
 
 describe("albums", () => {
   async function make(files: string[], title = "", headers: Record<string, string> = {}): Promise<Response> {
-    return call(new Request(`${MAIN}/api/albums`, { method: "POST", body: JSON.stringify({ files, title }), headers: { "cf-connecting-ip": freshIp(), ...TRUSTED, "content-type": "application/json", accept: "application/json", ...headers } }));
+    return call(
+      new Request(`${MAIN}/api/albums`, {
+        method: "POST",
+        body: JSON.stringify({ files, title }),
+        headers: { "cf-connecting-ip": freshIp(), ...TRUSTED, "content-type": "application/json", accept: "application/json", ...headers },
+      }),
+    );
   }
 
   it("creates, lists and deletes an album without touching its files", async () => {
@@ -525,12 +585,18 @@ describe("albums", () => {
     expect((await make(["not an id!"])).status).toBe(400);
     expect((await make(Array.from({ length: 101 }, (_, i) => `abcdef${String(i).padStart(2, "0")}`))).status).toBe(400);
     const a = await upload(png());
-    const anon = await call(new Request(`${MAIN}/api/albums`, { method: "POST", body: JSON.stringify({ files: [a.id] }), headers: { "cf-connecting-ip": freshIp(), "content-type": "application/json" } }));
+    const anon = await call(
+      new Request(`${MAIN}/api/albums`, {
+        method: "POST",
+        body: JSON.stringify({ files: [a.id] }),
+        headers: { "cf-connecting-ip": freshIp(), "content-type": "application/json" },
+      }),
+    );
     expect(anon.status).toBe(401);
     const ip = freshIp();
     const statuses: number[] = [];
-    for (let i = 0; i < 11; i++) statuses.push((await make([a.id], "", { ...UPLOAD_AUTH, "cf-connecting-ip": ip })).status);
-    expect(statuses).toEqual([...Array(10).fill(201), 429]);
+    for (let i = 0; i < 21; i++) statuses.push((await make([a.id], "", { ...UPLOAD_AUTH, "cf-connecting-ip": ip })).status);
+    expectRateLimited(statuses);
     // Uploads from the same source are counted separately.
     expect((await call(put("/api/upload", png(), { ...UPLOAD_AUTH, "cf-connecting-ip": ip }))).status).toBe(201);
   });
@@ -541,7 +607,13 @@ describe("albums", () => {
     const theirs = await upload(png());
     const al = await (await make([mine.id], "x", { "cf-connecting-ip": ip })).json<{ id: string }>();
     const source = await hmacHex("test-ip-hash-secret", ip);
-    const res = await call(new Request(`${MAIN}/admin/purge-by-source`, { method: "POST", body: JSON.stringify({ source }), headers: { ...ADMIN, "content-type": "application/json" } }));
+    const res = await call(
+      new Request(`${MAIN}/admin/purge-by-source`, {
+        method: "POST",
+        body: JSON.stringify({ source }),
+        headers: { ...ADMIN, "content-type": "application/json" },
+      }),
+    );
     expect(res.status).toBe(200);
     const body = await res.json<{ deleted: string[]; albums: string[] }>();
     expect(body.deleted).toContain(`f/${mine.id}`);

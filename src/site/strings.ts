@@ -1,4 +1,4 @@
-import { Lang } from "./i18n";
+import type { Lang } from "./i18n";
 
 // Strings used by the browser script, sent to the page in its config blob. Placeholders look like {n}.
 const zh = {
@@ -39,7 +39,7 @@ const zh = {
   dzBusy: "努力搬运中…",
   errTooBig: "でかすぎ！最多 200MB",
   errType: "这种文件仓仓不能收哦，只收图片和短视频",
-  errGated: "暂未开放匿名上传",
+  errGated: "这个网站只接受带令牌的上传",
   errRate: "传得太快啦，歇 {s} 秒再来",
   errNetwork: "网络断了，没传完",
   errFailed: "没传成功（{status}）：{msg}",
@@ -115,7 +115,7 @@ const en: typeof zh = {
   dzBusy: "Hauling it in…",
   errTooBig: "Too big! 200 MB at most",
   errType: "Can't take this one: images and short videos only",
-  errGated: "Anonymous uploads are not open yet",
+  errGated: "This site only accepts uploads with a token",
   errRate: "Too fast! Wait {s} seconds and try again",
   errNetwork: "The connection dropped before it finished",
   errFailed: "Upload failed ({status}): {msg}",

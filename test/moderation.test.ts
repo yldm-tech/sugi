@@ -15,7 +15,13 @@ async function rpc(method: string, params: unknown, headers: Record<string, stri
     new Request(`${MAIN}/mcp`, {
       method: "POST",
       body: JSON.stringify({ jsonrpc: "2.0", id: ++rpcId, method, params }),
-      headers: { "content-type": "application/json", accept: "application/json, text/event-stream", "mcp-protocol-version": "2025-06-18", "cf-connecting-ip": freshIp(), ...headers },
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+        "mcp-protocol-version": "2025-06-18",
+        "cf-connecting-ip": freshIp(),
+        ...headers,
+      },
     }),
     CLI_ON,
   );
@@ -30,14 +36,27 @@ async function admin(name: string, args: Record<string, unknown>): Promise<any> 
   return JSON.parse(text);
 }
 
-const sha256 = async (bytes: Uint8Array) => Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)), (b) => b.toString(16).padStart(2, "0")).join("");
-const put = (body: Uint8Array, headers: Record<string, string> = {}, query = "") => call(new Request(`${MAIN}/api/upload${query}`, { method: "PUT", body, headers: { "cf-connecting-ip": freshIp(), accept: "application/json", ...headers } }));
+const sha256 = async (bytes: Uint8Array) =>
+  Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)), (b) => b.toString(16).padStart(2, "0")).join("");
+const put = (body: Uint8Array, headers: Record<string, string> = {}, query = "") =>
+  call(new Request(`${MAIN}/api/upload${query}`, { method: "PUT", body, headers: { "cf-connecting-ip": freshIp(), accept: "application/json", ...headers } }));
 const html = { accept: "text/html" };
 
 describe("admin MCP tools", () => {
   it("are listed only for the admin token, and refused for everyone else", async () => {
     const names = async (headers: Record<string, string>) => ((await rpc("tools/list", {}, headers)).tools as { name: string }[]).map((t) => t.name);
-    const adminTools = ["block_source", "inspect", "list_blocks", "list_by_source", "read_test_inbox", "takedown", "takedown_by_source", "takedown_log", "unblock_content", "unblock_source"];
+    const adminTools = [
+      "block_source",
+      "inspect",
+      "list_blocks",
+      "list_by_source",
+      "read_test_inbox",
+      "takedown",
+      "takedown_by_source",
+      "takedown_log",
+      "unblock_content",
+      "unblock_source",
+    ];
     for (const t of adminTools) expect(await names(ADMIN)).toContain(t);
     for (const headers of [{}, TRUSTED]) for (const t of adminTools) expect(await names(headers)).not.toContain(t);
     const refused = await rpc("tools/call", { name: "takedown", arguments: { target: "abcdefgh" } }, TRUSTED);
@@ -56,10 +75,27 @@ describe("admin MCP tools", () => {
     const hash = await sha256(bytes);
     const ip = freshIp();
     const up = await (await put(bytes, { ...TRUSTED, "cf-connecting-ip": ip })).json<{ id: string; url: string; page: string }>();
-    const album = await (await call(new Request(`${MAIN}/api/albums`, { method: "POST", body: JSON.stringify({ files: [up.id] }), headers: { "content-type": "application/json", accept: "application/json", "cf-connecting-ip": ip, ...TRUSTED } }))).json<{ id: string }>();
+    const album = await (
+      await call(
+        new Request(`${MAIN}/api/albums`, {
+          method: "POST",
+          body: JSON.stringify({ files: [up.id] }),
+          headers: { "content-type": "application/json", accept: "application/json", "cf-connecting-ip": ip, ...TRUSTED },
+        }),
+      )
+    ).json<{ id: string }>();
 
     const before = await admin("inspect", { target: up.url });
-    expect(before).toMatchObject({ kind: "file", id: up.id, status: "live", type: "image/png", size: 800, source: await hmacHex("test-ip-hash-secret", ip), albums: [album.id], takedown: null });
+    expect(before).toMatchObject({
+      kind: "file",
+      id: up.id,
+      status: "live",
+      type: "image/png",
+      size: 800,
+      source: await hmacHex("test-ip-hash-secret", ip),
+      albums: [album.id],
+      takedown: null,
+    });
 
     const done = await admin("takedown", { target: up.page, reason: "report #1", block_content: true });
     expect(done).toMatchObject({ target: `file:${up.id}`, removed: [`f/${up.id}`], blocked_hashes: [hash] });
@@ -81,18 +117,24 @@ describe("admin MCP tools", () => {
     expect((await put(bytes, TRUSTED)).status).toBe(451);
     const form = new FormData();
     form.append("file", new File([bytes], "again.png"));
-    expect((await call(new Request(`${MAIN}/api/upload`, { method: "POST", body: form, headers: { "cf-connecting-ip": freshIp(), ...TRUSTED } }))).status).toBe(451);
+    expect((await call(new Request(`${MAIN}/api/upload`, { method: "POST", body: form, headers: { "cf-connecting-ip": freshIp(), ...TRUSTED } }))).status).toBe(
+      451,
+    );
     vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(bytes, { headers: { "content-length": String(bytes.length) } }));
     const imported = new FormData();
     imported.append("url", "https://example.com/copy.png");
-    expect((await call(new Request(`${MAIN}/api/upload`, { method: "POST", body: imported, headers: { "cf-connecting-ip": freshIp(), ...TRUSTED } }))).status).toBe(451);
+    expect(
+      (await call(new Request(`${MAIN}/api/upload`, { method: "POST", body: imported, headers: { "cf-connecting-ip": freshIp(), ...TRUSTED } }))).status,
+    ).toBe(451);
     vi.restoreAllMocks();
     const links = await (async () => {
       const r = await rpc("tools/call", { name: "create_upload", arguments: { count: 1 } }, ADMIN);
       return JSON.parse(r.content[0].text).links as { upload_url: string }[];
     })();
     expect((await call(new Request(links[0].upload_url.replace("https://sugi.moe", MAIN), { method: "PUT", body: bytes }))).status).toBe(451);
-    expect((await call(new Request(`${MAIN}/upload`, { method: "PUT", body: bytes, headers: { "cf-connecting-ip": freshIp(), ...TRUSTED } }))).status).toBe(451);
+    expect((await call(new Request(`${MAIN}/upload`, { method: "PUT", body: bytes, headers: { "cf-connecting-ip": freshIp(), ...TRUSTED } }))).status).toBe(
+      451,
+    );
 
     // Lifting the block lets the bytes back in, under a new id.
     expect(await admin("unblock_content", { sha256: hash, reason: "test cleanup" })).toEqual({ sha256: hash, unblocked: true });
@@ -113,7 +155,18 @@ describe("admin MCP tools", () => {
   it("takes albums down, optionally with their files", async () => {
     const a = await upload(png());
     const b = await upload(png());
-    const make = async () => (await (await call(new Request(`${MAIN}/api/albums`, { method: "POST", body: JSON.stringify({ files: [a.id, b.id] }), headers: { "content-type": "application/json", accept: "application/json", "cf-connecting-ip": freshIp(), ...TRUSTED } }))).json<{ id: string }>()).id;
+    const make = async () =>
+      (
+        await (
+          await call(
+            new Request(`${MAIN}/api/albums`, {
+              method: "POST",
+              body: JSON.stringify({ files: [a.id, b.id] }),
+              headers: { "content-type": "application/json", accept: "application/json", "cf-connecting-ip": freshIp(), ...TRUSTED },
+            }),
+          )
+        ).json<{ id: string }>()
+      ).id;
     const keep = await make();
     await admin("takedown", { target: `${MAIN}/a/${keep}` });
     expect((await call(new Request(`${MAIN}/a/${keep}`, { headers: html }))).status).toBe(451);
@@ -180,16 +233,34 @@ describe("retention", () => {
     const old = now - SOURCE_RETENTION_MS - 1000;
     const src = "a".repeat(64);
     await env.DB.batch([
-      env.DB.prepare("INSERT INTO tombstones (target, reason, sha256, source, created_at) VALUES (?, ?, NULL, ?, ?)").bind("file:oldoldol", "old report", src, old),
-      env.DB.prepare("INSERT INTO tombstones (target, reason, sha256, source, created_at) VALUES (?, ?, NULL, ?, ?)").bind("file:newnewne", "new report", src, now),
-      env.DB.prepare("INSERT INTO admin_log (at, actor, action, target, reason, detail) VALUES (?, 'admin', 'block_source', ?, 'old', NULL)").bind(old, `source:${src}`),
-      env.DB.prepare("INSERT INTO admin_log (at, actor, action, target, reason, detail) VALUES (?, 'admin', 'block_source', ?, 'new', NULL)").bind(now, `source:${src}`),
+      env.DB.prepare("INSERT INTO tombstones (target, reason, sha256, source, created_at) VALUES (?, ?, NULL, ?, ?)").bind(
+        "file:oldoldol",
+        "old report",
+        src,
+        old,
+      ),
+      env.DB.prepare("INSERT INTO tombstones (target, reason, sha256, source, created_at) VALUES (?, ?, NULL, ?, ?)").bind(
+        "file:newnewne",
+        "new report",
+        src,
+        now,
+      ),
+      env.DB.prepare("INSERT INTO admin_log (at, actor, action, target, reason, detail) VALUES (?, 'admin', 'block_source', ?, 'old', NULL)").bind(
+        old,
+        `source:${src}`,
+      ),
+      env.DB.prepare("INSERT INTO admin_log (at, actor, action, target, reason, detail) VALUES (?, 'admin', 'block_source', ?, 'new', NULL)").bind(
+        now,
+        `source:${src}`,
+      ),
       env.DB.prepare("INSERT INTO blocked_sources (source, reason, expires_at, created_at) VALUES (?, 'lapsed', ?, ?)").bind("b".repeat(64), now - 1000, old),
       env.DB.prepare("INSERT INTO blocked_sources (source, reason, expires_at, created_at) VALUES (?, 'forever', NULL, ?)").bind("c".repeat(64), old),
     ]);
     const r = await eraseOldFingerprints(env, now);
     expect(r).toMatchObject({ tombstones: 1, log: 1, expired_blocks: 1 });
-    const rows = (await env.DB.prepare("SELECT target, reason, source FROM tombstones WHERE target IN ('file:oldoldol', 'file:newnewne') ORDER BY target").all()).results;
+    const rows = (
+      await env.DB.prepare("SELECT target, reason, source FROM tombstones WHERE target IN ('file:oldoldol', 'file:newnewne') ORDER BY target").all()
+    ).results;
     expect(rows).toEqual([
       { target: "file:newnewne", reason: "new report", source: src },
       { target: "file:oldoldol", reason: "old report", source: null },

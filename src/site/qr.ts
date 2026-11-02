@@ -21,7 +21,11 @@ export function qrSvg(text: string, size = 150): string {
     }
   }
   let finders = "";
-  for (const [x, y] of [[0, 0], [n - 7, 0], [0, n - 7]]) {
+  for (const [x, y] of [
+    [0, 0],
+    [n - 7, 0],
+    [0, n - 7],
+  ]) {
     finders += roundedRect(x, y, 7, 7, 2.2) + roundedRect(x + 1, y + 1, 5, 5, 1.5) + roundedRect(x + 2, y + 2, 3, 3, 1);
   }
   return `<svg viewBox="-2 -2 ${n + 4} ${n + 4}" width="${size}" height="${size}" role="img" aria-label="QR"><path d="${dots}" fill="#3F4A3C"/><path d="${finders}" fill="#3F4A3C" fill-rule="evenodd"/></svg>`;

@@ -8,15 +8,19 @@ sugi 是一个匿名图床，图片和短视频都能传，整个跑在 Cloudfla
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/yldm-tech/sugi)
 
+<p align="center"><img src="https://files.sugi.moe/sc4jieke.png" alt="sugi 首页（桌面浏览器）" width="640"> <img src="https://files.sugi.moe/qxqn7oux.png" alt="sugi 首页（手机）" width="180"></p>
+
 ## 功能
 
 - 图片和短视频：PNG、JPEG、WebP、GIF、AVIF、MP4、WebM，单个文件最大 200 MB。类型只看文件内容，不看文件名和 Content-Type；其他格式（SVG、HTML、PDF、压缩包等）一律拒绝。
 - 拖放、选择文件、粘贴，或者贴一个链接让服务器去搬。超过 90 MB 的文件自动分片上传（R2 multipart），不会撞上 Cloudflare 的请求体上限。
 - 永久或临时链接（1 小时、12 小时、3 天），随机 id（`k3x9qa2m`）或可爱 id（`snow-sesame-19`），每个文件有分享页，可以复制成 Markdown、HTML、BBCode，多个文件可以打包成一个链接。
 - 「我的文件」把上传记录和删除凭证存在浏览器里，不需要账号。网页上传时默认在浏览器里抹掉照片的位置信息（EXIF、XMP）。
+- 可选的账号功能，用邮箱免密码登录（`FEATURE_ACCOUNTS`）；登录状态下的上传会记在账号下。
 - 不保存 IP 地址。每次上传只记下上传者 IP 的 HMAC（用服务器端密钥算），够用来清除某个滥用来源的全部上传，别的什么都做不了。
 - 按 IP 限流，严格的安全响应头（基于 nonce 的 CSP、`nosniff`、文件从独立的 origin 提供并带自己的 CSP），没有第三方脚本、字体或统计。
-- `curl -F file=@cat.png https://<你的域名>/api/upload` 直接返回链接；命令行工具 `sugi` 和 MCP 服务（`/mcp`）让终端和 AI 助手也能传。
+- `curl -F file=@cat.png https://<你的域名>/api/upload` 直接返回链接；命令行工具 `sugi` 和 MCP 服务（`/mcp`）让终端和 AI 助手也能传，本地文件可以通过一次性上传链接传上来。
+- 给运营者的管理功能（HTTP 和 MCP 都能用）：下架后留下返回 451 的墓碑、内容和来源屏蔽、审计日志。
 
 ## 部署
 
@@ -24,10 +28,10 @@ sugi 是一个匿名图床，图片和短视频都能传，整个跑在 Cloudfla
 
 点上面的 **Deploy to Cloudflare**。Cloudflare 会把这个仓库复制到你的 GitHub 或 GitLab 账号，创建 R2 bucket 和 D1 数据库，让你填下面两个 secret，然后部署 Worker。部署完就能在 `*.workers.dev` 地址上用，数据库表在第一次请求时由 Worker 自己建好。
 
-| Secret | 填什么 |
-| --- | --- |
+| Secret           | 填什么                                                                                                                               |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | `IP_HASH_SECRET` | 一个足够长的随机值，例如 `openssl rand -hex 32`。用来算上传者 IP 的 HMAC，也用来签分片上传会话。没设置时上传返回 503，首页也会提示。 |
-| `ADMIN_TOKEN` | 另一个随机值。用来删除任意文件、按来源清除（见[处理违规内容](#处理违规内容)）。 |
+| `ADMIN_TOKEN`    | 另一个随机值。用来删除任意文件、按来源清除（见[处理违规内容](#处理违规内容)）。                                                      |
 
 把链接发出去之前，至少设置 `SITE_NAME`、`OPERATOR_NAME`、`CONTACT_EMAIL`（见[配置](#配置)），并读一遍自己站点的使用条款和隐私政策：它们描述的是**你的**服务，由你负责。
 
@@ -48,23 +52,25 @@ npx wrangler secret put ADMIN_TOKEN
 
 一个实例的身份都在 [`wrangler.jsonc`](wrangler.jsonc) 的 `vars` 里。留空时用默认值，在裸的 `*.workers.dev` 地址上也能工作。
 
-| 变量 | 默认 | 含义 |
-| --- | --- | --- |
-| `SITE_NAME` | 主机名 | 显示在标题、logo（`pics.example` 显示成 `pics♥example`）、Open Graph 和法律页面里。 |
-| `MAIN_ORIGIN` | 请求自己的 origin | 网站和接口的公开地址，例如 `https://pics.example.org`。 |
-| `FILES_ORIGIN`、`TMP_ORIGIN` | `<主站>/_files`、`<主站>/_tmp` | 永久和临时文件的地址。有自己的域名时，建议用单独的主机名（`https://files.example.org`、`https://tmp.example.org`）并加成自定义域，这样用户上传的文件永远不会和网站同源。 |
-| `OPERATOR_NAME` | 无 | 运营这个站点的个人或公司，写在使用条款和隐私政策里。 |
-| `CONTACT_EMAIL`、`ABUSE_EMAIL` | 无 | 一般和隐私问题的联系邮箱，以及举报邮箱（不填时用联系邮箱）。都不填时页面会请访客联系运营者。 |
-| `CSAM_SCANNING` | `0` | 只有在 zone 上开启了 Cloudflare 的 [CSAM Scanning Tool](https://developers.cloudflare.com/cache/reference/csam-scanning/)、并且文件经缓存提供（`CACHE_ORIGIN`）之后才设成 `1`，FAQ 和隐私政策只在打开时提到它。 |
-| `EMAIL_ROUTING` | `0` | 联系邮箱经 Cloudflare Email Routing 转发时设成 `1`，隐私政策会把它列为处理方。 |
-| `WAF_RATE_LIMIT` | `0` | zone 上加好了[限流](#限流)里的 WAF 规则后设成 `1`，开发者页面会说明这条规则。 |
-| `STORAGE_LOCATION` | 无 | bucket 的位置提示或司法辖区（`apac`、`weur`、`eu` 等），写进隐私政策。 |
-| `RESEND_REGION`、`MAIL_FROM` | 无 | 账号功能用（尚未发布）：登录邮件的 Resend 区域和发件人。 |
-| `CACHE_ORIGIN`、`ZONE_ID` | 无 | 让文件经 zone 缓存提供：bucket 上的 [R2 自定义域](https://developers.cloudflare.com/r2/buckets/public-buckets/#custom-domains)（例如 `https://r2.example.org`）和 zone id。删除文件时会顺带清缓存，需要 secret `CF_PURGE_TOKEN`（只有该 zone 的 Zone → Cache Purge 权限的 API token）。 |
-| `FEATURE_CLI` | `1` | 命令行工具（`/install.sh`）和 MCP 服务（`/mcp`）。 |
-| `FEATURE_ACCOUNTS`、`FEATURE_DONATE` | `0` | 账号和投喂页还在开发中，保持关闭。 |
+| 变量                           | 默认                           | 含义                                                                                                                                                                                                                                                                                    |
+| ------------------------------ | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SITE_NAME`                    | 主机名                         | 显示在标题、logo（`pics.example` 显示成 `pics♥example`）、Open Graph 和法律页面里。                                                                                                                                                                                                     |
+| `MAIN_ORIGIN`                  | 请求自己的 origin              | 网站和接口的公开地址，例如 `https://pics.example.org`。                                                                                                                                                                                                                                 |
+| `FILES_ORIGIN`、`TMP_ORIGIN`   | `<主站>/_files`、`<主站>/_tmp` | 永久和临时文件的地址。有自己的域名时，建议用单独的主机名（`https://files.example.org`、`https://tmp.example.org`）并加成自定义域，这样用户上传的文件永远不会和网站同源。                                                                                                                |
+| `OPERATOR_NAME`                | 无                             | 运营这个站点的个人或公司，写在使用条款和隐私政策里。                                                                                                                                                                                                                                    |
+| `CONTACT_EMAIL`、`ABUSE_EMAIL` | 无                             | 一般和隐私问题的联系邮箱，以及举报邮箱（不填时用联系邮箱）。都不填时页面会请访客联系运营者。                                                                                                                                                                                            |
+| `CSAM_SCANNING`                | `0`                            | 只有在 zone 上开启了 Cloudflare 的 [CSAM Scanning Tool](https://developers.cloudflare.com/cache/reference/csam-scanning/)、并且文件经缓存提供（`CACHE_ORIGIN`）之后才设成 `1`，FAQ 和隐私政策只在打开时提到它。                                                                         |
+| `EMAIL_ROUTING`                | `0`                            | 联系邮箱经 Cloudflare Email Routing 转发时设成 `1`，隐私政策会把它列为处理方。                                                                                                                                                                                                          |
+| `WAF_RATE_LIMIT`               | `0`                            | zone 上加好了[限流](#限流)里的 WAF 规则后设成 `1`，开发者页面会说明这条规则。                                                                                                                                                                                                           |
+| `STORAGE_LOCATION`             | 无                             | bucket 的位置提示或司法辖区（`apac`、`weur`、`eu` 等），写进隐私政策。                                                                                                                                                                                                                  |
+| `MAIL_FROM`、`RESEND_REGION`   | 无                             | 账号功能用：登录邮件的发件人（例如 `pics <login@example.org>`，域名要在邮件服务商那里验证过），以及写进隐私政策的 Resend 区域。登录邮件通过 Resend（secret `RESEND_API_KEY`）或名为 `EMAIL` 的 `send_email` 绑定发送。                                                                  |
+| `CACHE_ORIGIN`、`ZONE_ID`      | 无                             | 让文件经 zone 缓存提供：bucket 上的 [R2 自定义域](https://developers.cloudflare.com/r2/buckets/public-buckets/#custom-domains)（例如 `https://r2.example.org`）和 zone id。删除文件时会顺带清缓存，需要 secret `CF_PURGE_TOKEN`（只有该 zone 的 Zone → Cache Purge 权限的 API token）。 |
+| `FEATURE_CLI`                  | `1`                            | 命令行工具（`/install.sh`）和 MCP 服务（`/mcp`）。                                                                                                                                                                                                                                      |
+| `FEATURE_ACCOUNTS`             | `0`                            | 可选的账号功能，`ACCOUNT_FEATURES` 列出打开哪些部分；目前只有 `email`（邮件魔法链接登录）。                                                                                                                                                                                             |
+| `ACCOUNT_FEATURES`             | `email`                        | `FEATURE_ACCOUNTS` 为 `1` 时启用的账号功能，逗号分隔。                                                                                                                                                                                                                                  |
+| `FEATURE_DONATE`               | `0`                            | 投喂页，只显示你写进 `src/site/pages/donate.ts` 的金额和付款链接。                                                                                                                                                                                                                      |
 
-可选的 secret：`UPLOAD_TOKEN` 设置后，只有带 `Authorization: Bearer <UPLOAD_TOKEN>` 的请求才能上传（适合私用实例）；`TRUSTED_TOKEN` 能过这道闸门并且不受限流（给自己和自动化用）；`CF_PURGE_TOKEN` 见上。
+可选的 secret：`UPLOAD_TOKEN` 设置后，只有带 `Authorization: Bearer <UPLOAD_TOKEN>` 的请求才能上传（适合私用实例）；`TRUSTED_TOKEN` 能过这道闸门并且不受限流（给自己和自动化用）；`CF_PURGE_TOKEN` 见上；`RESEND_API_KEY` 用来发登录邮件；`E2E_INBOX` 是你域名上一个不易猜的地址，用 Email Routing 交给 Worker，Worker 会把发到这个地址的邮件保留一小时，让自动化测试能走完邮件登录（管理员通过 `/admin/e2e-inbox` 读取）。
 
 改了 `wrangler.jsonc` 后跑 `npm run types` 再部署。bucket、数据库、限流器，以及每 10 分钟删除过期文件的 Cron Trigger 都在里面声明。临时文件一到期就返回 404；想再加一道保险，可以给 bucket 加 R2 生命周期规则：`npx wrangler r2 bucket lifecycle add <bucket> expire-tmp t/ --expire-days 4`。
 
@@ -92,6 +98,18 @@ admin -H 'content-type: application/json' -d '{"source":"<hmac>","dry_run":true}
 管理员删除就是下架：对象换成空的墓碑，链接从此返回 451（Unavailable For Legal Reasons），id 不再分配，出过图的地址都清缓存，并在 D1 的审计日志里留下记录。可以加 `?reason=...` 写明原因，加 `?block_content=1` 阻止同样的字节（20 MB 以内的文件）再次上传。
 
 同样的管理功能也能通过 MCP 用：带 `Authorization: Bearer <ADMIN_TOKEN>` 连接 `https://<域名>/mcp`，会多出 `inspect`、`takedown`（可加 `block_content`，打包链接可加 `include_files`）、`list_by_source`、`takedown_by_source`（默认只预演）、`block_source` / `unblock_source`、`unblock_content`、`list_blocks`、`takedown_log`。处理举报的顺序：`inspect` 查链接，`takedown` 下架，`list_by_source` 看同一上传者还传了什么，必要时 `takedown_by_source` 或 `block_source`。管理员令牌也不受限流；用了 WAF 规则的话，把它和 `TRUSTED_TOKEN` 一起写进跳过规则。
+
+## 安全检查清单
+
+对外开放之前：
+
+- `IP_HASH_SECRET` 和 `ADMIN_TOKEN` 用足够长的随机值，不要放进仓库（用 `wrangler secret put` 或控制台设置）。
+- 用自己的域名，并给 `FILES_ORIGIN` 和 `TMP_ORIGIN` 单独的主机名，让用户上传的文件永远不和网站及其 cookie 同源。
+- 加上[限流](#限流)里的 WAF 规则；Worker 自带的限流器在突发请求下比较宽松。
+- 让文件经缓存提供（`CACHE_ORIGIN`、`ZONE_ID`、`CF_PURGE_TOKEN`），在 zone 上开启 Cloudflare 的 CSAM Scanning Tool，再设 `CSAM_SCANNING=1`。
+- 设置 `OPERATOR_NAME`、`CONTACT_EMAIL`、`ABUSE_EMAIL`，确认发到这些地址的邮件你收得到，并把生成的使用条款和隐私政策当作你自己的法律文本读一遍。
+- 保持 Workers Logs 关闭（模板默认关闭），除非你相应修改了隐私政策。
+- 留意举报，用好[处理违规内容](#处理违规内容)里的工具；必须永远挡住的内容，下架时加上 `block_content`。
 
 ## 使用
 
@@ -124,14 +142,16 @@ sugi ls ; sugi rm <id>
 
 ```sh
 npm install
-npm test            # 先打包浏览器脚本，再在 workerd 里跑 vitest
-npm run typecheck
-npm run dev         # wrangler dev，http://localhost:8787
+npm run dev            # wrangler dev，http://localhost:8787
+npm test               # 先打包浏览器脚本，再在 workerd 里跑 vitest
+npm run typecheck      # Worker 和浏览器脚本
+npm run check          # Biome 检查和格式检查（npm run format 自动格式化）
+npm run check:layout   # 对运行中的 npm run dev，在 360 到 1280 px 下检查每个页面（需要 Playwright 的 Chromium）
 ```
 
-`npm run dev` 需要把本地值写进 `.dev.vars`（参考 [`.dev.vars.example`](.dev.vars.example)），再加上 `MAIN_ORIGIN=http://localhost:8787`、`FILES_ORIGIN=http://localhost:8787/_files`、`TMP_ORIGIN=http://localhost:8787/_tmp`。`scripts/e2e.sh <地址>` 和 `scripts/cli-e2e.sh <地址>` 用合成文件对运行中的实例做端到端检查，最后删掉自己创建的所有东西。
+`npm run dev` 需要把本地值写进 `.dev.vars`（参考 [`.dev.vars.example`](.dev.vars.example)），再加上 `MAIN_ORIGIN=http://localhost:8787`、`FILES_ORIGIN=http://localhost:8787/_files`、`TMP_ORIGIN=http://localhost:8787/_tmp`。`scripts/e2e.sh <地址>` 和 `scripts/cli-e2e.sh <地址>` 用合成文件对运行中的实例做端到端检查，最后删掉自己创建的所有东西。每个 PR 上 CI 都会跑 lint、typecheck、测试、构建和布局检查。
 
-目录：`src/` 是 Worker（路由在 `index.ts`，上传在 `files.ts` 和 `chunked.ts`，页面在 `site/`），`client/` 是浏览器脚本和样式（esbuild 打包），`public/static/` 放字体、图标、Open Graph 图和命令行工具，`migrations/` 是 D1 表结构，`test/` 是测试。字体是自托管的子集；改了用装饰字体的文字后跑 `npm run fonts`，改了 Open Graph 文案后跑 `node scripts/build-og.mjs`。
+目录：`src/` 是 Worker（路由在 `index.ts`；文件相关在 `files.ts`、`upload.ts`、`serve.ts`、`chunked.ts`、`links.ts`；管理功能在 `moderation.ts`；账号在 `auth/`；页面在 `site/`），`client/` 是浏览器脚本和样式（esbuild 打包），`public/static/` 放字体、图标、Open Graph 图和命令行工具，`migrations/` 是 D1 表结构，`test/` 是测试。字体是自托管的子集；改了用装饰字体的文字后跑 `npm run fonts`，改了 Open Graph 文案后跑 `node scripts/build-og.mjs`。
 
 提 PR 前请看 [CONTRIBUTING.md](CONTRIBUTING.md)，报告安全问题请看 [SECURITY.md](SECURITY.md)。sugi.moe 自己的运维记录在 [docs/operations.md](docs/operations.md)。
 

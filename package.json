@@ -1,24 +1,31 @@
 {
   "name": "sugi",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Anonymous image and short-video host on Cloudflare Workers, R2 and D1",
   "license": "MIT",
+  "homepage": "https://sugi.moe",
   "repository": {
     "type": "git",
     "url": "https://github.com/yldm-tech/sugi"
+  },
+  "engines": {
+    "node": ">=20"
   },
   "type": "module",
   "scripts": {
     "build": "node scripts/build-client.mjs",
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "types": "wrangler types --strict-vars=false",
-    "typecheck": "node scripts/build-client.mjs && tsc --noEmit && tsc --noEmit -p client",
     "test": "node scripts/build-client.mjs && vitest run",
+    "typecheck": "node scripts/build-client.mjs && tsc --noEmit && tsc --noEmit -p client",
+    "lint": "biome lint .",
+    "format": "biome format --write .",
+    "check": "biome ci .",
+    "check:layout": "node scripts/layout-check.mjs",
+    "types": "wrangler types --strict-vars=false",
     "fonts": "scripts/subset-fonts.sh",
-    "deploy:production": "scripts/deploy-production.sh",
-    "check:layout": "node scripts/layout-check.mjs"
+    "deploy": "wrangler deploy",
+    "deploy:production": "scripts/deploy-production.sh"
   },
   "cloudflare": {
     "bindings": {
@@ -37,6 +44,7 @@
     }
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.6.4",
     "@cloudflare/vitest-plugin": "^1.4.12",
     "@resvg/resvg-js": "2.6.2",
     "esbuild": "0.28.2",
@@ -48,9 +56,6 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.2",
     "@remix-run/multipart-parser": "1.1.0",
-    "@simplewebauthn/browser": "14.0.0",
-    "@simplewebauthn/server": "14.0.3",
-    "arctic": "3.7.0",
     "qrcode-generator": "2.0.4",
     "zod": "4.6.7"
   }

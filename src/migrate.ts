@@ -15,7 +15,8 @@ export const MIGRATIONS: [string, string][] = [
 let ready: Promise<void> | null = null;
 
 // The same table wrangler creates for `wrangler d1 migrations apply`.
-const BOOKKEEPING = "CREATE TABLE IF NOT EXISTS d1_migrations (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL)";
+const BOOKKEEPING =
+  "CREATE TABLE IF NOT EXISTS d1_migrations (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL)";
 
 // Splits a migration file into statements: drops comment lines, splits on semicolons at the end of a line.
 export function statements(sql: string): string[] {
@@ -46,9 +47,10 @@ async function run(db: D1Database): Promise<void> {
 
 /** Runs once per isolate; later calls reuse the same promise. A failure is retried on the next request. */
 export function ensureSchema(db: D1Database): Promise<void> {
-  if (!ready) ready = run(db).catch((err) => {
-    ready = null;
-    throw err;
-  });
+  if (!ready)
+    ready = run(db).catch((err) => {
+      ready = null;
+      throw err;
+    });
   return ready;
 }

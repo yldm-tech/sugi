@@ -26,7 +26,7 @@ const assets = {};
 for (const [file, meta] of Object.entries(result.metafile.outputs)) {
   if (!meta.entryPoint) continue;
   const kind = meta.entryPoint.endsWith(".css") ? "css" : "js";
-  assets[kind] = "/" + relative("public", file).split("\\").join("/");
+  assets[kind] = `/${relative("public", file).split("\\").join("/")}`;
 }
 if (!assets.js || !assets.css) throw new Error("client build did not produce both bundles");
 // The CLI is served as a static file; install.sh pins its hash so a truncated or mismatched download is refused.

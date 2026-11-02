@@ -9,7 +9,8 @@
 //    DELETE /api/uploads   Sugi-Upload: <session>   aborts.
 import { base64url } from "./ids";
 import { constantTimeEqual, hmacSha256Hex } from "./crypto";
-import { prepare, peekStream, result, sanitizeName, unsupportedType, uploadResponse, parseOptions } from "./files";
+import { prepare, result, sanitizeName, uploadResponse, parseOptions } from "./files";
+import { peekStream, unsupportedType } from "./upload";
 import { authorizeUpload, HttpError, jsonResponse } from "./http";
 import { ownFile } from "./auth/core";
 import { MAX_FILE_BYTES, MAX_PART_BYTES, MIN_PART_BYTES } from "./limits";
@@ -110,7 +111,19 @@ export async function handleChunkCreate(request: Request, env: Env): Promise<Res
     await mpu.abort();
     throw err;
   }
-  const session: Session = { k: p.key, u: mpu.uploadId, id: p.id, ext: type.ext, ps: partSize, sz: size, ex: p.expires, nm: opts.name, tk: p.token, exp: Date.now() + SESSION_TTL_MS, uid: uploader.userId };
+  const session: Session = {
+    k: p.key,
+    u: mpu.uploadId,
+    id: p.id,
+    ext: type.ext,
+    ps: partSize,
+    sz: size,
+    ex: p.expires,
+    nm: opts.name,
+    tk: p.token,
+    exp: Date.now() + SESSION_TTL_MS,
+    uid: uploader.userId,
+  };
   return jsonResponse({ upload: await encodeSession(env, session), id: p.id, part_size: partSize, parts: partsOf(session), etag: part.etag }, 201);
 }
 

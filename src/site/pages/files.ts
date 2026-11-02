@@ -1,8 +1,8 @@
-import { Album, albumUrl } from "../../albums";
-import { pageUrl, publicUrl, StoredFile } from "../../files";
+import { type Album, albumUrl } from "../../albums";
+import { pageUrl, publicUrl, type StoredFile } from "../../files";
 import { esc } from "../i18n";
 import { brand } from "../../config";
-import { Ctx, homeTitle, Page, pageTitle, tr } from "../layout";
+import { type Ctx, homeTitle, type Page, pageTitle, tr } from "../layout";
 import { qrSvg } from "../qr";
 import { hamsterFace, peekHamster } from "../svg";
 
@@ -14,7 +14,7 @@ function fmtSize(b: number): string {
 
 // Rendered in UTC on the server; app.ts rewrites <time> elements in the visitor's own time zone.
 function fmtDate(ms: number): string {
-  return new Date(ms).toISOString().slice(0, 16).replace("T", " ") + " UTC";
+  return `${new Date(ms).toISOString().slice(0, 16).replace("T", " ")} UTC`;
 }
 
 export function linkFormats(ctx: Ctx, url: string, name: string, image: boolean): [string, string][] {
@@ -75,7 +75,10 @@ export function albumPage(ctx: Ctx, a: Album): Page {
   const items = a.files
     .map((f) => {
       const u = publicUrl(ctx.env, f);
-      const inner = f.type.kind === "video" ? `<video src="${esc(u)}" muted playsinline preload="metadata"></video>` : `<img src="${esc(u)}" alt="${esc(f.name ?? f.id)}" loading="lazy" decoding="async">`;
+      const inner =
+        f.type.kind === "video"
+          ? `<video src="${esc(u)}" muted playsinline preload="metadata"></video>`
+          : `<img src="${esc(u)}" alt="${esc(f.name ?? f.id)}" loading="lazy" decoding="async">`;
       return `<a href="${esc(pageUrl(ctx.env, f.id))}" data-nav title="${esc(f.name ?? f.id)}">${inner}</a>`;
     })
     .join("\n");
