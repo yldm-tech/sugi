@@ -93,7 +93,7 @@ ${navLink(ctx, "/mine", ["mine", "album"], current, t("我的文件", "My files"
 ${navLink(ctx, "/dev", ["dev"], current, t("开发者", "Developers"))}
 ${navLink(ctx, "/faq", ["faq", "terms", "privacy"], current, t("问问题", "FAQ"))}
 ${ctx.flags.donate ? navLink(ctx, "/donate", ["donate"], current, t("投喂 ♡", "Feed ♡")) : ""}
-${ctx.flags.accounts ? (ctx.user ? navLink(ctx, "/account", ["account"], current, t("我的账号", "Account"), " login") : navLink(ctx, "/login", ["login"], current, t("登录", "Log in"), " login")) : ""}
+${ctx.flags.accounts ? (ctx.user ? navLink(ctx, "/account", ["account"], current, t("我的账号", "Account"), " signin") : navLink(ctx, "/login", ["login"], current, t("登录", "Log in"), " signin")) : ""}
 <a class="lang" href="?lang=${other}" hreflang="${other}" id="lang-switch" title="${t("Switch to English", "切换到中文")}">${other === "en" ? "EN" : "中"}</a>
 <button class="round" type="button" id="theme" title="${t("切换白天 / 夜间", "Toggle day / night")}" aria-label="${t("切换白天 / 夜间", "Toggle day / night")}">${MOON}${SUN}</button>
 </nav>
