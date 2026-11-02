@@ -1713,35 +1713,51 @@ function initPage() {
   updateTab();
 }
 
-// ---------------------------------------------------------------- header fit
+// ---------------------------------------------------------------- header
 
-// One row (logo, links, tools) while it fits; otherwise the compact header with the links in a scrolling row of their own. Measured, not guessed from the window width, because the set of links changes (logged in or not, donate on or off) and so do their widths (language, fonts).
-function fitHeader() {
-  const top = $(".top");
-  const nav = $("#nav");
-  if (!top || !nav) return;
-  if (window.innerWidth <= 900) {
-    top.classList.add("compact");
+// The header is one row at every width: from 768px up the links and tools sit in it, below that they live in the menu (CSS decides).
+// The menu is a <details>, so it opens without the script too; here it gets aria-expanded, Esc, a focus trap, and closes on outside clicks and on navigation.
+const menu = $<HTMLDetailsElement>("#menu");
+const menuBtn = menu ? $<HTMLElement>("summary", menu) : null;
+function closeMenu(focusButton: boolean) {
+  if (!menu?.open) return;
+  menu.open = false;
+  if (focusButton) menuBtn?.focus();
+}
+menu?.addEventListener("toggle", () => {
+  menuBtn?.setAttribute("aria-expanded", String(menu.open));
+  if (menu.open) $<HTMLElement>(".menu-links a", menu)?.focus();
+});
+document.addEventListener("click", (e) => {
+  if (menu?.open && !menu.contains(e.target as Node)) closeMenu(false);
+});
+document.addEventListener("keydown", (e) => {
+  if (!menu?.open) return;
+  if (e.key === "Escape") {
+    e.preventDefault();
+    closeMenu(true);
     return;
   }
-  top.classList.remove("compact");
-  const parts = [$(".brand", top), nav, $(".tools", top)].filter(Boolean) as HTMLElement[];
-  const tops = parts.map((e) => e.getBoundingClientRect().top);
-  const overflow = nav.scrollWidth > nav.clientWidth + 1 || top.scrollWidth > top.clientWidth + 1 || Math.max(...tops) - Math.min(...tops) > 4;
-  top.classList.toggle("compact", overflow);
-}
-let fitFrame = 0;
-window.addEventListener("resize", () => {
-  cancelAnimationFrame(fitFrame);
-  fitFrame = requestAnimationFrame(fitHeader);
+  if (e.key !== "Tab") return;
+  const items = $$<HTMLElement>("summary, .menu-sheet a, .menu-sheet button", menu);
+  const first = items[0];
+  const last = items[items.length - 1];
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault();
+    first.focus();
+  }
 });
-fitHeader();
-void document.fonts?.ready.then(fitHeader);
+menu?.addEventListener("click", (e) => {
+  if ((e.target as HTMLElement).closest(".menu-sheet a")) closeMenu(false);
+});
 
 // ---------------------------------------------------------------- navigation
 
 function markNav(page: string) {
-  for (const a of $$<HTMLAnchorElement>("#nav a[data-for]")) a.classList.toggle("on", a.dataset.for!.split(" ").includes(page));
+  for (const a of $$<HTMLAnchorElement>(".top a[data-for]")) a.classList.toggle("on", a.dataset.for!.split(" ").includes(page));
 }
 
 async function navigate(path: string, push = true): Promise<void> {
@@ -1826,13 +1842,14 @@ document.addEventListener("submit", async (e) => {
 
 // ---------------------------------------------------------------- global listeners
 
-$("#theme")?.addEventListener("click", () => {
-  const night = !isNight();
-  document.documentElement.classList.toggle("night", night);
-  prefs.night = night;
-  savePrefs();
-  touch();
-});
+for (const btn of $$("[data-theme-toggle]"))
+  btn.addEventListener("click", () => {
+    const night = !isNight();
+    document.documentElement.classList.toggle("night", night);
+    prefs.night = night;
+    savePrefs();
+    touch();
+  });
 
 document.addEventListener("paste", (e) => {
   const tag = (e.target as HTMLElement)?.tagName || "";
