@@ -330,3 +330,79 @@ describe("Google login", () => {
     });
   });
 });
+
+describe("passkeys", () => {
+  const PK: Partial<Env> = { ...ON, ACCOUNT_FEATURES: "email,passkey" };
+  const post = (path: string, headers: Record<string, string> = ORIGIN, body?: string, overrides = PK) =>
+    call(new Request(`${MAIN}${path}`, { method: "POST", headers, body }), overrides);
+
+  it("is off unless passkey is in ACCOUNT_FEATURES, and refuses cross-site requests", async () => {
+    expect((await post("/auth/passkey/login/options", ORIGIN, undefined, ON)).status).toBe(404);
+    expect((await post("/auth/passkey/login/options", {})).status).toBe(403);
+    expect(await (await call(new Request(`${MAIN}/login?lang=en`), ON)).text()).not.toContain("data-passkey-login");
+    expect(await (await call(new Request(`${MAIN}/login?lang=en`), PK)).text()).toContain("data-passkey-login");
+  });
+
+  it("hands out options bound to our origin, with the challenge kept server side", async () => {
+    const login = await post("/auth/passkey/login/options");
+    expect(login.status).toBe(200);
+    expect(login.headers.get("set-cookie")).toMatch(/^sugi_chal=[a-z0-9]+; Path=\/auth\/passkey; Max-Age=300; HttpOnly; Secure; SameSite=Lax$/);
+    expect(await login.json()).toMatchObject({ rpId: "sugi.moe", userVerification: "preferred", challenge: expect.any(String) });
+    const reg = await (await post("/auth/passkey/register/options")).json<{
+      rp: { id: string; name: string };
+      authenticatorSelection: { residentKey: string };
+    }>();
+    expect(reg).toMatchObject({ rp: { id: "sugi.moe", name: "sugi.moe" }, authenticatorSelection: { residentKey: "required" } });
+  });
+
+  it("rejects answers without a challenge, unknown credentials and forged registrations", async () => {
+    expect((await post("/auth/passkey/login/verify", { ...ORIGIN, "content-type": "application/json" }, JSON.stringify({ id: "x" }))).status).toBe(400);
+    const opts = await post("/auth/passkey/login/options");
+    const chal = /sugi_chal=([^;]+)/.exec(opts.headers.get("set-cookie")!)![1];
+    const unknown = await post(
+      "/auth/passkey/login/verify",
+      { ...ORIGIN, cookie: `sugi_chal=${chal}`, "content-type": "application/json" },
+      JSON.stringify({ id: "nope", rawId: "nope", type: "public-key", response: {} }),
+    );
+    expect(unknown.status).toBe(404);
+    const reg = await post("/auth/passkey/register/options");
+    const rchal = /sugi_chal=([^;]+)/.exec(reg.headers.get("set-cookie")!)![1];
+    const forged = await post(
+      "/auth/passkey/register/verify",
+      { ...ORIGIN, cookie: `sugi_chal=${rchal}`, "content-type": "application/json" },
+      JSON.stringify({ id: "x", rawId: "x", type: "public-key", response: { clientDataJSON: "e30", attestationObject: "AA" } }),
+    );
+    expect(forged.status).toBe(400);
+    // A challenge works once.
+    const again = await post(
+      "/auth/passkey/register/verify",
+      { ...ORIGIN, cookie: `sugi_chal=${rchal}`, "content-type": "application/json" },
+      JSON.stringify({ id: "x" }),
+    );
+    expect(again.status).toBe(400);
+  });
+
+  it("lists and removes the account's passkeys, and only its own", async () => {
+    const session = await logIn("keys@example.com");
+    const cookie = `sugi_session=${session}`;
+    const me = await (await call(new Request(`${MAIN}/api/me`, { headers: { cookie } }), PK)).json<{ id: string }>();
+    await env.DB.prepare(
+      "INSERT INTO passkeys (id, user_id, public_key, counter, transports, name, created_at) VALUES ('cred-1', ?, x'00', 0, NULL, 'synced passkey', ?)",
+    )
+      .bind(me.id, Date.now())
+      .run();
+    await env.DB.prepare("INSERT INTO users (id, email, name, created_at) VALUES ('someoneelse', NULL, NULL, 0)").run();
+    await env.DB.prepare(
+      "INSERT INTO passkeys (id, user_id, public_key, counter, transports, name, created_at) VALUES ('cred-2', 'someoneelse', x'00', 0, NULL, NULL, 0)",
+    ).run();
+    const account = await (await call(new Request(`${MAIN}/account?lang=en`, { headers: { cookie } }), PK)).text();
+    expect(account).toContain('data-passkey-delete="cred-1"');
+    expect(account).toContain("Synced passkey");
+    const del = (id: string, headers: Record<string, string>) => call(new Request(`${MAIN}/api/me/passkeys/${id}`, { method: "DELETE", headers }), PK);
+    // Without our Origin the session cookie does not count for a write.
+    expect((await del("cred-1", { cookie })).status).toBe(401);
+    expect((await del("cred-2", { cookie, ...ORIGIN })).status).toBe(404);
+    expect((await del("cred-1", { cookie, ...ORIGIN })).status).toBe(200);
+    expect(await env.DB.prepare("SELECT 1 FROM passkeys WHERE id = 'cred-1'").first()).toBeNull();
+  });
+});

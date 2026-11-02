@@ -17,6 +17,15 @@ export async function handleMe(request: Request, env: Env): Promise<Response> {
   return jsonResponse(await meSummary(env, await requirePrincipal(request, env)));
 }
 
+// DELETE /api/me/passkeys/:id, from the account page.
+export async function handleDeletePasskey(request: Request, env: Env, id: string): Promise<Response> {
+  const p = await requirePrincipal(request, env);
+  if (p.via !== "session" || !sameOrigin(request, env)) throw new HttpError(403, "manage passkeys from the website");
+  const r = await env.DB.prepare("DELETE FROM passkeys WHERE id = ? AND user_id = ?").bind(id, p.user.id).run();
+  if (!r.meta.changes) throw new HttpError(404, "not found");
+  return jsonResponse({ deleted: [id] });
+}
+
 // POST /auth/logout
 export async function handleLogout(request: Request, env: Env): Promise<Response> {
   const p = await requirePrincipal(request, env).catch(() => null);
