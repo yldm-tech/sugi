@@ -10,12 +10,23 @@ afterEach(() => {
 });
 
 let rpcId = 0;
-async function rpc(method: string, params: unknown, headers: Record<string, string> = TRUSTED, overrides: Partial<Env> = CLI_ON): Promise<{ status: number; body: any }> {
+async function rpc(
+  method: string,
+  params: unknown,
+  headers: Record<string, string> = TRUSTED,
+  overrides: Partial<Env> = CLI_ON,
+): Promise<{ status: number; body: any }> {
   const res = await call(
     new Request(`${MAIN}/mcp`, {
       method: "POST",
       body: JSON.stringify({ jsonrpc: "2.0", id: ++rpcId, method, params }),
-      headers: { "content-type": "application/json", accept: "application/json, text/event-stream", "mcp-protocol-version": "2025-06-18", "cf-connecting-ip": freshIp(), ...headers },
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+        "mcp-protocol-version": "2025-06-18",
+        "cf-connecting-ip": freshIp(),
+        ...headers,
+      },
     }),
     overrides,
   );
@@ -23,7 +34,11 @@ async function rpc(method: string, params: unknown, headers: Record<string, stri
   return { status: res.status, body: text ? JSON.parse(text) : null };
 }
 
-async function tool(name: string, args: Record<string, unknown>, headers: Record<string, string> = TRUSTED): Promise<{ isError?: boolean; data: any; text: string }> {
+async function tool(
+  name: string,
+  args: Record<string, unknown>,
+  headers: Record<string, string> = TRUSTED,
+): Promise<{ isError?: boolean; data: any; text: string }> {
   const r = await rpc("tools/call", { name, arguments: args }, headers);
   expect(r.status).toBe(200);
   const result = r.body.result;
@@ -47,7 +62,14 @@ describe("/mcp", () => {
     expect(init.status).toBe(200);
     expect(init.body.result.serverInfo).toMatchObject({ name: "sugi" });
     const list = await rpc("tools/list", {});
-    expect(list.body.result.tools.map((t: { name: string }) => t.name).sort()).toEqual(["create_album", "create_upload", "delete_file", "get_file", "upload_file", "upload_url"]);
+    expect(list.body.result.tools.map((t: { name: string }) => t.name).sort()).toEqual([
+      "create_album",
+      "create_upload",
+      "delete_file",
+      "get_file",
+      "upload_file",
+      "upload_url",
+    ]);
     const how = init.body.result.instructions as string;
     for (const needle of ["sugi up", "/install.sh", "create_upload", "upload_url", "no SVG", "fonts"]) expect(how, needle).toContain(needle);
   });
@@ -119,7 +141,7 @@ describe("/mcp", () => {
 
     // Raw PUT, like curl -T.
     const bytes = png(500);
-    const put = await call(new Request(local(links[0].upload_url) + "?name=shot.png", { method: "PUT", body: bytes }));
+    const put = await call(new Request(`${local(links[0].upload_url)}?name=shot.png`, { method: "PUT", body: bytes }));
     expect(put.status).toBe(201);
     const up = await put.json<{ id: string; url: string; name: string; delete_token: string; expires_at: string }>();
     expect(up).toMatchObject({ id: links[0].id, name: "shot.png" });
@@ -137,7 +159,10 @@ describe("/mcp", () => {
     expect(await post.json()).toMatchObject({ id: links[1].id, name: "from-disk.png", size: 300 });
 
     // The same type checks as every upload.
-    expect((await call(new Request(local(links[2].upload_url), { method: "PUT", body: new TextEncoder().encode("<svg xmlns='http://www.w3.org/2000/svg'/>") }))).status).toBe(415);
+    expect(
+      (await call(new Request(local(links[2].upload_url), { method: "PUT", body: new TextEncoder().encode("<svg xmlns='http://www.w3.org/2000/svg'/>") })))
+        .status,
+    ).toBe(415);
     const tampered = links[2].upload_url.replace(/\.([0-9a-f])/, (_, c: string) => `.${c === "0" ? "1" : "0"}`);
     expect((await call(new Request(local(tampered), { method: "PUT", body: png() }))).status).toBe(404);
 
@@ -183,6 +208,7 @@ describe("CLI distribution", () => {
     expect(cli.headers.get("cache-control")).toBe("no-cache");
     const body = new Uint8Array(await cli.arrayBuffer());
     // install.sh rewrites exactly this line for servers other than sugi.moe.
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: the shell line itself contains ${...}
     expect(new TextDecoder().decode(body).split("\n")).toContain('BASE="${SUGI_URL:-https://sugi.moe}"');
     const digest = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", body)), (b) => b.toString(16).padStart(2, "0")).join("");
     expect(digest).toBe(ASSETS.cliSha256);
@@ -193,9 +219,22 @@ describe("CLI distribution", () => {
     expect(off).not.toContain("install.sh");
     expect(off).not.toContain('data-panel="dev:mcp"');
     const on = await (await call(new Request(`${MAIN}/dev`, { headers: { "accept-language": "zh-CN" } }), CLI_ON)).text();
-    for (const needle of ["curl -fsSL https://sugi.moe/install.sh | sh", "sugi up -e 1h secret.jpg", "sugi up --clipboard", "claude mcp add --transport http sugi https://sugi.moe/mcp", "mcp-remote", "~/.cursor/mcp.json", "upload_file", "delete_file", "history.jsonl"]) expect(on, needle).toContain(needle);
+    for (const needle of [
+      "curl -fsSL https://sugi.moe/install.sh | sh",
+      "sugi up -e 1h secret.jpg",
+      "sugi up --clipboard",
+      "claude mcp add --transport http sugi https://sugi.moe/mcp",
+      "mcp-remote",
+      "~/.cursor/mcp.json",
+      "upload_file",
+      "delete_file",
+      "history.jsonl",
+    ])
+      expect(on, needle).toContain(needle);
     expect(on).not.toContain("sugi login");
-    expect(await (await call(new Request(`${MAIN}/dev`), { ...CLI_ON, FEATURE_ACCOUNTS: "1", ACCOUNT_FEATURES: "email,tokens" })).text()).toContain("sugi login");
+    expect(await (await call(new Request(`${MAIN}/dev`), { ...CLI_ON, FEATURE_ACCOUNTS: "1", ACCOUNT_FEATURES: "email,tokens" })).text()).toContain(
+      "sugi login",
+    );
     const home = await (await call(new Request(`${MAIN}/`, { headers: { "accept-language": "zh-CN" } }), CLI_ON)).text();
     expect(home).toContain("sugi up cat.png");
     expect(home).toContain("在终端里、让 AI 帮你传");

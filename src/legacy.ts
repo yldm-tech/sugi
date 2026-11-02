@@ -1,5 +1,4 @@
 // The original content-addressed API, kept unchanged because its links are embedded in pull requests and bin/sugi-upload and other scripts post to /upload: images only, at most 20 MB, key = first 16 hex of SHA-256 + extension, served from the main origin at /<key>.
-import { accountsOn, forgetFiles } from "./auth/core";
 import { deletionResponse, fetchViaCache, purgeCache } from "./cache";
 import { sha256Hex } from "./crypto";
 import { authorizeUpload, etagMatches, hasBody, HttpError, jsonResponse, RemovedError, requireBearer, textResponse, wantsJson } from "./http";
@@ -136,7 +135,10 @@ export async function handleLegacyServe(request: Request, env: Env, key: string)
     if (!upstream.ok) {
       // Passes through blocks such as a CSAM match (451) instead of falling back to the bucket, which would defeat the block.
       await upstream.body?.cancel();
-      throw new HttpError(upstream.status === 404 ? 404 : upstream.status >= 500 ? 502 : upstream.status, upstream.status === 404 ? "not found" : "unavailable");
+      throw new HttpError(
+        upstream.status === 404 ? 404 : upstream.status >= 500 ? 502 : upstream.status,
+        upstream.status === 404 ? "not found" : "unavailable",
+      );
     }
     return new Response(upstream.body, { status: 200, headers });
   }
@@ -154,7 +156,11 @@ export async function handleLegacyDelete(request: Request, env: Env, key: string
     throw new HttpError(404, "not found");
   }
   const url = new URL(request.url);
-  const r = await takedown(env, key, { reason: url.searchParams.get("reason") ?? "admin DELETE (legacy)", blockContent: url.searchParams.get("block_content") === "1", via: "http" });
+  const r = await takedown(env, key, {
+    reason: url.searchParams.get("reason") ?? "admin DELETE (legacy)",
+    blockContent: url.searchParams.get("block_content") === "1",
+    via: "http",
+  });
   return deletionResponse(r.removed, r.cache_purged, r.already_removed.length ? { already_removed: r.already_removed } : {});
 }
 
@@ -189,7 +195,11 @@ export async function handlePurgeBySource(request: Request, env: Env): Promise<R
   if (!SOURCE_RE.test(source)) throw new HttpError(400, '"source" must be a 64-character hex HMAC');
   const dryRun = body.dry_run === true;
   // Same as the takedown_by_source admin tool: tombstones, audit log and cache purge.
-  const r = await takedownBySource(env, source, { dryRun, reason: typeof (body as { reason?: unknown }).reason === "string" ? (body as { reason: string }).reason : "admin purge-by-source", via: "http" });
+  const r = await takedownBySource(env, source, {
+    dryRun,
+    reason: typeof (body as { reason?: unknown }).reason === "string" ? (body as { reason: string }).reason : "admin purge-by-source",
+    via: "http",
+  });
   const keys = r.keys as string[];
   if (dryRun) return jsonResponse({ source, dry_run: true, count: keys.length, matched: keys, albums: r.album_ids });
   return deletionResponse(keys, r.cache_purged as boolean, { source, dry_run: false, count: keys.length, albums: r.album_ids });

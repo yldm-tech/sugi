@@ -40,21 +40,21 @@ export function errorResponse(request: Request, err: HttpError): Response {
   }
   if (wantsJson(request)) {
     headers.set("content-type", "application/json; charset=utf-8");
-    return new Response(JSON.stringify({ error: err.message }) + "\n", { status: err.status, headers });
+    return new Response(`${JSON.stringify({ error: err.message })}\n`, { status: err.status, headers });
   }
   headers.set("content-type", "text/plain; charset=utf-8");
-  return new Response(err.message + "\n", { status: err.status, headers });
+  return new Response(`${err.message}\n`, { status: err.status, headers });
 }
 
 export function jsonResponse(body: unknown, status = 200, extra: Record<string, string> = {}): Response {
-  return new Response(JSON.stringify(body) + "\n", {
+  return new Response(`${JSON.stringify(body)}\n`, {
     status,
     headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff", ...extra },
   });
 }
 
 export function textResponse(text: string, status = 200): Response {
-  return new Response(text + "\n", {
+  return new Response(`${text}\n`, {
     status,
     headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" },
   });

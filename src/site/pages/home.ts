@@ -1,7 +1,7 @@
 import { MAX_FILE_BYTES } from "../../limits";
 import { brand } from "../../config";
 import { esc } from "../i18n";
-import { Ctx, homeTitle, Page, siteDescription, tr } from "../layout";
+import { type Ctx, homeTitle, type Page, siteDescription, tr } from "../layout";
 import { ICONS } from "../og-images";
 import { mascotStage } from "../svg";
 
@@ -84,7 +84,10 @@ ${ctx.gated ? `<p class="gate" id="gate">${t("这个网站目前只接受带令�
 <div class="t">${ctx.flags.cli ? t("在终端里、让 AI 帮你传", "From the terminal, or by AI") : t("在终端里传", "From the terminal")}</div>
 <div class="d">${
     ctx.flags.cli
-      ? t("sugi 有 HTTP API、命令行工具和 MCP 服务。在 Claude、Cursor 里说一句「帮我把这张图传到 sugi」，仓仓就会把链接交回来。", "sugi has an HTTP API, a command-line tool and an MCP server. Tell Claude or Cursor “upload this picture to sugi” and the hamster hands back the link.")
+      ? t(
+          "sugi 有 HTTP API、命令行工具和 MCP 服务。在 Claude、Cursor 里说一句「帮我把这张图传到 sugi」，仓仓就会把链接交回来。",
+          "sugi has an HTTP API, a command-line tool and an MCP server. Tell Claude or Cursor “upload this picture to sugi” and the hamster hands back the link.",
+        )
       : t("sugi 有 HTTP API，curl 一行就能传，返回的就是直链。", "sugi has an HTTP API: one curl command uploads a file and prints its direct link.")
   }</div>
 <a class="go" href="/dev" data-nav>${t("看看怎么用 →", "See how →")}</a>

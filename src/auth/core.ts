@@ -67,7 +67,9 @@ export function isWrite(request: Request): boolean {
 export async function createSession(env: Env, userId: string, method: string): Promise<string> {
   const token = secret();
   const now = Date.now();
-  await env.DB.prepare("INSERT INTO sessions (id_hash, user_id, via, created_at, expires_at) VALUES (?, ?, ?, ?, ?)").bind(await hashSecret(token), userId, method, now, now + SESSION_TTL_MS).run();
+  await env.DB.prepare("INSERT INTO sessions (id_hash, user_id, via, created_at, expires_at) VALUES (?, ?, ?, ?, ?)")
+    .bind(await hashSecret(token), userId, method, now, now + SESSION_TTL_MS)
+    .run();
   return cookie(SESSION_COOKIE, token, SESSION_TTL_MS / 1000);
 }
 
@@ -85,17 +87,26 @@ export async function resolvePrincipal(request: Request, env: Env): Promise<Prin
   const bearer = bearerToken(request);
   if (bearer?.startsWith(API_TOKEN_PREFIX)) {
     const hash = await hashSecret(bearer);
-    const row = await env.DB.prepare(`SELECT ${USER_COLUMNS}, t.id AS token_id, t.last_used_at AS last_used_at FROM api_tokens t JOIN users u ON u.id = t.user_id WHERE t.token_hash = ?`).bind(hash).first<User & { token_id: string; last_used_at: number | null }>();
+    const row = await env.DB.prepare(
+      `SELECT ${USER_COLUMNS}, t.id AS token_id, t.last_used_at AS last_used_at FROM api_tokens t JOIN users u ON u.id = t.user_id WHERE t.token_hash = ?`,
+    )
+      .bind(hash)
+      .first<User & { token_id: string; last_used_at: number | null }>();
     if (!row) throw new HttpError(401, "invalid API token", { "www-authenticate": 'Bearer realm="sugi"' });
     // Record use at most once an hour to keep writes down.
-    if (!row.last_used_at || Date.now() - row.last_used_at > 3600e3) await env.DB.prepare("UPDATE api_tokens SET last_used_at = ? WHERE id = ?").bind(Date.now(), row.token_id).run();
+    if (!row.last_used_at || Date.now() - row.last_used_at > 3600e3)
+      await env.DB.prepare("UPDATE api_tokens SET last_used_at = ? WHERE id = ?").bind(Date.now(), row.token_id).run();
     return { user: { id: row.id, email: row.email, name: row.name, created_at: row.created_at }, via: "token", method: null, sessionHash: null };
   }
   const token = readCookies(request).get(SESSION_COOKIE);
   if (!token) return null;
   if (isWrite(request) && !sameOrigin(request, env)) return null;
   const hash = await hashSecret(token);
-  const row = await env.DB.prepare(`SELECT ${USER_COLUMNS}, s.via AS via FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id_hash = ? AND s.expires_at > ?`).bind(hash, Date.now()).first<User & { via: string }>();
+  const row = await env.DB.prepare(
+    `SELECT ${USER_COLUMNS}, s.via AS via FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.id_hash = ? AND s.expires_at > ?`,
+  )
+    .bind(hash, Date.now())
+    .first<User & { via: string }>();
   if (!row) return null;
   return { user: { id: row.id, email: row.email, name: row.name, created_at: row.created_at }, via: "session", method: row.via, sessionHash: hash };
 }
@@ -124,7 +135,15 @@ export async function getUser(env: Env, id: string): Promise<User | null> {
 /**
  * Finds or creates the account for an external identity. Order: an existing identity wins; otherwise the identity is linked to the account the visitor is already logged in to; otherwise to the account with the same verified email; otherwise a new account is created.
  */
-export async function loginWithIdentity(env: Env, provider: string, subject: string, email: string | null, emailVerified: boolean, name: string | null, current: Principal | null): Promise<User> {
+export async function loginWithIdentity(
+  env: Env,
+  provider: string,
+  subject: string,
+  email: string | null,
+  emailVerified: boolean,
+  name: string | null,
+  current: Principal | null,
+): Promise<User> {
   const known = await env.DB.prepare("SELECT user_id FROM identities WHERE provider = ? AND subject = ?").bind(provider, subject).first<{ user_id: string }>();
   if (known) {
     if (current && current.user.id !== known.user_id) throw new HttpError(409, "that login already belongs to another sugi account");
@@ -144,7 +163,9 @@ export async function loginWithIdentity(env: Env, provider: string, subject: str
     await env.DB.prepare("UPDATE users SET name = ? WHERE id = ?").bind(name, user.id).run();
     user.name = name;
   }
-  await env.DB.prepare("INSERT INTO identities (provider, subject, user_id, email, created_at) VALUES (?, ?, ?, ?, ?)").bind(provider, subject, user.id, email, Date.now()).run();
+  await env.DB.prepare("INSERT INTO identities (provider, subject, user_id, email, created_at) VALUES (?, ?, ?, ?, ?)")
+    .bind(provider, subject, user.id, email, Date.now())
+    .run();
   return user;
 }
 
@@ -171,6 +192,8 @@ export async function ownsAlbum(env: Env, userId: string, albumId: string): Prom
 export async function forgetFiles(env: Env, keys: string[]): Promise<void> {
   for (let i = 0; i < keys.length; i += 50) {
     const chunk = keys.slice(i, i + 50);
-    await env.DB.prepare(`DELETE FROM user_files WHERE file_key IN (${chunk.map(() => "?").join(",")})`).bind(...chunk).run();
+    await env.DB.prepare(`DELETE FROM user_files WHERE file_key IN (${chunk.map(() => "?").join(",")})`)
+      .bind(...chunk)
+      .run();
   }
 }

@@ -1,6 +1,8 @@
 import { handleAlbumCreate, handleAlbumDelete, handleAlbumGet } from "./albums";
 import { handleChunkAbort, handleChunkComplete, handleChunkCreate, handleChunkPart } from "./chunked";
-import { handleFileDelete, handleFileInfo, handleFileServe, handleUploadPost, handleUploadPut, sweepExpired } from "./files";
+import { handleFileDelete, handleFileInfo, sweepExpired } from "./files";
+import { handleFileServe } from "./serve";
+import { handleUploadPost, handleUploadPut } from "./upload";
 import { errorResponse, HttpError, methodNotAllowed } from "./http";
 import { handleInfo, handleLegacyDelete, handleLegacyServe, handleLegacyUpload, handlePurgeBySource, LEGACY_KEY_RE } from "./legacy";
 import { handleSite } from "./site";
@@ -35,7 +37,7 @@ function matchFileOrigin(env: Env, url: URL): { temporary: boolean; name: string
     }
     const prefix = o.pathname.replace(/\/$/, "");
     if (prefix) {
-      if (url.pathname.startsWith(prefix + "/")) return { temporary, name: url.pathname.slice(prefix.length + 1), dedicatedHost: false };
+      if (url.pathname.startsWith(`${prefix}/`)) return { temporary, name: url.pathname.slice(prefix.length + 1), dedicatedHost: false };
     } else if (url.hostname === o.hostname) {
       return { temporary, name: url.pathname.slice(1), dedicatedHost: true };
     }
@@ -45,7 +47,7 @@ function matchFileOrigin(env: Env, url: URL): { temporary: boolean; name: string
 
 async function routeFileHost(request: Request, env: Env, m: { temporary: boolean; name: string; dedicatedHost: boolean }): Promise<Response> {
   if (request.method !== "GET" && request.method !== "HEAD") throw methodNotAllowed("GET, HEAD");
-  if (m.dedicatedHost && m.name === "") return Response.redirect(env.MAIN_ORIGIN + "/", 302);
+  if (m.dedicatedHost && m.name === "") return Response.redirect(`${env.MAIN_ORIGIN}/`, 302);
   if (m.dedicatedHost && m.name === "robots.txt") return fileHostRobotsTxt();
   // Uploads are never meant to be found through search engines.
   const res = await handleFileServe(request, env, m.temporary, m.name).catch((err) => {
@@ -130,7 +132,8 @@ async function route(request: Request, env: Env): Promise<Response> {
   // Everything past this point may touch D1; make sure the schema exists (a no-op after the first request of an isolate).
   await ensureSchema(env.DB).catch(() => undefined);
   if (pathname === "/favicon.ico") return serveStatic(new Request(new URL(ICONS.png32, url), request), env, ICONS.png32);
-  if (pathname === "/apple-touch-icon.png" || pathname === "/apple-touch-icon-precomposed.png") return serveStatic(new Request(new URL(ICONS.apple, url), request), env, ICONS.apple);
+  if (pathname === "/apple-touch-icon.png" || pathname === "/apple-touch-icon-precomposed.png")
+    return serveStatic(new Request(new URL(ICONS.apple, url), request), env, ICONS.apple);
   if (pathname === "/robots.txt") return robotsTxt(env);
   if (pathname === "/sitemap.xml") return sitemapXml(env);
   if (pathname === "/manifest.webmanifest") return webManifest(env);
@@ -139,7 +142,9 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (pathname === "/mcp") return handleMcp(request, env);
     if (pathname === "/install.sh") {
       if (method !== "GET" && method !== "HEAD") throw methodNotAllowed("GET, HEAD");
-      return new Response(method === "HEAD" ? null : installScript(env), { headers: { "content-type": "text/plain; charset=utf-8", "x-content-type-options": "nosniff", "cache-control": "no-cache" } });
+      return new Response(method === "HEAD" ? null : installScript(env), {
+        headers: { "content-type": "text/plain; charset=utf-8", "x-content-type-options": "nosniff", "cache-control": "no-cache" },
+      });
     }
   }
   if (pathname === "/upload") {
@@ -147,7 +152,12 @@ async function route(request: Request, env: Env): Promise<Response> {
     throw methodNotAllowed("POST, PUT");
   }
   if (pathname === "/auth/email" || pathname === "/auth/email/verify" || pathname === "/auth/logout") {
-    if (method === "POST") return pathname === "/auth/email" ? handleMagicRequest(request, env) : pathname === "/auth/logout" ? handleLogout(request, env) : handleMagicVerify(request, env);
+    if (method === "POST")
+      return pathname === "/auth/email"
+        ? handleMagicRequest(request, env)
+        : pathname === "/auth/logout"
+          ? handleLogout(request, env)
+          : handleMagicVerify(request, env);
     if (pathname !== "/auth/email/verify" || (method !== "GET" && method !== "HEAD")) throw methodNotAllowed("POST");
   }
   if (pathname === "/admin/e2e-inbox") {

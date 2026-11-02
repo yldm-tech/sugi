@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseRange } from "../src/files";
+import { parseRange } from "../src/serve";
 import { CUTE_WORDS, cuteId, deleteToken, isFileId, randomId } from "../src/ids";
 import { parseExpiry } from "../src/limits";
 import { sniffImageType, sniffMedia } from "../src/sniff";
@@ -9,8 +9,10 @@ const box = (major: string, compat: string[] = []) => {
   const size = 16 + compat.length * 4;
   const b = new Uint8Array(Math.max(size, 32));
   new DataView(b.buffer).setUint32(0, size);
-  b.set(enc.encode("ftyp" + major), 4);
-  compat.forEach((c, i) => b.set(enc.encode(c), 16 + i * 4));
+  b.set(enc.encode(`ftyp${major}`), 4);
+  compat.forEach((c, i) => {
+    b.set(enc.encode(c), 16 + i * 4);
+  });
   return b;
 };
 
@@ -31,7 +33,8 @@ describe("sniffMedia", () => {
   });
 
   it("recognises WebM but not other Matroska", () => {
-    const head = (doctype: string) => new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 0x9f, 0x42, 0x86, 0x81, 0x01, 0x42, 0x82, 0x80 | doctype.length, ...enc.encode(doctype), 0, 0, 0, 0]);
+    const head = (doctype: string) =>
+      new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 0x9f, 0x42, 0x86, 0x81, 0x01, 0x42, 0x82, 0x80 | doctype.length, ...enc.encode(doctype), 0, 0, 0, 0]);
     expect(sniffMedia(head("webm"))).toMatchObject({ ext: "webm", mime: "video/webm", kind: "video" });
     expect(sniffMedia(head("matroska"))).toBeNull();
   });

@@ -89,12 +89,15 @@ async function requestMagicLink(request: Request, env: Env, rawEmail: unknown, l
     env.DB.prepare("SELECT COUNT(*) AS n FROM magic_links WHERE created_at > ?").bind(now - 86400e3),
   ]);
   const [perEmail, perSource, perDay] = counts.map((r) => (r.results[0] as { n: number }).n);
-  if (perEmail >= MAGIC_PER_EMAIL_PER_HOUR || perSource >= MAGIC_PER_SOURCE_PER_HOUR) throw new HttpError(429, "too many login emails; wait a while or use another way to log in", { "retry-after": "3600" });
+  if (perEmail >= MAGIC_PER_EMAIL_PER_HOUR || perSource >= MAGIC_PER_SOURCE_PER_HOUR)
+    throw new HttpError(429, "too many login emails; wait a while or use another way to log in", { "retry-after": "3600" });
   if (perDay >= MAGIC_PER_DAY) throw new EmailQuotaError();
 
   const token = secret();
   const hash = await hashSecret(token);
-  await env.DB.prepare("INSERT INTO magic_links (token_hash, email, source, created_at, expires_at) VALUES (?, ?, ?, ?, ?)").bind(hash, email, source, now, now + MAGIC_TTL_MS).run();
+  await env.DB.prepare("INSERT INTO magic_links (token_hash, email, source, created_at, expires_at) VALUES (?, ?, ?, ?, ?)")
+    .bind(hash, email, source, now, now + MAGIC_TTL_MS)
+    .run();
   const link = `${env.MAIN_ORIGIN}/auth/email/verify?token=${token}`;
   try {
     await sendEmail(env, { to: email, ...loginMail(link, lang, brand(env).siteName) });
@@ -103,7 +106,9 @@ async function requestMagicLink(request: Request, env: Env, rawEmail: unknown, l
     throw err;
   }
   // Old rows only matter for the rate limits above.
-  await env.DB.prepare("DELETE FROM magic_links WHERE created_at < ?").bind(now - 2 * 86400e3).run();
+  await env.DB.prepare("DELETE FROM magic_links WHERE created_at < ?")
+    .bind(now - 2 * 86400e3)
+    .run();
 }
 
 function errorCode(err: HttpError): string {
@@ -142,7 +147,9 @@ export async function consumeMagicLink(env: Env, token: string): Promise<{ email
   const hash = await hashSecret(token);
   const now = Date.now();
   // Single UPDATE so two clicks cannot both succeed.
-  const row = await env.DB.prepare("UPDATE magic_links SET used_at = ? WHERE token_hash = ? AND used_at IS NULL AND expires_at > ? RETURNING email").bind(now, hash, now).first<{ email: string }>();
+  const row = await env.DB.prepare("UPDATE magic_links SET used_at = ? WHERE token_hash = ? AND used_at IS NULL AND expires_at > ? RETURNING email")
+    .bind(now, hash, now)
+    .first<{ email: string }>();
   return row ?? null;
 }
 
@@ -163,6 +170,7 @@ export async function handleMagicVerify(request: Request, env: Env): Promise<Res
 }
 
 export function magicLinkValid(env: Env, token: string): Promise<boolean> {
-  return hashSecret(token).then(async (h) => Boolean(await env.DB.prepare("SELECT 1 FROM magic_links WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?").bind(h, Date.now()).first()));
+  return hashSecret(token).then(async (h) =>
+    Boolean(await env.DB.prepare("SELECT 1 FROM magic_links WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?").bind(h, Date.now()).first()),
+  );
 }
-

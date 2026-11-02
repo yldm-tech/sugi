@@ -43,7 +43,12 @@ function png() {
   ihdr[9] = 2;
   const [r, g, b] = randomBytes(3);
   const row = Buffer.concat([Buffer.from([0]), ...Array.from({ length: w }, (_, x) => Buffer.from([r, (g + x * 2) & 255, b]))]);
-  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(Buffer.concat(Array.from({ length: h }, () => row)))), chunk("IEND", Buffer.alloc(0))]);
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk("IHDR", ihdr),
+    chunk("IDAT", deflateSync(Buffer.concat(Array.from({ length: h }, () => row)))),
+    chunk("IEND", Buffer.alloc(0)),
+  ]);
 }
 
 async function upload(name) {
@@ -53,11 +58,29 @@ async function upload(name) {
 }
 
 const files = [await upload("a-rather-long-file-name-for-a-screenshot-taken-on-a-phone.png"), await upload("cat.png"), await upload("dog.png")];
-const album = await (await fetch(`${base}/api/albums`, { method: "POST", body: JSON.stringify({ files: files.map((f) => f.id), title: "周报配图 · weekly report pictures" }), headers: { "content-type": "application/json", accept: "application/json" } })).json();
+const album = await (
+  await fetch(`${base}/api/albums`, {
+    method: "POST",
+    body: JSON.stringify({ files: files.map((f) => f.id), title: "周报配图 · weekly report pictures" }),
+    headers: { "content-type": "application/json", accept: "application/json" },
+  })
+).json();
 const removed = await upload("removed.png");
 await fetch(`${base}/api/files/${removed.id}`, { method: "DELETE", headers: { authorization: `Bearer ${adminToken}` } });
 
-const history = files.map((f, i) => ({ id: f.id, url: f.url, page: f.page, name: f.name, size: f.size, ext: "png", kind: "image", token: f.delete_token, expiresAt: i === 1 ? Date.now() + 3600e3 : null, createdAt: Date.now() - i * 60e3, thumb: null }));
+const history = files.map((f, i) => ({
+  id: f.id,
+  url: f.url,
+  page: f.page,
+  name: f.name,
+  size: f.size,
+  ext: "png",
+  kind: "image",
+  token: f.delete_token,
+  expiresAt: i === 1 ? Date.now() + 3600e3 : null,
+  createdAt: Date.now() - i * 60e3,
+  thumb: null,
+}));
 const albumsLocal = [{ id: album.id, url: album.url, title: album.title, token: album.delete_token, fileIds: files.map((f) => f.id), createdAt: Date.now() }];
 const pages = [
   ["home", "/"],
@@ -93,7 +116,10 @@ const findOverflow = () => {
     if (r.width === 0 || r.height === 0) continue;
     const s = getComputedStyle(el);
     if (s.position === "fixed" || s.visibility === "hidden") continue;
-    if ((r.right > vw + 1 || r.left < -1) && !clipped(el)) out.push(`${el.tagName.toLowerCase()}${el.id ? "#" + el.id : ""}${el.className && typeof el.className === "string" ? "." + el.className.trim().split(/\s+/).join(".") : ""} (${Math.round(r.left)}..${Math.round(r.right)} of ${vw})`);
+    if ((r.right > vw + 1 || r.left < -1) && !clipped(el))
+      out.push(
+        `${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ""}${el.className && typeof el.className === "string" ? `.${el.className.trim().split(/\s+/).join(".")}` : ""} (${Math.round(r.left)}..${Math.round(r.right)} of ${vw})`,
+      );
   }
   return { scroll: document.documentElement.scrollWidth - vw, out: out.slice(0, 5) };
 };
@@ -105,21 +131,25 @@ try {
     for (const theme of ["day", "night"]) {
       for (const width of widths) {
         const ctx = await browser.newContext({ viewport: { width, height: 900 }, locale: lang === "zh" ? "zh-CN" : "en-US" });
-        await ctx.addInitScript(([night, hist, albums]) => {
-          localStorage.setItem("sugi.prefs.v1", JSON.stringify({ night }));
-          localStorage.setItem("sugi.history.v1", JSON.stringify(hist));
-          localStorage.setItem("sugi.albums.v1", JSON.stringify(albums));
-        }, [theme === "night", history, albumsLocal]);
+        await ctx.addInitScript(
+          ([night, hist, albums]) => {
+            localStorage.setItem("sugi.prefs.v1", JSON.stringify({ night }));
+            localStorage.setItem("sugi.history.v1", JSON.stringify(hist));
+            localStorage.setItem("sugi.albums.v1", JSON.stringify(albums));
+          },
+          [theme === "night", history, albumsLocal],
+        );
         const page = await ctx.newPage();
         page.on("pageerror", (e) => problems.push(`${lang}/${theme}/${width}: script error ${e}`));
         for (const [name, path] of pages) {
           const [p, hash] = path.split("#");
-          await page.goto(`${base}${p}${p.includes("?") ? "&" : "?"}lang=${lang}${hash ? "#" + hash : ""}`);
+          await page.goto(`${base}${p}${p.includes("?") ? "&" : "?"}lang=${lang}${hash ? `#${hash}` : ""}`);
           await page.evaluate(() => document.fonts.ready);
           await page.waitForTimeout(150);
           const r = await page.evaluate(findOverflow);
           if (r.scroll > 1 || r.out.length) problems.push(`${name} ${lang}/${theme}/${width}px: page scrolls sideways by ${r.scroll}px; ${r.out.join(", ")}`);
-          if (shots && theme === "day" && (lang === "zh" || width === 390)) await page.screenshot({ path: `${shots}/${lang}-${name}-${width}.png`, fullPage: true });
+          if (shots && theme === "day" && (lang === "zh" || width === 390))
+            await page.screenshot({ path: `${shots}/${lang}-${name}-${width}.png`, fullPage: true });
         }
         await ctx.close();
       }

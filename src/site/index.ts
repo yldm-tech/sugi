@@ -3,11 +3,14 @@ import { findFile } from "../files";
 import { assertAlbumNotRemoved, assertFileNotRemoved } from "../moderation";
 import { randomNonce } from "../http";
 import { pickLang, readCookie } from "./i18n";
-import { Ctx, documentHtml, flagsOf, Page, pageCsp } from "./layout";
+import { type Ctx, documentHtml, flagsOf, type Page, pageCsp } from "./layout";
 import { albumPage, filePage, minePage } from "./pages/files";
 import { homePage } from "./pages/home";
 import { privacyPage } from "./pages/privacy";
-import { accountPage, devPage, donatePage, faqPage, loginPage, notFoundPage, termsPage, verifyPage } from "./pages/info";
+import { accountPage, loginPage, verifyPage } from "./pages/account";
+import { devPage } from "./pages/dev";
+import { donatePage } from "./pages/donate";
+import { faqPage, notFoundPage, termsPage } from "./pages/help";
 import { displayName, resolvePrincipal } from "../auth/core";
 import { magicLinkValid } from "../auth/email";
 
@@ -18,7 +21,10 @@ export function makeCtx(request: Request, env: Env): { ctx: Ctx; setCookie: stri
   const q = url.searchParams.get("lang");
   const lang = pickLang(q, readCookie(request.headers.get("cookie"), LANG_COOKIE), request.headers.get("accept-language"));
   const setCookie = q === "en" || q === "zh" ? `${LANG_COOKIE}=${q}; Path=/; Max-Age=31536000; SameSite=Lax; Secure` : null;
-  return { ctx: { env, lang, nonce: randomNonce(), gated: Boolean(env.UPLOAD_TOKEN), flags: flagsOf(env), path: url.pathname, query: url.searchParams }, setCookie };
+  return {
+    ctx: { env, lang, nonce: randomNonce(), gated: Boolean(env.UPLOAD_TOKEN), flags: flagsOf(env), path: url.pathname, query: url.searchParams },
+    setCookie,
+  };
 }
 
 async function resolvePage(ctx: Ctx, pathname: string): Promise<Page> {
@@ -83,7 +89,10 @@ export async function handleSite(request: Request, env: Env, pathname: string): 
   };
   if (setCookie) headers["set-cookie"] = setCookie;
   if (request.headers.get("x-sugi-partial") === "1") {
-    return new Response(JSON.stringify({ page: page.id, title: page.title, html: page.main, lang: ctx.lang }), { status: page.status ?? 200, headers: { ...headers, "content-type": "application/json; charset=utf-8" } });
+    return new Response(JSON.stringify({ page: page.id, title: page.title, html: page.main, lang: ctx.lang }), {
+      status: page.status ?? 200,
+      headers: { ...headers, "content-type": "application/json; charset=utf-8" },
+    });
   }
   const html = documentHtml(ctx, page);
   return new Response(request.method === "HEAD" ? null : html, {

@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import { ICONS, OG_IMAGES } from "../src/site/og-images";
 import { call, FILES, MAIN, mp4, png, upload } from "./helpers";
 
-const get = (path: string, init: RequestInit = {}, overrides: Partial<Env> = {}) => call(new Request(path.startsWith("http") ? path : `${MAIN}${path}`, init), overrides);
+const get = (path: string, init: RequestInit = {}, overrides: Partial<Env> = {}) =>
+  call(new Request(path.startsWith("http") ? path : `${MAIN}${path}`, init), overrides);
 
 // Minimal <head> parser: meta/link attributes and JSON-LD blocks.
 function head(html: string) {
-  const attrs = (tag: string) => Object.fromEntries([...tag.matchAll(/([a-z:-]+)="([^"]*)"/g)].map((m) => [m[1], m[2].replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))]));
+  const attrs = (tag: string) =>
+    Object.fromEntries([...tag.matchAll(/([a-z:-]+)="([^"]*)"/g)].map((m) => [m[1], m[2].replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))]));
   const metas = [...html.matchAll(/<meta\b[^>]*>/g)].map((m) => attrs(m[0]));
   const links = [...html.matchAll(/<link\b[^>]*>/g)].map((m) => attrs(m[0]));
   const meta = (key: string) => metas.find((m) => m.property === key || m.name === key)?.content;
@@ -59,7 +61,11 @@ describe("page metadata", () => {
     expect(h.meta("description")!.length).toBeGreaterThan(20);
     const canonical = `https://sugi.moe${path}?lang=${lang}`;
     expect(h.links.find((l) => l.rel === "canonical")?.href).toBe(canonical);
-    expect(h.links.filter((l) => l.rel === "alternate").map((l) => `${l.hreflang} ${l.href}`)).toEqual([`zh https://sugi.moe${path}?lang=zh`, `en https://sugi.moe${path}?lang=en`, `x-default https://sugi.moe${path}`]);
+    expect(h.links.filter((l) => l.rel === "alternate").map((l) => `${l.hreflang} ${l.href}`)).toEqual([
+      `zh https://sugi.moe${path}?lang=zh`,
+      `en https://sugi.moe${path}?lang=en`,
+      `x-default https://sugi.moe${path}`,
+    ]);
     expect(h.meta("og:title")).toBe(title);
     expect(h.meta("og:url")).toBe(canonical);
     expect(h.meta("og:type")).toBe("website");
@@ -102,7 +108,10 @@ describe("noindex", () => {
       expect(res.headers.get("x-robots-tag"), path).toBe("noindex");
       const h = head(await res.text());
       expect(h.meta("robots"), path).toBe("noindex, nofollow");
-      expect(h.links.find((l) => l.rel === "canonical"), path).toBeUndefined();
+      expect(
+        h.links.find((l) => l.rel === "canonical"),
+        path,
+      ).toBeUndefined();
     }
     // A permanent image previews itself; a temporary video falls back to the site image. Both use the site title.
     const ih = head(await (await get(`/f/${img.id}?lang=en`)).text());
@@ -131,7 +140,18 @@ describe("icons, manifest and OG images", () => {
   }
 
   it("serves every OG image as a 1200x630 PNG with long caching", async () => {
-    expect(Object.keys(OG_IMAGES).sort()).toEqual(["dev-en", "dev-zh", "faq-en", "faq-zh", "home-en", "home-zh", "privacy-en", "privacy-zh", "terms-en", "terms-zh"]);
+    expect(Object.keys(OG_IMAGES).sort()).toEqual([
+      "dev-en",
+      "dev-zh",
+      "faq-en",
+      "faq-zh",
+      "home-en",
+      "home-zh",
+      "privacy-en",
+      "privacy-zh",
+      "terms-en",
+      "terms-zh",
+    ]);
     for (const path of Object.values(OG_IMAGES)) {
       const res = await get(path);
       expect(res.status, path).toBe(200);
@@ -146,7 +166,12 @@ describe("icons, manifest and OG images", () => {
     const m = await res.json<{ name: string; theme_color: string; icons: { src: string; sizes: string }[] }>();
     expect(m).toMatchObject({ name: "sugi.moe", theme_color: "#F6F4EA" });
     for (const icon of m.icons) expect((await get(icon.src)).status, icon.src).toBe(200);
-    const sizes: [string, [number, number]][] = [[ICONS.png32, [32, 32]], [ICONS.png192, [192, 192]], [ICONS.png512, [512, 512]], [ICONS.apple, [180, 180]]];
+    const sizes: [string, [number, number]][] = [
+      [ICONS.png32, [32, 32]],
+      [ICONS.png192, [192, 192]],
+      [ICONS.png512, [512, 512]],
+      [ICONS.apple, [180, 180]],
+    ];
     for (const [path, size] of sizes) expect(pngSize(new Uint8Array(await (await get(path)).arrayBuffer()))).toEqual(size);
     expect((await get("/apple-touch-icon.png")).headers.get("content-type")).toBe("image/png");
   });

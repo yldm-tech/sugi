@@ -64,11 +64,40 @@ describe("language", () => {
 
 describe("pages", () => {
   it.each([
-    ["/", "zh", ["把图图交给仓仓吧～", "把图片和视频拖到这里", "单个文件最大 200 MB", "传完自动复制", "抹掉照片位置信息", "可爱链接名", "传完啾一声", "搬过来", "暂未开放匿名上传"]],
-    ["/", "en", ["Hand your pics to the hamster~", "Drop images and videos here", "up to 200 MB per file", "Strip photo location", "Cute link names", "Anonymous uploads are not open yet"]],
+    [
+      "/",
+      "zh",
+      [
+        "把图图交给仓仓吧～",
+        "把图片和视频拖到这里",
+        "单个文件最大 200 MB",
+        "传完自动复制",
+        "抹掉照片位置信息",
+        "可爱链接名",
+        "传完啾一声",
+        "搬过来",
+        "只接受带令牌的上传",
+      ],
+    ],
+    [
+      "/",
+      "en",
+      [
+        "Hand your pics to the hamster~",
+        "Drop images and videos here",
+        "up to 200 MB per file",
+        "Strip photo location",
+        "Cute link names",
+        "only accepts uploads with a token",
+      ],
+    ],
     ["/mine", "zh", ["我的文件", "仓库还空空的", "导出记录", "打包链接"]],
     ["/mine", "en", ["My files", "Nothing stashed yet", "Export"]],
-    ["/faq", "zh", ["问问仓仓", "公开", "不保存你的 IP 地址", "HMAC", "abuse@sugi.moe", "200 MB", "PNG、JPEG、WebP、GIF、AVIF、MP4、WebM", "tmp.sugi.moe", "CSAM"]],
+    [
+      "/faq",
+      "zh",
+      ["问问仓仓", "公开", "不保存你的 IP 地址", "HMAC", "abuse@sugi.moe", "200 MB", "PNG、JPEG、WebP、GIF、AVIF、MP4、WebM", "tmp.sugi.moe", "CSAM"],
+    ],
     ["/faq", "en", ["Ask the hamster", "public", "Not your IP address", "HMAC", "abuse@sugi.moe", "200 MB"]],
     ["/terms", "zh", ["使用条款", "儿童性剥削", "所有上传都是公开的", "HMAC", "abuse@sugi.moe"]],
     ["/terms", "en", ["Terms of use", "public", "HMAC", "abuse@sugi.moe"]],
@@ -82,7 +111,19 @@ describe("pages", () => {
 
   it("the developer page documents exactly the real endpoints and limits", async () => {
     const html = await (await page("/dev", zh)).text();
-    for (const ep of ["POST /api/upload", "PUT /api/upload", "POST /api/uploads?size=…", "PUT /api/uploads/:n", "POST /api/uploads/complete", "GET /api/files/:id", "DELETE /api/files/:id", "POST /api/albums", "GET /api/albums/:id", "DELETE /api/albums/:id"]) expect(html, ep).toContain(ep);
+    for (const ep of [
+      "POST /api/upload",
+      "PUT /api/upload",
+      "POST /api/uploads?size=…",
+      "PUT /api/uploads/:n",
+      "POST /api/uploads/complete",
+      "GET /api/files/:id",
+      "DELETE /api/files/:id",
+      "POST /api/albums",
+      "GET /api/albums/:id",
+      "DELETE /api/albums/:id",
+    ])
+      expect(html, ep).toContain(ep);
     expect(html).toContain("每个 IP 每 60 秒最多 10 次上传");
     expect(html).toContain("每个 IP 每 10 秒最多 5 次请求");
     expect(html).toContain("Sugi-Token");
@@ -158,7 +199,13 @@ describe("file and album pages", () => {
   it("renders an album page", async () => {
     const a = await upload(png());
     const b = await upload(mp4());
-    const res = await call(new Request(`${MAIN}/api/albums`, { method: "POST", body: JSON.stringify({ files: [a.id, b.id], title: "猫猫合集" }), headers: { "cf-connecting-ip": freshIp(), ...TRUSTED, "content-type": "application/json", accept: "application/json" } }));
+    const res = await call(
+      new Request(`${MAIN}/api/albums`, {
+        method: "POST",
+        body: JSON.stringify({ files: [a.id, b.id], title: "猫猫合集" }),
+        headers: { "cf-connecting-ip": freshIp(), ...TRUSTED, "content-type": "application/json", accept: "application/json" },
+      }),
+    );
     const al = await res.json<{ id: string }>();
     const html = await (await page(`/a/${al.id}`, zh)).text();
     expect(html).toContain("猫猫合集");

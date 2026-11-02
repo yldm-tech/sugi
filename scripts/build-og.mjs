@@ -31,7 +31,8 @@ export const OG_COPY_GENERIC = {
 
 const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
-const HEART = "M8 13 C3 9.5 0.5 7 0.5 4.2 C0.5 2 2.2 0.5 4.2 0.5 C5.8 0.5 7.2 1.5 8 2.8 C8.8 1.5 10.2 0.5 11.8 0.5 C13.8 0.5 15.5 2 15.5 4.2 C15.5 7 13 9.5 8 13 Z";
+const HEART =
+  "M8 13 C3 9.5 0.5 7 0.5 4.2 C0.5 2 2.2 0.5 4.2 0.5 C5.8 0.5 7.2 1.5 8 2.8 C8.8 1.5 10.2 0.5 11.8 0.5 C13.8 0.5 15.5 2 15.5 4.2 C15.5 7 13 9.5 8 13 Z";
 const STAR = "M0 -12 C1.5 -3 3 -1.5 12 0 C3 1.5 1.5 3 0 12 C-1.5 3 -3 1.5 -12 0 C-3 -1.5 -1.5 -3 0 -12 Z";
 
 // The hamster in its box, from the home page (200x170 units), happy eyes.
@@ -92,14 +93,18 @@ function ogSvg(lang, [headline, subtitle], official) {
 <g transform="translate(1100 520)" fill="#BFD9AE"><circle r="7" cx="0" cy="-12"/><circle r="7" cx="11" cy="-4"/><circle r="7" cx="7" cy="10"/><circle r="7" cx="-7" cy="10"/><circle r="7" cx="-11" cy="-4"/><circle r="5" fill="#F6F4EA"/></g>
 <ellipse cx="300" cy="520" rx="210" ry="26" fill="#E8EBD9"/>
 <g transform="translate(70 115) scale(2.3)">${MASCOT}</g>
-${official ? `<g transform="translate(${textX} 70)">
+${
+  official
+    ? `<g transform="translate(${textX} 70)">
 <rect x="0" y="0" width="258" height="70" rx="35" fill="#D6E2C8"/>
 <rect x="0" y="-6" width="258" height="70" rx="35" fill="#FFFFFF" stroke="#D6E2C8" stroke-width="3"/>
 <g transform="translate(16 2) scale(1.15)">${FACE}</g>
 <text x="80" y="42" font-family="Fredoka" font-weight="700" font-size="34" fill="#3F4A3C">sugi</text>
 <path d="${HEART}" transform="translate(150 20) scale(1.25)" fill="#F4A6A0"/>
 <text x="174" y="42" font-family="Fredoka" font-weight="700" font-size="34" fill="#3F4A3C">moe</text>
-</g>` : ""}
+</g>`
+    : ""
+}
 ${head(4, 4, "#E1EDD3")}
 ${head(0, 0, "#3F4A3C")}
 <text x="${textX}" y="${subY}" font-family="${lang === "zh" ? "ZCOOL KuaiLe" : "Fredoka"}" font-weight="500" font-size="32" fill="#66705F">${esc(subtitle)}</text>
@@ -120,7 +125,9 @@ function iconSvg(size, background) {
 }
 
 function render(svg) {
-  return new Resvg(svg, { font: { fontFiles: FONTS, loadSystemFonts: false, defaultFontFamily: "ZCOOL KuaiLe" }, fitTo: { mode: "original" } }).render().asPng();
+  return new Resvg(svg, { font: { fontFiles: FONTS, loadSystemFonts: false, defaultFontFamily: "ZCOOL KuaiLe" }, fitTo: { mode: "original" } })
+    .render()
+    .asPng();
 }
 
 function writeHashed(dir, name, png) {

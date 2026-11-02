@@ -24,10 +24,10 @@ sugi 是一个匿名图床，图片和短视频都能传，整个跑在 Cloudfla
 
 点上面的 **Deploy to Cloudflare**。Cloudflare 会把这个仓库复制到你的 GitHub 或 GitLab 账号，创建 R2 bucket 和 D1 数据库，让你填下面两个 secret，然后部署 Worker。部署完就能在 `*.workers.dev` 地址上用，数据库表在第一次请求时由 Worker 自己建好。
 
-| Secret | 填什么 |
-| --- | --- |
+| Secret           | 填什么                                                                                                                               |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | `IP_HASH_SECRET` | 一个足够长的随机值，例如 `openssl rand -hex 32`。用来算上传者 IP 的 HMAC，也用来签分片上传会话。没设置时上传返回 503，首页也会提示。 |
-| `ADMIN_TOKEN` | 另一个随机值。用来删除任意文件、按来源清除（见[处理违规内容](#处理违规内容)）。 |
+| `ADMIN_TOKEN`    | 另一个随机值。用来删除任意文件、按来源清除（见[处理违规内容](#处理违规内容)）。                                                      |
 
 把链接发出去之前，至少设置 `SITE_NAME`、`OPERATOR_NAME`、`CONTACT_EMAIL`（见[配置](#配置)），并读一遍自己站点的使用条款和隐私政策：它们描述的是**你的**服务，由你负责。
 
@@ -48,21 +48,21 @@ npx wrangler secret put ADMIN_TOKEN
 
 一个实例的身份都在 [`wrangler.jsonc`](wrangler.jsonc) 的 `vars` 里。留空时用默认值，在裸的 `*.workers.dev` 地址上也能工作。
 
-| 变量 | 默认 | 含义 |
-| --- | --- | --- |
-| `SITE_NAME` | 主机名 | 显示在标题、logo（`pics.example` 显示成 `pics♥example`）、Open Graph 和法律页面里。 |
-| `MAIN_ORIGIN` | 请求自己的 origin | 网站和接口的公开地址，例如 `https://pics.example.org`。 |
-| `FILES_ORIGIN`、`TMP_ORIGIN` | `<主站>/_files`、`<主站>/_tmp` | 永久和临时文件的地址。有自己的域名时，建议用单独的主机名（`https://files.example.org`、`https://tmp.example.org`）并加成自定义域，这样用户上传的文件永远不会和网站同源。 |
-| `OPERATOR_NAME` | 无 | 运营这个站点的个人或公司，写在使用条款和隐私政策里。 |
-| `CONTACT_EMAIL`、`ABUSE_EMAIL` | 无 | 一般和隐私问题的联系邮箱，以及举报邮箱（不填时用联系邮箱）。都不填时页面会请访客联系运营者。 |
-| `CSAM_SCANNING` | `0` | 只有在 zone 上开启了 Cloudflare 的 [CSAM Scanning Tool](https://developers.cloudflare.com/cache/reference/csam-scanning/)、并且文件经缓存提供（`CACHE_ORIGIN`）之后才设成 `1`，FAQ 和隐私政策只在打开时提到它。 |
-| `EMAIL_ROUTING` | `0` | 联系邮箱经 Cloudflare Email Routing 转发时设成 `1`，隐私政策会把它列为处理方。 |
-| `WAF_RATE_LIMIT` | `0` | zone 上加好了[限流](#限流)里的 WAF 规则后设成 `1`，开发者页面会说明这条规则。 |
-| `STORAGE_LOCATION` | 无 | bucket 的位置提示或司法辖区（`apac`、`weur`、`eu` 等），写进隐私政策。 |
-| `RESEND_REGION`、`MAIL_FROM` | 无 | 账号功能用（尚未发布）：登录邮件的 Resend 区域和发件人。 |
-| `CACHE_ORIGIN`、`ZONE_ID` | 无 | 让文件经 zone 缓存提供：bucket 上的 [R2 自定义域](https://developers.cloudflare.com/r2/buckets/public-buckets/#custom-domains)（例如 `https://r2.example.org`）和 zone id。删除文件时会顺带清缓存，需要 secret `CF_PURGE_TOKEN`（只有该 zone 的 Zone → Cache Purge 权限的 API token）。 |
-| `FEATURE_CLI` | `1` | 命令行工具（`/install.sh`）和 MCP 服务（`/mcp`）。 |
-| `FEATURE_ACCOUNTS`、`FEATURE_DONATE` | `0` | 账号和投喂页还在开发中，保持关闭。 |
+| 变量                                 | 默认                           | 含义                                                                                                                                                                                                                                                                                    |
+| ------------------------------------ | ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SITE_NAME`                          | 主机名                         | 显示在标题、logo（`pics.example` 显示成 `pics♥example`）、Open Graph 和法律页面里。                                                                                                                                                                                                     |
+| `MAIN_ORIGIN`                        | 请求自己的 origin              | 网站和接口的公开地址，例如 `https://pics.example.org`。                                                                                                                                                                                                                                 |
+| `FILES_ORIGIN`、`TMP_ORIGIN`         | `<主站>/_files`、`<主站>/_tmp` | 永久和临时文件的地址。有自己的域名时，建议用单独的主机名（`https://files.example.org`、`https://tmp.example.org`）并加成自定义域，这样用户上传的文件永远不会和网站同源。                                                                                                                |
+| `OPERATOR_NAME`                      | 无                             | 运营这个站点的个人或公司，写在使用条款和隐私政策里。                                                                                                                                                                                                                                    |
+| `CONTACT_EMAIL`、`ABUSE_EMAIL`       | 无                             | 一般和隐私问题的联系邮箱，以及举报邮箱（不填时用联系邮箱）。都不填时页面会请访客联系运营者。                                                                                                                                                                                            |
+| `CSAM_SCANNING`                      | `0`                            | 只有在 zone 上开启了 Cloudflare 的 [CSAM Scanning Tool](https://developers.cloudflare.com/cache/reference/csam-scanning/)、并且文件经缓存提供（`CACHE_ORIGIN`）之后才设成 `1`，FAQ 和隐私政策只在打开时提到它。                                                                         |
+| `EMAIL_ROUTING`                      | `0`                            | 联系邮箱经 Cloudflare Email Routing 转发时设成 `1`，隐私政策会把它列为处理方。                                                                                                                                                                                                          |
+| `WAF_RATE_LIMIT`                     | `0`                            | zone 上加好了[限流](#限流)里的 WAF 规则后设成 `1`，开发者页面会说明这条规则。                                                                                                                                                                                                           |
+| `STORAGE_LOCATION`                   | 无                             | bucket 的位置提示或司法辖区（`apac`、`weur`、`eu` 等），写进隐私政策。                                                                                                                                                                                                                  |
+| `RESEND_REGION`、`MAIL_FROM`         | 无                             | 账号功能用（尚未发布）：登录邮件的 Resend 区域和发件人。                                                                                                                                                                                                                                |
+| `CACHE_ORIGIN`、`ZONE_ID`            | 无                             | 让文件经 zone 缓存提供：bucket 上的 [R2 自定义域](https://developers.cloudflare.com/r2/buckets/public-buckets/#custom-domains)（例如 `https://r2.example.org`）和 zone id。删除文件时会顺带清缓存，需要 secret `CF_PURGE_TOKEN`（只有该 zone 的 Zone → Cache Purge 权限的 API token）。 |
+| `FEATURE_CLI`                        | `1`                            | 命令行工具（`/install.sh`）和 MCP 服务（`/mcp`）。                                                                                                                                                                                                                                      |
+| `FEATURE_ACCOUNTS`、`FEATURE_DONATE` | `0`                            | 账号和投喂页还在开发中，保持关闭。                                                                                                                                                                                                                                                      |
 
 可选的 secret：`UPLOAD_TOKEN` 设置后，只有带 `Authorization: Bearer <UPLOAD_TOKEN>` 的请求才能上传（适合私用实例）；`TRUSTED_TOKEN` 能过这道闸门并且不受限流（给自己和自动化用）；`CF_PURGE_TOKEN` 见上。
 

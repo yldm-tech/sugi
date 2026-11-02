@@ -117,7 +117,14 @@ function objectUrls(env: Env, key: string, obj: R2Object): string[] {
 }
 
 async function log(env: Env, action: string, target: string | null, reason: string | null, detail: unknown = null): Promise<D1PreparedStatement> {
-  return env.DB.prepare("INSERT INTO admin_log (at, actor, action, target, reason, detail) VALUES (?, ?, ?, ?, ?, ?)").bind(Date.now(), ACTOR, action, target, reason, detail === null ? null : JSON.stringify(detail));
+  return env.DB.prepare("INSERT INTO admin_log (at, actor, action, target, reason, detail) VALUES (?, ?, ?, ?, ?, ?)").bind(
+    Date.now(),
+    ACTOR,
+    action,
+    target,
+    reason,
+    detail === null ? null : JSON.stringify(detail),
+  );
 }
 
 function iso(ms: number | null | undefined): string | null {
@@ -128,14 +135,33 @@ function iso(ms: number | null | undefined): string | null {
 
 export async function inspect(env: Env, raw: string): Promise<Record<string, unknown>> {
   const t = await resolve(env, raw);
-  const tomb = await env.DB.prepare("SELECT reason, sha256, source, created_at FROM tombstones WHERE target = ?").bind(targetName(t)).first<{ reason: string | null; sha256: string | null; source: string | null; created_at: number }>();
+  const tomb = await env.DB.prepare("SELECT reason, sha256, source, created_at FROM tombstones WHERE target = ?")
+    .bind(targetName(t))
+    .first<{ reason: string | null; sha256: string | null; source: string | null; created_at: number }>();
   const takedown = tomb ? { reason: tomb.reason, sha256: tomb.sha256, at: iso(tomb.created_at) } : null;
 
   if (t.kind === "album") {
-    const row = await env.DB.prepare("SELECT title, created_at, source FROM albums WHERE id = ?").bind(t.id).first<{ title: string; created_at: number; source: string }>();
-    const files = row ? (await env.DB.prepare("SELECT file_key FROM album_files WHERE album_id = ? ORDER BY position").bind(t.id).all<{ file_key: string }>()).results.map((r) => r.file_key) : [];
+    const row = await env.DB.prepare("SELECT title, created_at, source FROM albums WHERE id = ?")
+      .bind(t.id)
+      .first<{ title: string; created_at: number; source: string }>();
+    const files = row
+      ? (await env.DB.prepare("SELECT file_key FROM album_files WHERE album_id = ? ORDER BY position").bind(t.id).all<{ file_key: string }>()).results.map(
+          (r) => r.file_key,
+        )
+      : [];
     const source = row?.source ?? tomb?.source ?? null;
-    return { kind: "album", id: t.id, status: row ? "live" : tomb ? "taken_down" : "missing", title: row?.title ?? null, created_at: iso(row?.created_at), source, source_blocked: source ? await isSourceBlocked(env, source) : false, files, takedown, owner: null };
+    return {
+      kind: "album",
+      id: t.id,
+      status: row ? "live" : tomb ? "taken_down" : "missing",
+      title: row?.title ?? null,
+      created_at: iso(row?.created_at),
+      source,
+      source_blocked: source ? await isSourceBlocked(env, source) : false,
+      files,
+      takedown,
+      owner: null,
+    };
   }
 
   const found = await findKey(env, t);
@@ -145,7 +171,11 @@ export async function inspect(env: Env, raw: string): Promise<Record<string, unk
   const removed = isTombstone(obj);
   const expires = m.expires ? Number(m.expires) : null;
   const source = removed ? (tomb?.source ?? null) : (m.source ?? null);
-  const albums = key ? (await env.DB.prepare("SELECT DISTINCT album_id FROM album_files WHERE file_key = ?").bind(key).all<{ album_id: string }>()).results.map((r) => r.album_id) : [];
+  const albums = key
+    ? (await env.DB.prepare("SELECT DISTINCT album_id FROM album_files WHERE file_key = ?").bind(key).all<{ album_id: string }>()).results.map(
+        (r) => r.album_id,
+      )
+    : [];
   const status = !obj ? "missing" : removed ? "taken_down" : expires !== null && expires <= Date.now() ? "expired" : "live";
   const f = obj && !removed && key ? describe(key, obj) : null;
   return {
@@ -214,15 +244,38 @@ async function takedownKeys(env: Env, keys: string[], opts: TakedownOptions, act
     if (m.ext) marker.ext = m.ext;
     await env.BUCKET.put(key, new Uint8Array(0), { httpMetadata: { contentType: "application/octet-stream" }, customMetadata: marker });
     const name = LEGACY_KEY_RE.test(key) ? `legacy:${key}` : `file:${key.slice(2)}`;
-    stmts.push(env.DB.prepare("INSERT OR REPLACE INTO tombstones (target, reason, sha256, source, created_at) VALUES (?, ?, ?, ?, ?)").bind(name, opts.reason ?? null, sha, m.source ?? null, now));
+    stmts.push(
+      env.DB.prepare("INSERT OR REPLACE INTO tombstones (target, reason, sha256, source, created_at) VALUES (?, ?, ?, ?, ?)").bind(
+        name,
+        opts.reason ?? null,
+        sha,
+        m.source ?? null,
+        now,
+      ),
+    );
     if (opts.blockContent && !sha) tooBig.push(key);
     if (opts.blockContent && sha) {
-      stmts.push(env.DB.prepare("INSERT OR IGNORE INTO blocked_hashes (sha256, target, reason, created_at) VALUES (?, ?, ?, ?)").bind(sha, name, opts.reason ?? null, now));
+      stmts.push(
+        env.DB.prepare("INSERT OR IGNORE INTO blocked_hashes (sha256, target, reason, created_at) VALUES (?, ?, ?, ?)").bind(
+          sha,
+          name,
+          opts.reason ?? null,
+          now,
+        ),
+      );
       hashes.push(sha);
     }
     removed.push(key);
   }
-  stmts.push(await log(env, action, logTarget, opts.reason ?? null, { via: opts.via ?? null, removed, already_removed: already, blocked_hashes: hashes, too_big_to_block: tooBig }));
+  stmts.push(
+    await log(env, action, logTarget, opts.reason ?? null, {
+      via: opts.via ?? null,
+      removed,
+      already_removed: already,
+      blocked_hashes: hashes,
+      too_big_to_block: tooBig,
+    }),
+  );
   await env.DB.batch(stmts);
   const purged = await purgeUrls(env, urls);
   return { removed, already_removed: already, blocked_hashes: hashes, ...(tooBig.length ? { not_blocked_too_big: tooBig } : {}), cache_purged: purged };
@@ -232,19 +285,33 @@ async function takedownAlbum(env: Env, id: string, opts: TakedownOptions): Promi
   const row = await env.DB.prepare("SELECT source FROM albums WHERE id = ?").bind(id).first<{ source: string }>();
   const target = `album:${id}`;
   if (!row) {
-    if (await env.DB.prepare("SELECT 1 FROM tombstones WHERE target = ?").bind(target).first()) return { target, removed: [], already_removed: [target], blocked_hashes: [], cache_purged: true };
+    if (await env.DB.prepare("SELECT 1 FROM tombstones WHERE target = ?").bind(target).first())
+      return { target, removed: [], already_removed: [target], blocked_hashes: [], cache_purged: true };
     throw new HttpError(404, "album not found");
   }
-  const keys = (await env.DB.prepare("SELECT file_key FROM album_files WHERE album_id = ? ORDER BY position").bind(id).all<{ file_key: string }>()).results.map((r) => r.file_key);
+  const keys = (await env.DB.prepare("SELECT file_key FROM album_files WHERE album_id = ? ORDER BY position").bind(id).all<{ file_key: string }>()).results.map(
+    (r) => r.file_key,
+  );
   const files = opts.includeFiles ? await takedownKeys(env, keys, opts, "takedown", target) : null;
   await env.DB.batch([
-    env.DB.prepare("INSERT OR REPLACE INTO tombstones (target, reason, sha256, source, created_at) VALUES (?, ?, NULL, ?, ?)").bind(target, opts.reason ?? null, row.source, Date.now()),
+    env.DB.prepare("INSERT OR REPLACE INTO tombstones (target, reason, sha256, source, created_at) VALUES (?, ?, NULL, ?, ?)").bind(
+      target,
+      opts.reason ?? null,
+      row.source,
+      Date.now(),
+    ),
     env.DB.prepare("DELETE FROM album_files WHERE album_id = ?").bind(id),
     env.DB.prepare("DELETE FROM albums WHERE id = ?").bind(id),
     await log(env, "takedown", target, opts.reason ?? null, { via: opts.via ?? null, include_files: Boolean(opts.includeFiles) }),
   ]);
   const purged = await purgeUrls(env, [`${env.MAIN_ORIGIN}/a/${id}`]);
-  return { target, removed: [target, ...(files?.removed ?? [])], already_removed: files?.already_removed ?? [], blocked_hashes: files?.blocked_hashes ?? [], cache_purged: purged && (files?.cache_purged ?? true) };
+  return {
+    target,
+    removed: [target, ...(files?.removed ?? [])],
+    already_removed: files?.already_removed ?? [],
+    blocked_hashes: files?.blocked_hashes ?? [],
+    cache_purged: purged && (files?.cache_purged ?? true),
+  };
 }
 
 export async function takedown(env: Env, raw: string, opts: TakedownOptions): Promise<TakedownResult> {
@@ -299,11 +366,20 @@ async function itemsBySource(env: Env, source: string): Promise<SourceItem[]> {
     for (const obj of page.objects) {
       const m = obj.customMetadata ?? {};
       if (m.source !== source) continue;
-      items.push({ kind: LEGACY_KEY_RE.test(obj.key) ? "legacy" : "file", key: obj.key, created_at: m.uploaded ?? obj.uploaded.toISOString(), size: obj.size, expires_at: iso(m.expires ? Number(m.expires) : null), name: m.name ?? null });
+      items.push({
+        kind: LEGACY_KEY_RE.test(obj.key) ? "legacy" : "file",
+        key: obj.key,
+        created_at: m.uploaded ?? obj.uploaded.toISOString(),
+        size: obj.size,
+        expires_at: iso(m.expires ? Number(m.expires) : null),
+        name: m.name ?? null,
+      });
     }
     cursor = page.truncated ? page.cursor : undefined;
   } while (cursor);
-  const albums = (await env.DB.prepare("SELECT id, title, created_at FROM albums WHERE source = ?").bind(source).all<{ id: string; title: string; created_at: number }>()).results;
+  const albums = (
+    await env.DB.prepare("SELECT id, title, created_at FROM albums WHERE source = ?").bind(source).all<{ id: string; title: string; created_at: number }>()
+  ).results;
   for (const a of albums) items.push({ kind: "album", key: `a/${a.id}`, created_at: iso(a.created_at), size: null, expires_at: null, name: a.title || null });
   return items.sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""));
 }
@@ -313,7 +389,15 @@ export async function listBySource(env: Env, raw: string, offset = 0, limit = 50
   const all = await itemsBySource(env, source);
   const n = Math.min(Math.max(1, limit), 200);
   const removed = (await env.DB.prepare("SELECT COUNT(*) AS n FROM tombstones WHERE source = ?").bind(source).first<{ n: number }>())?.n ?? 0;
-  return { source, source_blocked: await isSourceBlocked(env, source), total: all.length, already_taken_down: removed, offset, items: all.slice(offset, offset + n), next_offset: offset + n < all.length ? offset + n : null };
+  return {
+    source,
+    source_blocked: await isSourceBlocked(env, source),
+    total: all.length,
+    already_taken_down: removed,
+    offset,
+    items: all.slice(offset, offset + n),
+    next_offset: offset + n < all.length ? offset + n : null,
+  };
 }
 
 export async function takedownBySource(env: Env, raw: string, opts: TakedownOptions & { dryRun: boolean }): Promise<Record<string, unknown>> {
@@ -325,14 +409,28 @@ export async function takedownBySource(env: Env, raw: string, opts: TakedownOpti
   const done = await takedownKeys(env, keys, opts, "takedown_by_source", `source:${source}`);
   let purged = done.cache_purged;
   for (const id of albums) purged = (await takedownAlbum(env, id, { ...opts, includeFiles: false })).cache_purged && purged;
-  return { source, dry_run: false, files: done.removed.length, albums: albums.length, keys: done.removed, album_ids: albums, blocked_hashes: done.blocked_hashes, cache_purged: purged };
+  return {
+    source,
+    dry_run: false,
+    files: done.removed.length,
+    albums: albums.length,
+    keys: done.removed,
+    album_ids: albums,
+    blocked_hashes: done.blocked_hashes,
+    cache_purged: purged,
+  };
 }
 
 export async function blockSource(env: Env, raw: string, reason: string | null, expiresInHours: number | null): Promise<Record<string, unknown>> {
   const source = await resolveSource(env, raw);
   const expires = expiresInHours ? Date.now() + expiresInHours * 3600 * 1000 : null;
   await env.DB.batch([
-    env.DB.prepare("INSERT OR REPLACE INTO blocked_sources (source, reason, expires_at, created_at) VALUES (?, ?, ?, ?)").bind(source, reason, expires, Date.now()),
+    env.DB.prepare("INSERT OR REPLACE INTO blocked_sources (source, reason, expires_at, created_at) VALUES (?, ?, ?, ?)").bind(
+      source,
+      reason,
+      expires,
+      Date.now(),
+    ),
     await log(env, "block_source", `source:${source}`, reason, { expires_at: iso(expires) }),
   ]);
   return { source, blocked: true, expires_at: iso(expires) };
@@ -355,17 +453,45 @@ export async function unblockContent(env: Env, sha256: string, reason: string | 
 
 export async function listBlocks(env: Env, limit = 100): Promise<Record<string, unknown>> {
   const n = Math.min(Math.max(1, limit), 500);
-  const sources = (await env.DB.prepare("SELECT source, reason, expires_at, created_at FROM blocked_sources ORDER BY created_at DESC LIMIT ?").bind(n).all<{ source: string; reason: string | null; expires_at: number | null; created_at: number }>()).results;
-  const hashes = (await env.DB.prepare("SELECT sha256, target, reason, created_at FROM blocked_hashes ORDER BY created_at DESC LIMIT ?").bind(n).all<{ sha256: string; target: string | null; reason: string | null; created_at: number }>()).results;
+  const sources = (
+    await env.DB.prepare("SELECT source, reason, expires_at, created_at FROM blocked_sources ORDER BY created_at DESC LIMIT ?")
+      .bind(n)
+      .all<{ source: string; reason: string | null; expires_at: number | null; created_at: number }>()
+  ).results;
+  const hashes = (
+    await env.DB.prepare("SELECT sha256, target, reason, created_at FROM blocked_hashes ORDER BY created_at DESC LIMIT ?")
+      .bind(n)
+      .all<{ sha256: string; target: string | null; reason: string | null; created_at: number }>()
+  ).results;
   const now = Date.now();
   return {
-    sources: sources.map((s) => ({ source: s.source, reason: s.reason, expires_at: iso(s.expires_at), active: s.expires_at === null || s.expires_at > now, created_at: iso(s.created_at) })),
+    sources: sources.map((s) => ({
+      source: s.source,
+      reason: s.reason,
+      expires_at: iso(s.expires_at),
+      active: s.expires_at === null || s.expires_at > now,
+      created_at: iso(s.created_at),
+    })),
     content: hashes.map((h) => ({ sha256: h.sha256, target: h.target, reason: h.reason, created_at: iso(h.created_at) })),
   };
 }
 
 export async function readLog(env: Env, limit = 50): Promise<Record<string, unknown>> {
   const n = Math.min(Math.max(1, limit), 500);
-  const rows = (await env.DB.prepare("SELECT id, at, actor, action, target, reason, detail FROM admin_log ORDER BY id DESC LIMIT ?").bind(n).all<{ id: number; at: number; actor: string; action: string; target: string | null; reason: string | null; detail: string | null }>()).results;
-  return { entries: rows.map((r) => ({ id: r.id, at: iso(r.at), actor: r.actor, action: r.action, target: r.target, reason: r.reason, detail: r.detail ? JSON.parse(r.detail) : null })) };
+  const rows = (
+    await env.DB.prepare("SELECT id, at, actor, action, target, reason, detail FROM admin_log ORDER BY id DESC LIMIT ?")
+      .bind(n)
+      .all<{ id: number; at: number; actor: string; action: string; target: string | null; reason: string | null; detail: string | null }>()
+  ).results;
+  return {
+    entries: rows.map((r) => ({
+      id: r.id,
+      at: iso(r.at),
+      actor: r.actor,
+      action: r.action,
+      target: r.target,
+      reason: r.reason,
+      detail: r.detail ? JSON.parse(r.detail) : null,
+    })),
+  };
 }

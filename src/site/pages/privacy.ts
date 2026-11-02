@@ -1,6 +1,6 @@
-import { Brand, brand } from "../../config";
+import { type Brand, brand } from "../../config";
 import { esc } from "../i18n";
-import { Ctx, Page, pageTitle, tr } from "../layout";
+import { type Ctx, type Page, pageTitle, tr } from "../layout";
 
 // Privacy policy. Every paragraph carries the text in both languages. `review` notes are never rendered: they record why a legally sensitive sentence is worded the way it is (decided for sugi.moe; other operators should review those paragraphs for their own service). Operator-specific sentences (who runs the site, contacts, storage region, CSAM scanning, mail providers) come from the deployment's configuration, and the account section describes only the live ACCOUNT_FEATURES.
 interface Para {
@@ -61,7 +61,9 @@ export function privacySections(b: Brand, features: string[] = ["email", "github
     ...(providers.length ? [`your ${orJoinEn(providers)} user id and the email they provide`] : []),
     ...(has("passkey") ? ["the public keys of your passkeys (no fingerprints or face data; those never leave your device)"] : []),
     "which files and albums belong to your account",
-    has("tokens") ? "and hashes of your login sessions and API tokens (a token itself is shown to you once, when it is created)" : "and hashes of your login sessions",
+    has("tokens")
+      ? "and hashes of your login sessions and API tokens (a token itself is shown to you once, when it is created)"
+      : "and hashes of your login sessions",
   ];
   const site = esc(b.siteName);
   const contact = b.contactEmail ? esc(b.contactEmail) : null;
@@ -69,7 +71,8 @@ export function privacySections(b: Brand, features: string[] = ["email", "github
   const storage = b.storageLocation ? (STORAGE_REGIONS[b.storageLocation.toLowerCase()] ?? [esc(b.storageLocation), esc(b.storageLocation)]) : null;
   const resend = b.resendRegion ? (RESEND_REGIONS[b.resendRegion] ?? [esc(b.resendRegion), esc(b.resendRegion), "", ""]) : null;
   const region = b.resendRegion ? esc(b.resendRegion) : "";
-  const countries: [string, string] = resend?.[2] && resend[2] !== "美国" ? [`美国和${resend[2]}`, `the United States and ${resend[3]}`] : ["美国", "the United States"];
+  const countries: [string, string] =
+    resend?.[2] && resend[2] !== "美国" ? [`美国和${resend[2]}`, `the United States and ${resend[3]}`] : ["美国", "the United States"];
   const services: [string, string][] = [
     ["托管和 CDN", "hosting and CDN"],
     [storage ? `文件存储（R2，存储区域为${storage[0]}）` : "文件存储（R2）", storage ? `file storage (R2, stored in ${storage[1]})` : "file storage (R2)"],
@@ -77,9 +80,12 @@ export function privacySections(b: Brand, features: string[] = ["email", "github
     ...when<[string, string]>(b.emailRouting, ["邮件转发", "email forwarding"]),
     ...when<[string, string]>(b.csamScanning, ["CSAM 扫描工具", "its CSAM Scanning Tool"]),
   ];
-  const list = (items: string[], sep: string, last: string) => (items.length > 1 ? `${items.slice(0, -1).join(sep)}${last}${items[items.length - 1]}` : items.join(""));
+  const list = (items: string[], sep: string, last: string) =>
+    items.length > 1 ? `${items.slice(0, -1).join(sep)}${last}${items[items.length - 1]}` : items.join("");
   const operatorZh = b.operator ? `${site} 由 ${esc(b.operator)} 运营，它负责处理本政策所说的个人信息。` : `${site} 的运营者负责处理本政策所说的个人信息。`;
-  const operatorEn = b.operator ? `${site} is operated by ${esc(b.operator)}, which is responsible for the personal information described in this policy.` : `The operator of ${site} is responsible for the personal information described in this policy.`;
+  const operatorEn = b.operator
+    ? `${site} is operated by ${esc(b.operator)}, which is responsible for the personal information described in this policy.`
+    : `The operator of ${site} is responsible for the personal information described in this policy.`;
   const contactZh = `${contact ? `关于本政策和个人信息的问题，请写信到 ${contact}` : ""}${abuse && abuse !== contact ? `${contact ? "；" : ""}举报违规内容请写信到 ${abuse}` : ""}`;
   const contactEn = `${contact ? `Questions about this policy and your personal information go to ${contact}` : ""}${abuse && abuse !== contact ? `${contact ? "; r" : "R"}eport abuse to ${abuse}` : ""}`;
   return [
@@ -176,15 +182,15 @@ export function privacySections(b: Brand, features: string[] = ["email", "github
         ...when<Para>(
           has("email"),
           resend
-          ? {
-              zh: `登录邮件通过 Resend（Resend, Inc.）发送，使用它的${resend[0]}区域（${region}）。Resend 作为我们的数据处理方，会处理收件邮箱地址和邮件内容（其中包含一次性登录链接）。`,
-              en: `Login emails are sent through Resend (Resend, Inc.), using its ${resend[1]} region (${region}). As our processor, Resend handles the recipient address and the message content, which includes the one-time login link.`,
-              review: "Decided: Resend, region ap-northeast-1; processes the login email address and message content.",
-            }
-          : {
-              zh: "登录邮件由我们使用的邮件服务商发送，它作为我们的数据处理方，会处理收件邮箱地址和邮件内容（其中包含一次性登录链接）。",
-              en: "Login emails are sent through our email provider, which as our processor handles the recipient address and the message content, which includes the one-time login link.",
-            },
+            ? {
+                zh: `登录邮件通过 Resend（Resend, Inc.）发送，使用它的${resend[0]}区域（${region}）。Resend 作为我们的数据处理方，会处理收件邮箱地址和邮件内容（其中包含一次性登录链接）。`,
+                en: `Login emails are sent through Resend (Resend, Inc.), using its ${resend[1]} region (${region}). As our processor, Resend handles the recipient address and the message content, which includes the one-time login link.`,
+                review: "Decided: Resend, region ap-northeast-1; processes the login email address and message content.",
+              }
+            : {
+                zh: "登录邮件由我们使用的邮件服务商发送，它作为我们的数据处理方，会处理收件邮箱地址和邮件内容（其中包含一次性登录链接）。",
+                en: "Login emails are sent through our email provider, which as our processor handles the recipient address and the message content, which includes the one-time login link.",
+              },
         ),
       ],
     },
@@ -203,7 +209,8 @@ export function privacySections(b: Brand, features: string[] = ["email", "github
         {
           zh: "因为违反使用条款而被删除的文件，我们会保留一条删除记录：文件 id、删除的时间和原因，以及上传来源的 HMAC 指纹，用来处理同一来源后续的滥用。来源指纹最长保留 2 年，到期后从记录里抹掉，只留下文件 id、时间和原因。必要时我们还会把文件内容的 SHA-256 哈希放进屏蔽列表，阻止同样的文件再次上传：哈希是单向的指纹，不能从它还原出文件，它会保留到不再需要阻止重新上传为止，你也可以请求解除。被禁止上传的来源按各自设定的期限解除。被删除文件的链接会一直显示「已删除」。",
           en: "When a file is removed for breaking the terms, we keep a record of the removal: the file id, when and why it was removed, and the HMAC fingerprint of its source, to deal with further abuse from the same source. The source fingerprint is kept for at most 2 years; after that it is erased from the record, leaving only the file id, time and reason. Where needed we also put the SHA-256 hash of the content in a blocklist so the same file cannot be uploaded again: a hash is a one-way fingerprint that the file cannot be recovered from, it is kept as long as it is needed to stop re-uploads, and you can ask for it to be lifted. Sources barred from uploading are released when their own block expires. The removed file's link keeps saying that it was removed.",
-          review: "Decided (2026-11-02): keep takedown records; the source HMAC is erased from them (and from the admin log) after at most 2 years by the cron, leaving file id, time and reason; content hashes stay in the blocklist as long as needed to stop re-uploads and can be lifted on request; source blocks keep their own expiry.",
+          review:
+            "Decided (2026-11-02): keep takedown records; the source HMAC is erased from them (and from the admin log) after at most 2 years by the cron, leaving file id, time and reason; content hashes stay in the blocklist as long as needed to stop re-uploads and can be lifted on request; source blocks keep their own expiry.",
         },
         {
           zh: "账号数据保存到你要求删除账号为止；会话 30 天后过期，邮件登录链接 15 分钟后失效。",
@@ -217,18 +224,24 @@ export function privacySections(b: Brand, features: string[] = ["email", "github
       en: "Who processes this data",
       paras: [
         {
-          zh: `Cloudflare, Inc. 为 ${site} 提供${list(services.map((x) => x[0]), "、", "，以及 ")}。`,
-          en: `Cloudflare, Inc. provides ${site}'s ${list(services.map((x) => x[1]), ", ", " and ")}.`,
+          zh: `Cloudflare, Inc. 为 ${site} 提供${list(
+            services.map((x) => x[0]),
+            "、",
+            "，以及 ",
+          )}。`,
+          en: `Cloudflare, Inc. provides ${site}'s ${list(
+            services.map((x) => x[1]),
+            ", ",
+            " and ",
+          )}.`,
           review: "Decided: name Cloudflare's services; R2 bucket location APAC.",
         },
-        ...when<Para>(
-          b.csamScanning,
-        {
+        ...when<Para>(b.csamScanning, {
           zh: "CSAM 扫描工具会把通过 Cloudflare 缓存提供的内容，与儿童保护组织（例如美国国家失踪与受剥削儿童中心 NCMEC）提供给 Cloudflare 的已知儿童性剥削内容列表进行比对。按照 Cloudflare 的说明：命中时会尽可能阻止该内容继续被访问；我们会每天收到一封邮件，列出过去 24 小时内命中内容的文件路径。Cloudflare 的说明把向有关机构报告的义务放在网站运营者一方；我们收到命中通知后会删除该内容，并依法向有关机构（例如通过 NCMEC 的 CyberTipline）报告。",
           en: "The CSAM Scanning Tool compares content served through Cloudflare's cache against lists of known child sexual abuse material that child safety organisations such as the National Center for Missing & Exploited Children (NCMEC) provide to Cloudflare. According to Cloudflare's documentation, on a match a block is placed, where possible, to prevent further serving of the content, and we receive a daily email listing the file paths of content matched in the past 24 hours. Cloudflare's documentation places the obligation to report on the website operator; when we are notified of a match we remove the content and report it to the appropriate authorities as the law requires (for example through NCMEC's CyberTipline).",
-          review: "Decided: describe the tool using Cloudflare's own wording (developers.cloudflare.com/cache/reference/csam-scanning/): lists provided by groups such as NCMEC; block placed where possible; daily email with file paths; the docs do not say Cloudflare reports to NCMEC and put the reporting obligation on the site owner.",
-        },
-        ),
+          review:
+            "Decided: describe the tool using Cloudflare's own wording (developers.cloudflare.com/cache/reference/csam-scanning/): lists provided by groups such as NCMEC; block placed where possible; daily email with file paths; the docs do not say Cloudflare reports to NCMEC and put the reporting obligation on the site owner.",
+        }),
         {
           zh: `跨境传输：${resend ? "Cloudflare 和 Resend" : "Cloudflare"} 在多个国家和地区运营，你的数据可能会在你所在地以外的国家或地区（包括${countries[0]}）被处理。`,
           en: `International transfers: ${resend ? "Cloudflare and Resend operate" : "Cloudflare operates"} in many countries, so your data may be processed outside the country you live in, including in ${countries[1]}.`,
@@ -303,5 +316,10 @@ export function privacyPage(ctx: Ctx): Page {
 ${sections.map((s) => `<div class="card policy"><h2 class="h2">${t(s.zh, s.en)}</h2>\n${paragraphs(ctx, s)}</div>`).join("\n")}
 </section>`;
   const site = brand(ctx.env).siteName;
-  return { id: "privacy", title: pageTitle(ctx, "隐私政策", "Privacy"), main: html, description: t(`${site} 收集什么信息、为什么、保存多久，以及你有哪些权利。`, `What ${site} collects, why, how long it is kept, and your rights.`) };
+  return {
+    id: "privacy",
+    title: pageTitle(ctx, "隐私政策", "Privacy"),
+    main: html,
+    description: t(`${site} 收集什么信息、为什么、保存多久，以及你有哪些权利。`, `What ${site} collects, why, how long it is kept, and your rights.`),
+  };
 }

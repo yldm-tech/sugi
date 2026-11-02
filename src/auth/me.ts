@@ -1,6 +1,6 @@
 // Account endpoints that are live: who am I, and logging out. Further endpoints (my files and albums, claiming earlier uploads, API tokens, passkeys, deleting the account) are developed on the accounts branch and arrive with their ACCOUNT_FEATURES.
 import { HttpError, jsonResponse } from "../http";
-import { clearSessionCookie, displayName, Principal, requirePrincipal, sameOrigin } from "./core";
+import { clearSessionCookie, displayName, type Principal, requirePrincipal, sameOrigin } from "./core";
 
 export async function meSummary(_env: Env, p: Principal) {
   return {

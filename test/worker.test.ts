@@ -2,6 +2,7 @@ import { env } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
 import { LEGACY_MAX_BYTES as MAX_BYTES } from "../src/limits";
+import { expectRateLimited } from "./helpers";
 
 const ORIGIN = "https://sugi.test";
 const UPLOAD_AUTH = { authorization: "Bearer test-upload-token" };
@@ -75,7 +76,13 @@ describe("upload", () => {
     expect(res.status).toBe(201);
     const body = await res.json<{ url: string; key: string; size: number; type: string; deduplicated: boolean }>();
     const sha = await sha256Hex(bytes);
-    expect(body).toEqual({ url: `${ORIGIN}/${sha.slice(0, 16)}.png`, key: `${sha.slice(0, 16)}.png`, size: bytes.length, type: "image/png", deduplicated: false });
+    expect(body).toEqual({
+      url: `${ORIGIN}/${sha.slice(0, 16)}.png`,
+      key: `${sha.slice(0, 16)}.png`,
+      size: bytes.length,
+      type: "image/png",
+      deduplicated: false,
+    });
   });
 
   it("accepts a raw POST body that is not multipart", async () => {
@@ -138,7 +145,12 @@ describe("upload", () => {
         controller.enqueue(chunk.slice());
       },
     });
-    const req = new Request(`${ORIGIN}/upload`, { method: "PUT", body: stream, headers: { "cf-connecting-ip": freshIp(), ...UPLOAD_AUTH }, duplex: "half" } as RequestInit);
+    const req = new Request(`${ORIGIN}/upload`, {
+      method: "PUT",
+      body: stream,
+      headers: { "cf-connecting-ip": freshIp(), ...UPLOAD_AUTH },
+      duplex: "half",
+    } as RequestInit);
     expect(req.headers.get("content-length")).toBeNull();
     expect((await call(req)).status).toBe(413);
   });
@@ -210,10 +222,10 @@ describe("upload token gate", () => {
 
   it("the index page says whether anonymous uploads are open, in both languages", async () => {
     const zh = { headers: { "accept-language": "zh-CN,zh;q=0.9" } };
-    expect(await (await call(new Request(`${ORIGIN}/`, zh))).text()).toContain("暂未开放匿名上传");
+    expect(await (await call(new Request(`${ORIGIN}/`, zh))).text()).toContain("只接受带令牌的上传");
     // The 401 message stays in the script's message table either way; only the banner depends on the gate.
     expect(await (await call(new Request(`${ORIGIN}/`, zh), { UPLOAD_TOKEN: undefined })).text()).not.toContain('id="gate"');
-    expect(await (await call(new Request(`${ORIGIN}/`))).text()).toContain("Anonymous uploads are not open yet");
+    expect(await (await call(new Request(`${ORIGIN}/`))).text()).toContain("only accepts uploads with a token");
     expect(await (await call(new Request(`${ORIGIN}/`), { UPLOAD_TOKEN: undefined })).text()).not.toContain('id="gate"');
   });
 });
@@ -281,7 +293,6 @@ describe("serving", () => {
       expect((await call(new Request(`${ORIGIN}${path}`))).status, path).toBe(404);
     }
   });
-
 });
 
 // The redesigned site pages are covered in site.test.ts.
@@ -333,7 +344,13 @@ describe("admin", () => {
     const good = await uploadFrom(goodIp);
     const source = await hmacHex("test-ip-hash-secret", badIp);
     const purge = (body: unknown, headers: Record<string, string> = ADMIN_AUTH) =>
-      call(new Request(`${ORIGIN}/admin/purge-by-source`, { method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json", ...headers } }));
+      call(
+        new Request(`${ORIGIN}/admin/purge-by-source`, {
+          method: "POST",
+          body: JSON.stringify(body),
+          headers: { "content-type": "application/json", ...headers },
+        }),
+      );
 
     expect((await purge({ source }, {})).status).toBe(401);
     expect((await purge({ source }, UPLOAD_AUTH)).status).toBe(401);
@@ -365,8 +382,8 @@ describe("trusted token", () => {
     expect(statuses).toEqual(Array(25).fill(201));
     // The same source without the trusted token is still limited: the trusted uploads did not count, so it gets exactly 10.
     const untrusted: number[] = [];
-    for (let i = 0; i < 11; i++) untrusted.push((await call(putUpload(pngBytes(), { ip }))).status);
-    expect(untrusted).toEqual([...Array(10).fill(201), 429]);
+    for (let i = 0; i < 21; i++) untrusted.push((await call(putUpload(pngBytes(), { ip }))).status);
+    expectRateLimited(untrusted);
     expect((await call(putUpload(pngBytes(), { ip, headers: TRUSTED_AUTH }))).status).toBe(201);
   });
 
@@ -376,9 +393,13 @@ describe("trusted token", () => {
       expect((await call(putUpload(pngBytes(), { ip, headers: { authorization } }))).status, authorization).toBe(401);
     }
     // With the gate off, a wrong trusted token is just an anonymous upload and is rate limited normally.
+    // The limiter counts in fixed 60-second windows, so a run that straddles a window boundary may get a fresh allowance once; 21 requests always reach a 429.
     const statuses: number[] = [];
-    for (let i = 0; i < 11; i++) statuses.push((await call(putUpload(pngBytes(), { ip, headers: { authorization: "Bearer test-trusted-tokenX" } }), { UPLOAD_TOKEN: undefined })).status);
-    expect(statuses).toEqual([...Array(10).fill(201), 429]);
+    for (let i = 0; i < 21; i++)
+      statuses.push((await call(putUpload(pngBytes(), { ip, headers: { authorization: "Bearer test-trusted-tokenX" } }), { UPLOAD_TOKEN: undefined })).status);
+    expect(statuses.slice(0, 10)).toEqual(Array(10).fill(201));
+    expect(statuses).toContain(429);
+    expect(statuses.every((s) => s === 201 || s === 429)).toBe(true);
   });
 
   it("passes the upload gate", async () => {
@@ -516,7 +537,11 @@ describe("cache-through serving and cache purge", () => {
     const source = await hmacHex("test-ip-hash-secret", ip);
     const calls = stubFetch();
     const res = await call(
-      new Request(`${ORIGIN}/admin/purge-by-source`, { method: "POST", body: JSON.stringify({ source }), headers: { "content-type": "application/json", ...ADMIN_AUTH } }),
+      new Request(`${ORIGIN}/admin/purge-by-source`, {
+        method: "POST",
+        body: JSON.stringify({ source }),
+        headers: { "content-type": "application/json", ...ADMIN_AUTH },
+      }),
       CACHE,
     );
     expect(res.status).toBe(200);
