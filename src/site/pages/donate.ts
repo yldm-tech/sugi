@@ -105,7 +105,7 @@ export function donatePage(ctx: Ctx, n: DonateNumbers): Page {
     total > 0
       ? `<div class="card donate-costs">
 <div class="t">${t("现在每月实际花费", "What it costs each month")}</div>
-<ul class="costs">${paid.map(([what, detail, m]) => `<li><div><b>${what}</b><span>${detail}</span></div><span class="num">${t(`约 ${usd(Math.round(m * 100) / 100)} / 月`, `about ${usd(Math.round(m * 100) / 100)} / month`)}</span></li>`).join("")}</ul>
+<ul class="costs">${paid.map(([what, detail, m]) => `<li><div class="cost-head"><b>${what}</b><span class="num">${t(`约 ${usd(Math.round(m * 100) / 100)} / 月`, `about ${usd(Math.round(m * 100) / 100)} / month`)}</span></div><span class="desc">${detail}</span></li>`).join("")}</ul>
 ${paid.length > 1 ? `<p class="small">${t(`合计约 ${usd(Math.round(total * 100) / 100)} / 月。`, `About ${usd(Math.round(total * 100) / 100)} a month in total.`)}</p>` : ""}
 </div>`
       : "";
@@ -168,7 +168,7 @@ ${paid.length > 1 ? `<p class="small">${t(`合计约 ${usd(Math.round(total * 10
   ];
   const nextBlock = `<div class="card donate-costs">
 <div class="t">${t("超过免费额度后要付的钱", "What it costs past the free tiers")}</div>
-<ul class="costs">${next.map(([what, price, why, link]) => `<li><div><b><a href="${link}" rel="noopener">${what}</a></b><span>${why}</span></div><span class="num">${price}</span></li>`).join("")}</ul>
+<ul class="costs">${next.map(([what, price, why, link]) => `<li><div class="cost-head"><b><a href="${link}" rel="noopener">${what}</a></b><span class="num">${price}</span></div><span class="desc">${why}</span></li>`).join("")}</ul>
 <p class="small">${t("投喂的钱就是留给这些的。", "That is what chipping in pays for.")}</p>
 </div>`;
 

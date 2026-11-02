@@ -2807,19 +2807,19 @@ html.night .theme-night {
 }
 .costs li {
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 14px;
+  flex-direction: column;
+  gap: 4px;
   padding-bottom: 12px;
   border-bottom: 2px dashed var(--line);
 }
-.costs li > div {
+.cost-head {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
 }
-.costs li span {
+.costs .desc {
   font-size: 14px;
   color: var(--ink2);
   line-height: 1.6;
