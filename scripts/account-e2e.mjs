@@ -1,4 +1,4 @@
-// End-to-end check of email login, my-files sync and API tokens against a deployment: one login email to the E2E_INBOX test address (read back through the admin-only inbox), then uploads, claiming, listing and deleting by session. Synthetic files only; everything created is deleted. Secrets come from ~/.config/sugi/secrets.env and ops.env (or SUGI_SECRETS_FILE / SUGI_OPS_FILE) and are never printed.
+// End-to-end check of email login, my-files sync, API tokens and the video rule (VIDEO_UPLOADS) against a deployment: one login email to the E2E_INBOX test address (read back through the admin-only inbox), then uploads, claiming, listing and deleting by session. Synthetic files only; everything created is deleted. Secrets come from ~/.config/sugi/secrets.env and ops.env (or SUGI_SECRETS_FILE / SUGI_OPS_FILE) and are never printed.
 //
 //   node scripts/account-e2e.mjs [BASE_URL]      (default https://sugi.moe)
 //
@@ -56,6 +56,11 @@ function png() {
   ]);
 }
 
+// A tiny MP4 (ftyp box plus random bytes): enough for the server's content sniffing.
+function mp4() {
+  return Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from("ftypisom"), Buffer.from([0, 0, 2, 0]), Buffer.from("isomiso2"), randomBytes(2048)]);
+}
+
 // Log in through the emailed link.
 const before = await fetch(`${base}/admin/e2e-inbox`, { headers: admin });
 const beforeId = before.ok ? (await before.json()).id : 0;
@@ -83,7 +88,16 @@ check("logged in", Boolean(cookie));
 const auth = { cookie, origin: base };
 
 // Sync: an upload made while logged in, one made anonymously and claimed, and an album.
-const put = (headers) => fetch(`${base}/api/upload`, { method: "PUT", body: png(), headers: { accept: "application/json", ...headers } }).then((r) => r.json());
+// A personal token or session is still rate limited per IP (the Worker's limit and the zone WAF rule), and this script uploads in a burst: wait out one 429.
+const send = async (body, headers) => {
+  const go = () => fetch(`${base}/api/upload`, { method: "PUT", body, headers: { accept: "application/json", ...headers } });
+  const res = await go();
+  if (res.status !== 429) return res;
+  await sleep(Math.min(60, Number(res.headers.get("retry-after")) || 15) * 1000 + 1000);
+  return go();
+};
+const put = (headers) => send(png(), headers).then((r) => r.json());
+const removeFile = (f) => fetch(`${base}/api/files/${f.id}`, { method: "DELETE", headers: { "sugi-token": f.delete_token } });
 const mine = await put(auth);
 const earlier = await put({});
 const album = await (
@@ -112,6 +126,15 @@ check(
 const mineHtml = await (await fetch(`${base}/mine?lang=en`, { headers: { cookie } })).text();
 check("My files says it shows the account", mineHtml.includes("files in your account"));
 
+// Videos need an account (VIDEO_UPLOADS=account): refused anonymously, accepted with the session.
+const anonVideo = await send(mp4(), {});
+if (anonVideo.status === 201) await removeFile(await anonVideo.json());
+check("an anonymous video is refused", anonVideo.status === 403, `${anonVideo.status}`);
+const sessionVideo = await send(mp4(), auth);
+const sv = sessionVideo.status === 201 ? await sessionVideo.json() : null;
+check("a video uploads with the session", Boolean(sv) && /\.mp4$/.test(sv.url), `${sessionVideo.status}`);
+if (sv) await removeFile(sv);
+
 // Delete everything by session, without the tokens.
 const delAlbum = await fetch(`${base}/api/albums/${album.id}`, { method: "DELETE", headers: auth });
 const del1 = await fetch(`${base}/api/files/${mine.id}`, { method: "DELETE", headers: auth });
@@ -128,7 +151,11 @@ if (tok) {
   check("the token identifies the account", me.email === E2E_INBOX.toLowerCase());
   const viaToken = await put(bearer);
   check("an upload with the token is in the account", (await list()).includes(viaToken.id));
-  const delToken = await fetch(`${base}/api/files/${viaToken.id}`, { method: "DELETE", headers: { "sugi-token": viaToken.delete_token } });
+  const tokenVideo = await send(mp4(), bearer);
+  const tv = tokenVideo.status === 201 ? await tokenVideo.json() : null;
+  check("a video uploads with the API token", Boolean(tv) && /\.mp4$/.test(tv.url), `${tokenVideo.status}`);
+  if (tv) await removeFile(tv);
+  const delToken = await removeFile(viaToken);
   const revoked = await fetch(`${base}/api/me/tokens/${tok.id}`, { method: "DELETE", headers: auth });
   check("revoke the token", revoked.status === 200 && delToken.status === 200 && (await fetch(`${base}/api/me`, { headers: bearer })).status === 401);
 }

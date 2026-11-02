@@ -16,7 +16,7 @@
 - **缓存出图和 CSAM Scanning Tool**：`CACHE_ORIGIN=https://r2.sugi.moe`，Worker 经 zone 缓存取文件，所以 Cloudflare 的 CSAM Scanning Tool 能看到每个文件（Dashboard → sugi.moe → Caching → Configuration → CSAM Scanning Tool，通知发到维护者邮箱）。删除时用 `CF_PURGE_TOKEN`（只有 sugi.moe 的 Zone → Cache Purge 权限）清缓存。
 - **R2 生命周期兜底**：规则 `expire-tmp`，`t/` 前缀 4 天后删除。
 - **Email Routing**：`hi@sugi.moe`、`admin@sugi.moe`、`abuse@sugi.moe` 转发给维护者。另有一条规则（`6bfbafccef50455aac3eead4ed146e22`）只把测试地址 `E2E_INBOX`（`~/.config/sugi/ops.env`，同时在 `secrets.env` 里，部署时带给 Worker）交给 Worker；catch-all 关闭。
-- **账号**：`FEATURE_ACCOUNTS=1`，`ACCOUNT_FEATURES=email`。登录邮件经 Resend（东京区域）从 `login@sugi.moe` 发出，免费额度每天 100 封，和真实用户共用，所以 e2e 每次只发一封。邮件登录的 e2e：向 `E2E_INBOX` 请求登录链接，从 `/admin/e2e-inbox`（或 MCP 的 `read_test_inbox`）取出链接，确认登录、上传归属和退出。
+- **账号**：`FEATURE_ACCOUNTS=1`，`ACCOUNT_FEATURES=email,github,google,passkey,sync,tokens`。登录邮件经 Resend（东京区域）从 `login@sugi.moe` 发出，免费额度每天 100 封，和真实用户共用，所以 e2e 每次只发一封。邮件登录的 e2e：向 `E2E_INBOX` 请求登录链接，从 `/admin/e2e-inbox`（或 MCP 的 `read_test_inbox`）取出链接，确认登录、上传归属和退出。`npm run check:account` 跑整套：登录、同步、认领、API 令牌，以及视频规则（匿名视频 403，会话和个人令牌传视频 201），测试令牌最后吊销。
 - **视频要登录**：`VIDEO_UPLOADS=account`。CSAM Scanning Tool 只检测图片，所以匿名上传只收图片，视频要登录的会话、API 令牌或 `TRUSTED_TOKEN`/`ADMIN_TOKEN`，否则 403。经 MCP `create_upload` 拿到的上传链接会记下申请人，按申请人的身份判断。
 - **管理员令牌**：带 `ADMIN_TOKEN` 的 MCP 请求会多出管理工具（处理举报的流程见下文），并且和 `TRUSTED_TOKEN` 一样不受限流；WAF 跳过规则里两个令牌都有。
 - **个人 admin 令牌**：`api_tokens.role` 设为 `admin` 的个人 API 令牌（只能在 D1 里直接改）和 `ADMIN_TOKEN` 一样能用管理工具、不受 Worker 限流；但 WAF 跳过规则里只有两个共享令牌，所以个人 admin 令牌在 `/upload`、`/api/upload`、`/api/uploads` 上仍会被 WAF 按 IP 限速。这是有意的取舍：MCP 不在 WAF 规则里，维护者的命令行用共享的 `TRUSTED_TOKEN`。
