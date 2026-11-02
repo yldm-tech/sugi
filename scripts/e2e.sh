@@ -237,7 +237,10 @@ if [ -s "$work/burst.keys" ]; then
   created="$(wc -l <"$work/burst.keys" | tr -d ' ')"
   deleted=0
   while read -r fid ftok; do
-    [ "$(c "" -o /dev/null -w '%{http_code}' -X DELETE -H "Sugi-Token: $ftok" "$base/api/files/$fid")" = 200 ] && deleted=$((deleted + 1))
+    # One retry: a single dropped connection among hundreds of deletes should not leave a test object behind.
+    code="$(c "" -o /dev/null -w '%{http_code}' -X DELETE -H "Sugi-Token: $ftok" "$base/api/files/$fid")"
+    [ "$code" = 200 ] || code="$(sleep 2; c "" -o /dev/null -w '%{http_code}' -X DELETE -H "Sugi-Token: $ftok" "$base/api/files/$fid")"
+    [ "$code" = 200 ] && deleted=$((deleted + 1))
   done <"$work/burst.keys"
   check "deleted every burst object this run created" "$deleted" "$created"
 fi

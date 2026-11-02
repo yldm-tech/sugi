@@ -46,5 +46,8 @@ jobs:
           printf 'ADMIN_TOKEN=%s\nTRUSTED_TOKEN=%s\n' "$ADMIN" "$TRUSTED" > "$RUNNER_TEMP/staging.env"
       - name: Smoke check
         run: SUGI_SECRETS_FILE="$RUNNER_TEMP/staging.env" scripts/smoke.sh https://sugi-staging.evan-e2b.workers.dev
+      # The Worker's rate limiter counts per Cloudflare location and catches up with a delay, so from a runner a burst of 100 sometimes gets through untouched (first 429 seen anywhere from #46 to never); 200 makes the check reliable.
       - name: End-to-end
+        env:
+          SUGI_E2E_BURST: "200"
         run: SUGI_SECRETS_FILE="$RUNNER_TEMP/staging.env" scripts/e2e.sh https://sugi-staging.evan-e2b.workers.dev
