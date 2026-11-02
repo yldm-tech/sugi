@@ -240,7 +240,7 @@ ${codeBlock(ctx, [
       ]
     : []),
 ])}
-<p class="small">${t('CLI 会把删除凭证存在 <code class="chip">~/.config/sugi/history.jsonl</code>，所以 sugi rm 只能删这台电脑传过的文件。超过 90 MB 的文件会自动分片上传。加 --json 可以拿到完整返回；SUGI_TOKEN 环境变量里的令牌会作为 Authorization: Bearer 发出去。', 'The CLI keeps delete tokens in <code class="chip">~/.config/sugi/history.jsonl</code>, so sugi rm can only delete files uploaded from this machine. Files over 90 MB are uploaded in chunks automatically. Add --json for the full responses; a token in SUGI_TOKEN is sent as Authorization: Bearer.')}</p>
+<p class="small">${t('CLI 会把删除凭证存在 <code class="chip">~/.config/sugi/history.jsonl</code>，所以 sugi rm 只能删这台电脑传过的文件。超过 90 MB 的文件会自动分片上传，断网或按了 Ctrl-C 都不怕：再运行一次同样的命令会从断点接着传，不想要了就 sugi abort 文件名。加 --json 可以拿到完整返回；SUGI_TOKEN 环境变量里的令牌会作为 Authorization: Bearer 发出去。', 'The CLI keeps delete tokens in <code class="chip">~/.config/sugi/history.jsonl</code>, so sugi rm can only delete files uploaded from this machine. Files over 90 MB are uploaded in chunks automatically and survive a dropped connection or Ctrl-C: run the same command again to continue where it stopped, or drop it with sugi abort FILE. Add --json for the full responses; a token in SUGI_TOKEN is sent as Authorization: Bearer.')}</p>
 </section>`;
 }
 

@@ -419,10 +419,12 @@ async function retrying(u: Upload, send: () => Promise<XhrResult>): Promise<XhrR
       await waitOnline();
     }
     r = await send();
-    if (u.cancelled || (r.status !== 0 && r.status !== 429 && r.status < 500)) break;
-    u.note = r.status === 0 ? T.waitingNetwork : T.retrying;
+    // A daily quota (429 that says so, or 507) is final; only rate limits, a lost connection and server trouble are worth waiting for.
+    if (u.cancelled || (r.status !== 0 && r.status !== 429 && r.status < 500) || r.status === 507 || /quota/.test(r.body?.error ?? "")) break;
+    const wait = r.retryAfter ? Math.min(60, Number(r.retryAfter) || 5) * 1000 : Math.min(30, 2 ** (attempt + 1)) * 1000;
+    u.note = r.status === 0 ? T.waitingNetwork : r.status === 429 ? fmt(T.waiting, { s: Math.round(wait / 1000) }) : T.retrying;
     touch();
-    await sleep(r.retryAfter ? Math.min(60, Number(r.retryAfter) || 5) * 1000 : Math.min(30, 2 ** (attempt + 1)) * 1000);
+    await sleep(wait);
   }
   u.note = null;
   touch();
