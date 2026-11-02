@@ -27,6 +27,8 @@ export interface Brand {
   sourceUrl: string | null;
   /** "Deploy to Cloudflare" link for the source, when it is on GitHub or GitLab. */
   deployUrl: string | null;
+  /** Permanent files are copied to a backup bucket (the BACKUP binding); the privacy policy then says so. */
+  backup: boolean;
   /** Use the sugi.moe-branded Open Graph images (only for the sugi.moe deployment itself). */
   officialArtwork: boolean;
 }
@@ -58,6 +60,7 @@ export function brand(env: Env): Brand {
     deployUrl: /^https:\/\/(github\.com|gitlab\.com)\/[^/]+\/[^/]+\/?$/.test(blank(env.SOURCE_URL) ?? "")
       ? `https://deploy.workers.cloudflare.com/?url=${encodeURIComponent(blank(env.SOURCE_URL)!.replace(/\/$/, ""))}`
       : null,
+    backup: Boolean(env.BACKUP),
     officialArtwork: siteName === "sugi.moe" && env.MAIN_ORIGIN === "https://sugi.moe",
   };
 }
