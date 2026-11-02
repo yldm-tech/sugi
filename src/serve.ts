@@ -1,5 +1,6 @@
 // Serving uploaded files from the files and tmp origins: tombstones, expiry, ETags, ranges, and fetching through the zone cache when CACHE_ORIGIN is set.
 import { fetchViaCache } from "./cache";
+import { countOps } from "./ops";
 import { etagMatches, hasBody, HttpError, RemovedError } from "./http";
 import { isTombstone } from "./moderation";
 import { isFileId } from "./ids";
@@ -66,14 +67,20 @@ export async function handleFileServe(request: Request, env: Env, temporary: boo
   }
 
   if (env.CACHE_ORIGIN) {
-    const upstream = await fetchViaCache(env, key, { ttl, range: range ? `bytes=${range.offset}-${range.offset + range.length - 1}` : null });
-    if (upstream.status !== 200 && upstream.status !== 206) {
-      // Passes through blocks such as a CSAM match (451) instead of falling back to the bucket, which would defeat the block.
+    const opts = { ttl, range: range ? `bytes=${range.offset}-${range.offset + range.length - 1}` : null };
+    let upstream = await fetchViaCache(env, key, opts);
+    if (upstream.status !== 200 && upstream.status !== 206 && upstream.status !== 404 && upstream.status !== 451) {
+      // Anything else from our own R2 custom domain (a 403 or 5xx) is not the visitor's fault: count it, then try once more.
       await upstream.body?.cancel();
-      throw new HttpError(
-        upstream.status === 404 ? 404 : upstream.status >= 500 ? 502 : upstream.status,
-        upstream.status === 404 ? "not found" : "unavailable",
-      );
+      await countOps(env, `cache_${upstream.status}`);
+      upstream = await fetchViaCache(env, key, opts);
+    }
+    if (upstream.status !== 200 && upstream.status !== 206) {
+      await upstream.body?.cancel();
+      // A CSAM match (451) is passed on, never worked around by reading the bucket directly, which would defeat the block.
+      if (upstream.status === 451) throw new RemovedError();
+      if (upstream.status === 404) throw new HttpError(404, "not found");
+      throw new HttpError(502, "the file could not be fetched; try again in a moment");
     }
     for (const h of ["content-length", "content-range"]) {
       const v = upstream.headers.get(h);

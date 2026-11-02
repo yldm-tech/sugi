@@ -28,15 +28,33 @@ export function wantsJson(request: Request): boolean {
   return (request.headers.get("accept") ?? "").includes("application/json");
 }
 
-export function errorResponse(request: Request, err: HttpError): Response {
+// Small bilingual pages for browsers that open a file link that does not work. A bare status with no body makes Chrome show its own "HTTP ERROR" page, which says nothing about why.
+function filePage(status: number): string {
+  const [zh, en] =
+    status === 404
+      ? ["这个文件不存在，可能已经过期或被删除了。", "This file does not exist; it may have expired or been deleted."]
+      : status === 429
+        ? ["请求太多了，稍等一下再试。", "Too many requests; please wait a moment and try again."]
+        : status >= 500
+          ? ["文件暂时打不开，过一会儿再试。", "The file cannot be opened right now; please try again in a moment."]
+          : ["这个文件现在打不开。", "This file cannot be opened."];
+  return `<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><meta name="robots" content="noindex"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${status}</title></head>
+<body><p>${zh}</p><p lang="en">${en}</p><p><small>${status}</small></p></body></html>
+`;
+}
+
+/** `filesHost`: the request came to the files or tmp host, where a browser gets a small HTML page for every error. */
+export function errorResponse(request: Request, err: HttpError, filesHost = false): Response {
   const headers = new Headers(err.headers);
   headers.set("x-content-type-options", "nosniff");
   headers.set("cache-control", "no-store");
   if (err instanceof RemovedError) headers.set("x-robots-tag", "noindex");
-  if (err instanceof RemovedError && !wantsJson(request) && (request.headers.get("accept") ?? "").includes("text/html")) {
+  const html = !wantsJson(request) && (request.headers.get("accept") ?? "").includes("text/html");
+  if ((err instanceof RemovedError || filesHost) && html) {
     headers.set("content-type", "text/html; charset=utf-8");
     headers.set("content-security-policy", "default-src 'none'");
-    return new Response(request.method === "HEAD" ? null : REMOVED_PAGE, { status: 451, headers });
+    return new Response(request.method === "HEAD" ? null : err instanceof RemovedError ? REMOVED_PAGE : filePage(err.status), { status: err.status, headers });
   }
   if (wantsJson(request)) {
     headers.set("content-type", "application/json; charset=utf-8");

@@ -379,6 +379,46 @@ describe("GET/DELETE /api/files/:id", () => {
     expect(res.headers.get("content-type")).toBe("video/mp4");
     expect(seen).toEqual([{ url: `https://r2.sugi.test/f/${r.id}`, range: "bytes=0-9", cf: expect.objectContaining({ cacheEverything: true }) }]);
   });
+
+  // A bare 403 from the R2 custom domain once reached a browser as Chrome's own "HTTP ERROR 403" page.
+  it("retries an unexpected status from the cache origin once, and never answers a browser with a bare error", async () => {
+    const bytes = png();
+    const r = await upload(bytes);
+    const browser = { accept: "text/html,application/xhtml+xml,image/avif,image/webp,*/*;q=0.8" };
+    let calls = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => (++calls === 1 ? new Response(null, { status: 403 }) : new Response(bytes, { status: 200 })));
+    const ok = await call(new Request(r.url, { headers: browser }), { CACHE_ORIGIN: "https://r2.sugi.test" });
+    expect(ok.status).toBe(200);
+    expect(calls).toBe(2);
+    await new Promise((res) => setTimeout(res, 20));
+    const counted = await env.DB.prepare("SELECT SUM(count) AS n FROM ops_counters WHERE name = 'cache_403'").first<{ n: number }>();
+    expect(counted?.n).toBeGreaterThan(0);
+    vi.restoreAllMocks();
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(null, { status: 403 }));
+    const bad = await call(new Request(r.url, { headers: browser }), { CACHE_ORIGIN: "https://r2.sugi.test" });
+    expect(bad.status).toBe(502);
+    expect(bad.headers.get("content-type")).toBe("text/html; charset=utf-8");
+    expect(await bad.text()).toContain("文件暂时打不开");
+    // Without an HTML Accept header the error is still a readable line, never empty.
+    const plain = await call(new Request(r.url), { CACHE_ORIGIN: "https://r2.sugi.test" });
+    expect(plain.status).toBe(502);
+    expect((await plain.text()).trim()).not.toBe("");
+    // A CSAM block (451) from the cache is passed on without a retry.
+    vi.restoreAllMocks();
+    let blocked = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      blocked++;
+      return new Response(null, { status: 451 });
+    });
+    expect((await call(new Request(r.url, { headers: browser }), { CACHE_ORIGIN: "https://r2.sugi.test" })).status).toBe(451);
+    expect(blocked).toBe(1);
+  });
+
+  it("a missing file on the files host gets a small page for browsers", async () => {
+    const res = await call(new Request(`${FILES}/zzzzzzzz.png`, { headers: { accept: "text/html" } }));
+    expect(res.status).toBe(404);
+    expect(await res.text()).toContain("这个文件不存在");
+  });
 });
 
 describe("URL import", () => {
