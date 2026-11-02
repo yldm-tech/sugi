@@ -423,36 +423,68 @@ button,
   background: var(--pale2);
   color: var(--ink);
 }
-/* Always one row. Compact form (set by the page script when the full row does not fit, see fitHeader in client/app.ts): logo on the left, a menu button on the right; the links and tools move into the menu panel. */
+/* Always one row. From 768px up: the logo, every link and the tools, made to fit (tighter pills between 768 and 1100px, short labels at the low end). Below 768px (phones): the logo and a menu button whose panel holds the links and tools. */
 .menu {
   display: none;
   position: relative;
   margin-left: auto;
   flex: 0 0 auto;
 }
-.top.compact .nav,
-.top.compact .tools {
+.nav .pill .short,
+.menu-links .short {
   display: none;
 }
-.top.compact .menu {
-  display: block;
+@media (max-width: 1100px) {
+  .top {
+    gap: 10px;
+  }
+  .brand {
+    padding: 4px 14px 4px 8px;
+  }
+  .brand-word {
+    font-size: 21px;
+  }
+  .nav {
+    gap: 5px;
+    font-size: 15px;
+  }
+  .nav .pill {
+    padding: 6px 11px;
+  }
+  .tools {
+    gap: 5px;
+  }
+  .tools .round {
+    width: 34px;
+    height: 34px;
+  }
+  .tools .lang {
+    height: 34px;
+    min-width: 34px;
+    padding: 0 8px;
+    font-size: 13px;
+  }
 }
-/* Phones and narrow tablets never fit the full row: compact from the first paint, before the script has measured. Without the script, a fixed width decides. */
-@media (max-width: 900px) {
+@media (max-width: 960px) {
+  .nav .pill .long {
+    display: none;
+  }
+  .nav .pill .short {
+    display: inline;
+  }
+  .nav {
+    font-size: 14px;
+  }
+  .nav .pill {
+    padding: 5px 9px;
+  }
+}
+@media (max-width: 767px) {
   .top .nav,
   .top .tools {
     display: none;
   }
   .top .menu {
-    display: block;
-  }
-}
-@media (max-width: 1200px) {
-  html:not(.js) .top .nav,
-  html:not(.js) .top .tools {
-    display: none;
-  }
-  html:not(.js) .top .menu {
     display: block;
   }
 }

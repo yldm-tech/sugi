@@ -98,9 +98,11 @@ export function pageCsp(env: Env, nonce: string): string {
 // Applied before first paint so the night theme never flashes: an explicit choice wins, otherwise night between 22:00 and 06:00 local time, as in the design.
 const THEME_BOOT = `document.documentElement.classList.add("js");try{var p=JSON.parse(localStorage.getItem("sugi.prefs.v1")||"null"),h=new Date().getHours(),n=p&&typeof p.night==="boolean"?p.night:(h>=22||h<6);if(n)document.documentElement.classList.add("night")}catch(e){}`;
 
-function navLink(_ctx: Ctx, href: string, ids: PageId[], current: PageId, label: string, extraClass = ""): string {
+/** A header link; `short` is the label used where the row is tight (768-960px wide). */
+function navLink(_ctx: Ctx, href: string, ids: PageId[], current: PageId, label: string, extraClass = "", short = label): string {
   const on = ids.includes(current) ? " on" : "";
-  return `<a class="pill${extraClass}${on}" href="${href}" data-nav data-for="${ids.join(" ")}">${label}</a>`;
+  const text = short === label ? label : `<span class="long">${label}</span><span class="short">${short}</span>`;
+  return `<a class="pill${extraClass}${on}" href="${href}" data-nav data-for="${ids.join(" ")}"${short === label ? "" : ` aria-label="${label.replace(/ ♡$/, "")}"`}>${text}</a>`;
 }
 
 export function header(ctx: Ctx, current: PageId): string {
@@ -109,14 +111,14 @@ export function header(ctx: Ctx, current: PageId): string {
   const other: Lang = ctx.lang === "zh" ? "en" : "zh";
   const links = [
     navLink(ctx, "/", ["home"], current, t("上传", "Upload")),
-    navLink(ctx, "/mine", ["mine", "album"], current, t("我的文件", "My files")),
-    navLink(ctx, "/dev", ["dev"], current, t("开发者", "Developers")),
-    navLink(ctx, "/faq", ["faq", "terms", "privacy"], current, t("问问题", "FAQ")),
-    ...(ctx.flags.donate ? [navLink(ctx, "/donate", ["donate"], current, t("投喂 ♡", "Feed ♡"))] : []),
+    navLink(ctx, "/mine", ["mine", "album"], current, t("我的文件", "My files"), "", t("文件", "Files")),
+    navLink(ctx, "/dev", ["dev"], current, t("开发者", "Developers"), "", t("开发", "Dev")),
+    navLink(ctx, "/faq", ["faq", "terms", "privacy"], current, t("问问题", "FAQ"), "", t("问题", "FAQ")),
+    ...(ctx.flags.donate ? [navLink(ctx, "/donate", ["donate"], current, t("投喂 ♡", "Feed ♡"), "", t("投喂", "Feed"))] : []),
     ...(ctx.flags.accounts
       ? [
           ctx.user
-            ? navLink(ctx, "/account", ["account"], current, t("我的账号", "Account"), " signin")
+            ? navLink(ctx, "/account", ["account"], current, t("我的账号", "Account"), " signin", t("账号", "Account"))
             : navLink(ctx, "/login", ["login"], current, t("登录", "Log in"), " signin"),
         ]
       : []),

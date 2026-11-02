@@ -173,7 +173,7 @@ try {
     }
   }
   // Header: at every width from phone to wide desktop, logged out and logged in (the links differ), the header is exactly one row, nothing in it wraps, and where it is compact the menu works.
-  const headerWidths = [360, 390, 430, 600, 768, 900, 1024, 1100, 1200, 1280, 1300, 1366, 1400, 1440, 1536, 1600, 1920];
+  const headerWidths = [360, 390, 430, 600, 767, 768, 820, 900, 1024, 1100, 1280, 1300, 1366, 1440, 1536, 1600, 1920];
   const headerCheck = () => {
     const out = [];
     const els = [
@@ -271,11 +271,22 @@ try {
           await page.keyboard.press("Escape");
           if (await page.evaluate(() => document.querySelector("#menu").open)) problems.push(`${where}: Esc does not close the menu`);
         }
-        // On a desktop screen the whole header (logo, every link, the tools) must sit on one row.
-        if (width >= 1280 && (await page.evaluate(() => document.querySelector(".top").classList.contains("compact"))))
-          problems.push(`header ${lang}/${user ? "logged in" : "logged out"}/${width}px: two-row header on a desktop width`);
-        if (shots && [390, 1024, 1300, 1440, 1920].includes(width) && lang === "zh")
-          await page.screenshot({ path: `${shots}/zh-header-${user ? "user" : "anon"}-${width}.png`, clip: { x: 0, y: 0, width, height: 140 } });
+        // From 768px up the full row (no menu button, every link visible on screen); below that only the menu button.
+        const form = await page.evaluate(() => {
+          const shown = (q) => [...document.querySelectorAll(q)].filter((e) => getComputedStyle(e).display !== "none" && e.getBoundingClientRect().width > 0);
+          const vw = document.documentElement.clientWidth;
+          return {
+            menu: shown(".menu").length > 0,
+            pills: shown("#nav .pill").filter((e) => e.getBoundingClientRect().right <= vw + 1).length,
+            total: document.querySelectorAll("#nav .pill").length,
+          };
+        });
+        const where = `header ${lang}/${user ? "logged in" : "logged out"}/${width}px`;
+        if (width >= 768 && (form.menu || form.pills !== form.total))
+          problems.push(`${where}: expected the full row, got ${form.menu ? "the menu button" : `${form.pills} of ${form.total} links on screen`}`);
+        if (width < 768 && (!form.menu || form.pills > 0)) problems.push(`${where}: expected the menu button only`);
+        if (shots && [390, 820, 1024, 1300, 1440, 1920].includes(width))
+          await page.screenshot({ path: `${shots}/${lang}-header-${user ? "user" : "anon"}-${width}.png`, clip: { x: 0, y: 0, width, height: 140 } });
       }
       await ctx.close();
     }

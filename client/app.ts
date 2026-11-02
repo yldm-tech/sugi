@@ -1715,31 +1715,7 @@ function initPage() {
 
 // ---------------------------------------------------------------- header
 
-// The header is always one row: logo, links and tools while they fit, otherwise the logo and a menu button whose panel holds the links and tools. Measured, not guessed from the window width, because the set of links changes (logged in or not, donate on or off) and so do their widths (language, fonts).
-function fitHeader() {
-  const top = $(".top");
-  const nav = $("#nav");
-  if (!top || !nav) return;
-  if (window.innerWidth <= 900) {
-    top.classList.add("compact");
-    return;
-  }
-  top.classList.remove("compact");
-  const parts = [$(".brand", top), nav, $(".tools", top)].filter(Boolean) as HTMLElement[];
-  // Same row: their vertical centres line up (they differ in height, so their tops do not).
-  const mids = parts.map((e) => {
-    const r = e.getBoundingClientRect();
-    return (r.top + r.bottom) / 2;
-  });
-  const overflow = nav.scrollWidth > nav.clientWidth + 1 || top.scrollWidth > top.clientWidth + 1 || Math.max(...mids) - Math.min(...mids) > 4;
-  top.classList.toggle("compact", overflow);
-  if (!overflow) closeMenu(false);
-}
-let fitFrame = 0;
-window.addEventListener("resize", () => {
-  cancelAnimationFrame(fitFrame);
-  fitFrame = requestAnimationFrame(fitHeader);
-});
+// The header is one row at every width: from 768px up the links and tools sit in it, below that they live in the menu (CSS decides).
 // The menu is a <details>, so it opens without the script too; here it gets aria-expanded, Esc, a focus trap, and closes on outside clicks and on navigation.
 const menu = $<HTMLDetailsElement>("#menu");
 const menuBtn = menu ? $<HTMLElement>("summary", menu) : null;
@@ -1777,8 +1753,6 @@ document.addEventListener("keydown", (e) => {
 menu?.addEventListener("click", (e) => {
   if ((e.target as HTMLElement).closest(".menu-sheet a")) closeMenu(false);
 });
-fitHeader();
-void document.fonts?.ready.then(fitHeader);
 
 // ---------------------------------------------------------------- navigation
 
