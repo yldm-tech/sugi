@@ -8,6 +8,7 @@ import { withDefaults } from "./config";
 import { ensureSchema } from "./migrate";
 import { ICONS } from "./site/og-images";
 import { fileHostRobotsTxt, robotsTxt, sitemapXml, webManifest } from "./site/seo";
+import { eraseOldFingerprints } from "./moderation";
 import { handleLinkUpload } from "./links";
 import { installScript } from "./site/install";
 import { handleMcp } from "./mcp";
@@ -175,6 +176,13 @@ export default {
     }
   },
   async scheduled(_controller, env, ctx): Promise<void> {
-    ctx.waitUntil(sweepExpired(env).then(() => undefined));
+    ctx.waitUntil(
+      (async () => {
+        await sweepExpired(env);
+        // The cron may fire before the first request on a fresh deployment.
+        await ensureSchema(env.DB);
+        await eraseOldFingerprints(env);
+      })(),
+    );
   },
 } satisfies ExportedHandler<Env>;

@@ -255,6 +255,22 @@ export async function takedown(env: Env, raw: string, opts: TakedownOptions): Pr
   return { target: targetName(t), ...(await takedownKeys(env, [found.key], opts, "takedown", targetName(t))) };
 }
 
+// ---- retention ----
+
+/** Takedown records keep the uploader's source HMAC for at most this long (privacy policy, "How long we keep things"). */
+export const SOURCE_RETENTION_MS = 2 * 365 * 24 * 3600 * 1000;
+
+/** Run from the cron: erases source HMACs older than SOURCE_RETENTION_MS from takedown records and the audit log (file id, time and reason stay), and drops source blocks that have expired. */
+export async function eraseOldFingerprints(env: Env, now = Date.now()): Promise<{ tombstones: number; log: number; expired_blocks: number }> {
+  const cutoff = now - SOURCE_RETENTION_MS;
+  const [t, l, b] = await env.DB.batch([
+    env.DB.prepare("UPDATE tombstones SET source = NULL WHERE source IS NOT NULL AND created_at < ?").bind(cutoff),
+    env.DB.prepare("UPDATE admin_log SET target = 'source:(erased)' WHERE target LIKE 'source:%' AND target != 'source:(erased)' AND at < ?").bind(cutoff),
+    env.DB.prepare("DELETE FROM blocked_sources WHERE expires_at IS NOT NULL AND expires_at < ?").bind(now),
+  ]);
+  return { tombstones: t.meta.changes, log: l.meta.changes, expired_blocks: b.meta.changes };
+}
+
 // ---- sources ----
 
 /** A 64-hex source HMAC, or the source of the file/album the link points to. */

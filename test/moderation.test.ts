@@ -172,3 +172,35 @@ describe("admin MCP tools", () => {
     expect((await call(new Request(`${MAIN}/api/files/${r.id}`, { method: "DELETE", headers: { "sugi-token": r.delete_token } }))).status).toBe(404);
   });
 });
+
+describe("retention", () => {
+  it("erases source fingerprints from takedown records and the log after 2 years, and drops expired source blocks", async () => {
+    const { eraseOldFingerprints, SOURCE_RETENTION_MS } = await import("../src/moderation");
+    const now = Date.now();
+    const old = now - SOURCE_RETENTION_MS - 1000;
+    const src = "a".repeat(64);
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO tombstones (target, reason, sha256, source, created_at) VALUES (?, ?, NULL, ?, ?)").bind("file:oldoldol", "old report", src, old),
+      env.DB.prepare("INSERT INTO tombstones (target, reason, sha256, source, created_at) VALUES (?, ?, NULL, ?, ?)").bind("file:newnewne", "new report", src, now),
+      env.DB.prepare("INSERT INTO admin_log (at, actor, action, target, reason, detail) VALUES (?, 'admin', 'block_source', ?, 'old', NULL)").bind(old, `source:${src}`),
+      env.DB.prepare("INSERT INTO admin_log (at, actor, action, target, reason, detail) VALUES (?, 'admin', 'block_source', ?, 'new', NULL)").bind(now, `source:${src}`),
+      env.DB.prepare("INSERT INTO blocked_sources (source, reason, expires_at, created_at) VALUES (?, 'lapsed', ?, ?)").bind("b".repeat(64), now - 1000, old),
+      env.DB.prepare("INSERT INTO blocked_sources (source, reason, expires_at, created_at) VALUES (?, 'forever', NULL, ?)").bind("c".repeat(64), old),
+    ]);
+    const r = await eraseOldFingerprints(env, now);
+    expect(r).toMatchObject({ tombstones: 1, log: 1, expired_blocks: 1 });
+    const rows = (await env.DB.prepare("SELECT target, reason, source FROM tombstones WHERE target IN ('file:oldoldol', 'file:newnewne') ORDER BY target").all()).results;
+    expect(rows).toEqual([
+      { target: "file:newnewne", reason: "new report", source: src },
+      { target: "file:oldoldol", reason: "old report", source: null },
+    ]);
+    const log = (await env.DB.prepare("SELECT reason, target FROM admin_log WHERE reason IN ('old', 'new') ORDER BY reason").all()).results;
+    expect(log).toEqual([
+      { reason: "new", target: `source:${src}` },
+      { reason: "old", target: "source:(erased)" },
+    ]);
+    const blocks = (await env.DB.prepare("SELECT reason FROM blocked_sources WHERE source IN (?, ?)").bind("b".repeat(64), "c".repeat(64)).all()).results;
+    expect(blocks).toEqual([{ reason: "forever" }]);
+    expect((await eraseOldFingerprints(env, now)).tombstones).toBe(0);
+  });
+});
