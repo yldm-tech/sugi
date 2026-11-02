@@ -310,14 +310,15 @@ function makeThumb(file: File): Promise<string | null> {
     const done = (src: CanvasImageSource | null, w: number, hgt: number) => {
       let d: string | null = null;
       if (src && w && hgt) {
-        const s = 160;
+        // Shown in tiles up to about 260px wide; 320px keeps it sharp on retina screens without filling up localStorage.
+        const s = 320;
         const c = document.createElement("canvas");
         c.width = s;
         c.height = s;
         const r = Math.max(s / w, s / hgt);
         try {
           c.getContext("2d")!.drawImage(src, (s - w * r) / 2, (s - hgt * r) / 2, w * r, hgt * r);
-          d = c.toDataURL("image/jpeg", 0.75);
+          d = c.toDataURL("image/jpeg", 0.8);
         } catch {}
       }
       URL.revokeObjectURL(u);
@@ -1359,12 +1360,15 @@ function visibleHist(): HistItem[] {
   });
 }
 
+// Images reasonably small to fetch are shown from the file itself (sharp at any size); the small local thumbnail stays underneath as the placeholder. Big images, videos and expired files show the thumbnail only.
+const TILE_FULL_MAX_BYTES = 6 * 1024 * 1024;
 function tilePic(x: HistItem, onClick: () => void): HTMLElement {
   const pic = h("button", { type: "button", class: "pic", onclick: onClick, "aria-label": x.name });
   const ex = expInfo(x.expiresAt);
+  const full = !ex.expired && x.kind === "image" && x.size <= TILE_FULL_MAX_BYTES;
   if (x.thumb) pic.append(h("img", { src: x.thumb, alt: "", loading: "lazy" }));
-  else if (!ex.expired && x.kind === "image") pic.append(h("img", { src: x.url, alt: "", loading: "lazy" }));
-  else pic.append(h("span", { text: x.ext }));
+  if (full) pic.append(h("img", { src: x.url, alt: "", loading: "lazy", decoding: "async" }));
+  if (!x.thumb && !full) pic.append(h("span", { text: x.ext }));
   return pic;
 }
 
@@ -1399,7 +1403,7 @@ function renderMine() {
         role: "checkbox",
         "aria-checked": String(isSel),
         tabindex: "0",
-        text: isSel ? "✓" : "",
+        text: "",
         onclick: (e: Event) => {
           e.stopPropagation();
           if (sel.has(x.id)) sel.delete(x.id);
@@ -1416,7 +1420,12 @@ function renderMine() {
           "div",
           { class: "meta" },
           h("span", { class: "n", text: x.name }),
-          h("span", { class: "s" }, h("span", { text: fmtSize(x.size) }), h("span", { class: "local", text: x.account ? T.inAccount : T.localOnly })),
+          h(
+            "span",
+            { class: "s" },
+            h("span", { text: fmtSize(x.size) }),
+            h("span", { class: x.account ? "local acct" : "local", text: x.account ? T.inAccount : T.localOnly }),
+          ),
         ),
         h(
           "div",

@@ -13,7 +13,7 @@ const args = process.argv.slice(2);
 const shotsAt = args.indexOf("--shots");
 const shots = shotsAt >= 0 ? args[shotsAt + 1] : null;
 const widthsAt = args.indexOf("--widths");
-const widths = (widthsAt >= 0 ? args[widthsAt + 1] : "360,390,430,600,768,1024,1280").split(",").map(Number);
+const widths = (widthsAt >= 0 ? args[widthsAt + 1] : "360,390,430,600,768,1024,1280,1440,1920").split(",").map(Number);
 const STAGING = "https://sugi-staging.evan-e2b.workers.dev";
 const base = (args.find((a, i) => !a.startsWith("--") && !args[i - 1]?.startsWith("--")) ?? STAGING).replace(/\/$/, "");
 const stagingAdmin = () => {
@@ -270,6 +270,14 @@ try {
             await page.screenshot({ path: `${shots}/zh-header-menu-${user ? "user" : "anon"}-390.png`, clip: { x: 0, y: 0, width, height: 520 } });
           await page.keyboard.press("Escape");
           if (await page.evaluate(() => document.querySelector("#menu").open)) problems.push(`${where}: Esc does not close the menu`);
+        }
+        // The account settings page (logged in only): nothing sticks out at any width.
+        if (user) {
+          await page.goto(`${base}/account?lang=${lang}`);
+          await page.evaluate(() => document.fonts.ready);
+          const r = await page.evaluate(findOverflow);
+          if (r.scroll > 1 || r.out.length) problems.push(`account ${lang}/${width}px: page scrolls sideways by ${r.scroll}px; ${r.out.join(", ")}`);
+          await page.goto(`${base}/?lang=${lang}`);
         }
         // From 768px up the full row (no menu button, every link visible on screen); below that only the menu button.
         const form = await page.evaluate(() => {
