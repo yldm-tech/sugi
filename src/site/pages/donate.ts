@@ -63,8 +63,8 @@ ${DONATE_AMOUNTS.map(
 ${mascot}
 <h1 class="h1">${t("投喂仓仓", "Feed the hamster")}</h1>
 <p class="lead">${t(
-    `${site} 没有广告，也不卖数据，由${who}业余维护。投喂会用来付服务器和域名，让仓仓一直开着。`,
-    `${site} has no ads and sells no data; ${who} keeps it running in spare time. Chipping in pays for the servers and the domain, so the hamster stays open.`,
+    `${site} 没有广告，也不卖数据，由${who}运营。投喂会用来付服务器和域名，让仓仓一直开着。`,
+    `${site} has no ads and sells no data. It is <span class="nw">run by ${who}${who.endsWith(".") ? "" : "."}</span> Chipping in pays for the servers and the domain, so the hamster stays open.`,
   )}</p>
 </section>
 <section class="stack8">

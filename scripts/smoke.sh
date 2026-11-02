@@ -45,6 +45,9 @@ if [ -n "$o_files" ] && [ "$(host "$o_files")" != "$(host "$o_main")" ]; then
     read -r sni hst <<<"$pair"
     if [ "$hst" = "$h_main" ]; then p=/healthz; want=200; else p=/zzzzzzzz.png; want=404; fi
     c="$(curl -s -o /dev/null --max-time 30 -H "Host: $hst" -w '%{http_code}' "https://$sni$p")"
+    # 000 is no connection at all, which is about the network this runs on (for example a machine without working IPv6), not the site: try again, then over IPv4.
+    [ "$c" = 000 ] && c="$(curl -s -o /dev/null --max-time 30 -H "Host: $hst" -w '%{http_code}' "https://$sni$p")"
+    [ "$c" = 000 ] && c="$(curl -4 -s -o /dev/null --max-time 30 -H "Host: $hst" -w '%{http_code}' "https://$sni$p")"
     [ "$c" = "$want" ] && pass "Host $hst on a $sni connection" || fail "Host $hst on a $sni connection answered $c (want $want)"
   done
 fi

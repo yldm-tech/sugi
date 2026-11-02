@@ -246,7 +246,7 @@ export function notFoundPage(ctx: Ctx): Page {
 <div class="art"><span class="q a" aria-hidden="true">?</span><span class="q b" aria-hidden="true">?</span>${LOST_HAMSTER}</div>
 <div class="code404">404</div>
 <h1>${t("仓仓翻遍了腮帮子也没找到", "Checked both cheeks, still can't find it")}</h1>
-<p>${t("这个文件可能已经过期，被主人删掉了，或者链接抄错了一个字母。", "It may have expired, been deleted by its owner, or the link has a typo.")}</p>
+<p class="lead">${t("这个文件可能已经过期，被主人删掉了，或者链接抄错了一个字母。", "It may have expired, been deleted by its owner, or the link has a typo.")}</p>
 <div class="acts"><a class="btn big" href="/" data-nav>${t("回首页", "Home")}</a><a class="btn big ghost" href="/mine" data-nav>${t("看看我的文件", "My files")}</a></div>
 </section>`;
   return { id: "notfound", title: pageTitle(ctx, "找不到啦", "Not found"), main: html, status: 404, noindex: true };

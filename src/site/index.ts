@@ -3,6 +3,7 @@ import { findFile } from "../files";
 import { assertAlbumNotRemoved, assertFileNotRemoved } from "../moderation";
 import { randomNonce } from "../http";
 import { pickLang, readCookie } from "./i18n";
+import { phraseLeads } from "./phrases";
 import { type Ctx, documentHtml, flagsOf, type Page, pageCsp } from "./layout";
 import { albumPage, filePage, minePage } from "./pages/files";
 import { homePage } from "./pages/home";
@@ -99,6 +100,7 @@ export async function handleSite(request: Request, env: Env, pathname: string): 
     ctx.user = p ? { email: p.user.email, name: displayName(p.user), providers, passkeys, tokens } : null;
   }
   const page = await resolvePage(ctx, pathname);
+  page.main = phraseLeads(page.main, ctx.lang);
   const headers: Record<string, string> = {
     ...(page.noindex ? { "x-robots-tag": "noindex" } : {}),
     "x-content-type-options": "nosniff",

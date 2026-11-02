@@ -239,9 +239,10 @@ code {
   }
 }
 
+/* The page is as wide as the header (1180px); pages whose content reads better narrower (the upload page, long prose, small forms) keep a narrower column centred inside it. */
 .wrap {
   width: 100%;
-  max-width: 860px;
+  max-width: 1180px;
   display: flex;
   flex-direction: column;
   gap: 36px;
@@ -251,6 +252,42 @@ main {
   display: flex;
   flex-direction: column;
   gap: 36px;
+}
+#main[data-page="home"] > *,
+#main[data-page="donate"] > *,
+#main[data-page="login"] > *,
+#main[data-page="notfound"] > * {
+  width: 100%;
+  max-width: 860px;
+  align-self: center;
+}
+#main[data-page="faq"] > *,
+#main[data-page="terms"] > *,
+#main[data-page="privacy"] > * {
+  width: 100%;
+  max-width: 760px;
+  align-self: center;
+}
+/* Account settings: the account on the left, passkeys and tokens on the right. */
+.account-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+@media (max-width: 1023px) {
+  .account-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.account-card h2 {
+  margin: 0;
+}
+.account-card {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 /* Flex items default to their min-content width, which lets a long code line push the page sideways; let them shrink so wide content scrolls inside its own box. */
 .wrap > *,
@@ -581,7 +618,14 @@ html.night .theme-night {
   font-size: 15px;
   color: var(--muted2);
   line-height: 1.7;
-  text-wrap: pretty;
+  text-wrap: balance;
+}
+/* Chinese leads (src/site/phrases.ts): one line per sentence, and lines break only between clauses. */
+.lead.phrased .sent {
+  display: block;
+}
+.lead.phrased .ph {
+  display: inline-block;
 }
 .small {
   margin: 0;
@@ -1701,10 +1745,14 @@ html.night .theme-night {
   color: var(--ink);
   padding: 10px 0;
 }
+/* Cards fill the full width (lined up with the toolbar above), as many columns of at least 210px as fit; empty columns collapse, so a short list spreads out instead of leaving a band on the right. One or two cards keep a sensible width. */
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 16px;
+}
+.grid:not(:has(> :nth-child(3))) {
+  grid-template-columns: repeat(auto-fill, minmax(210px, 280px));
 }
 .tile {
   background: #fff;
@@ -1751,26 +1799,34 @@ html.night .theme-night {
   height: 100%;
   object-fit: cover;
 }
+/* A checkbox: an outlined box, filled green with a white check when selected. */
 .tile .tick {
   cursor: pointer;
   position: absolute;
-  top: 6px;
-  left: 6px;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  border: 2.5px solid #fff;
-  background: rgba(63, 74, 60, 0.18);
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
+  top: 8px;
+  left: 8px;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  border: 2.5px solid var(--ink2);
+  background: rgba(255, 255, 255, 0.92);
   box-shadow: 0 1px 4px rgba(63, 74, 60, 0.25);
   z-index: 1;
 }
 .tile.sel .tick {
   background: var(--green);
+  border-color: var(--green);
+}
+.tile.sel .tick::after {
+  content: "";
+  position: absolute;
+  left: 7px;
+  top: 2px;
+  width: 6px;
+  height: 12px;
+  border: solid #fff;
+  border-width: 0 3px 3px 0;
+  transform: rotate(45deg);
 }
 .tile .exp {
   position: absolute;
@@ -1822,7 +1878,14 @@ html.night .theme-night {
   font-family: var(--f-body);
   font-size: 11px;
   font-weight: 700;
-  color: #a08a6a;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--pale2);
+  color: var(--muted2);
+}
+.tile .meta .local.acct {
+  background: var(--pale);
+  color: var(--link-dk);
 }
 .tile .acts,
 .albumcard .acts {

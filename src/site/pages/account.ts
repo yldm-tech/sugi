@@ -49,7 +49,7 @@ function tokenSection(ctx: Ctx): string {
         )
         .join("")}</ul>`
     : `<p class="small">${t("API 令牌让命令行 sugi 和你的脚本以这个账号的身份上传：sugi login 令牌。", "API tokens let the sugi CLI and your scripts upload as this account: sugi login TOKEN.")}</p>`;
-  return `<div class="stack8"><p class="optlabel">${t("API 令牌", "API tokens")}</p>${list}
+  return `<div class="stack8"><h2 class="h2">${t("API 令牌", "API tokens")}</h2>${list}
 <div class="new-token stack8" id="new-token" hidden><p class="small">${t("新令牌只显示这一次，请现在复制保存：", "The new token is shown only this once; copy it now:")}</p><div class="urlform"><input id="new-token-value" readonly aria-label="API token"><button type="button" data-token-copy data-done="${esc(t("已复制", "Copied"))}">${t("复制", "Copy")}</button></div></div>
 <div class="row-actions"><button type="button" class="mini" data-token-create data-fail="${fail}">${t("创建令牌", "Create a token")}</button></div></div>`;
 }
@@ -66,7 +66,7 @@ function passkeySection(ctx: Ctx): string {
         )
         .join("")}</ul>`
     : `<p class="small">${t("还没有通行密钥。用指纹、面容或设备密码就能登录，不用等邮件。", "No passkeys yet. Log in with your fingerprint, face or device PIN instead of waiting for an email.")}</p>`;
-  return `<div class="stack8"><p class="optlabel">${t("通行密钥", "Passkeys")}</p>${list}<div class="row-actions"><button type="button" class="mini" data-passkey-register data-fail="${fail}">${t("添加通行密钥", "Add a passkey")}</button></div></div>`;
+  return `<div class="stack8"><h2 class="h2">${t("通行密钥", "Passkeys")}</h2>${list}<div class="row-actions"><button type="button" class="mini" data-passkey-register data-fail="${fail}">${t("添加通行密钥", "Add a passkey")}</button></div></div>`;
 }
 
 export function loginPage(ctx: Ctx): Page {
@@ -118,18 +118,30 @@ export function accountPage(ctx: Ctx): Page {
   const t = tr(ctx);
   const u = ctx.user!;
   const welcome = ctx.query?.get("welcome") === "1";
-  const inner = `<div class="center"><h1 class="h2">${t("我的账号", "Your account")}</h1>${welcome ? `<p class="lead">${t("登录好啦～", "You're logged in~")}</p>` : ""}</div>
+  // A settings layout: the account itself on the left, passkeys and API tokens as cards of their own on the right; one column on narrower screens.
+  const main = `<div class="card account-card stack8">
+<h2 class="h2">${t("账号", "Account")}</h2>
 <p class="lead">${u.email ? t("邮箱", "Email") : t("名字", "Name")}${t("：", ": ")}<strong>${esc(u.email ?? u.name)}</strong></p>
 ${u.providers.length ? `<p class="small">${t("登录方式", "Log in with")}${t("：", ": ")}${u.providers.map((p) => `<span class="nw provider">${BRAND_ICONS[p] ?? ""}${esc(PROVIDER_NAMES[p] ?? p)}</span>`).join(" · ")}</p>` : ""}
 ${providerButtons(ctx, u.providers.join(","), true)}
-${ctx.flags.account.includes("passkey") ? passkeySection(ctx) : ""}
-${ctx.flags.account.includes("tokens") ? tokenSection(ctx) : ""}
 <p class="small">${ctx.flags.account.includes("sync") ? t('登录状态下新上传的文件会记在这个账号下，在 <a href="/mine" data-nav>我的文件</a> 里换设备也能看到。', 'New uploads made while logged in are recorded under this account; see them on any device under <a href="/mine" data-nav>My files</a>.') : t("登录状态下新上传的文件会记在这个账号下。", "New uploads made while logged in are recorded under this account.")}</p>
 <form method="post" action="/auth/logout"><button class="mini" type="submit">${t("退出登录", "Log out")}</button></form>
 <details class="danger-zone"><summary>${t("删除账号", "Delete account")}</summary>
 <p class="small">${t("删除账号会删掉你的登录方式、通行密钥和会话。上传的文件默认保留（链接继续有效），勾选下面一项则一起删除。", "Deleting the account removes its logins, passkeys and sessions. Uploaded files stay (their links keep working) unless you tick the box below.")}</p>
 <label class="check"><input type="checkbox" id="delete-files"> ${t("同时删除这个账号上传的文件和打包链接", "Also delete the files and albums this account uploaded")}</label>
 <button type="button" class="mini danger" data-account-delete data-confirm="${esc(t("确定要删除账号吗？这一步不能撤销。", "Delete the account? This cannot be undone."))}" data-fail="${esc(t("没能删除账号，再试一次吧。", "The account could not be deleted; please try again."))}">${t("删除账号", "Delete account")}</button>
-</details>`;
-  return { id: "account", title: pageTitle(ctx, "我的账号", "Account"), main: loginFrame(ctx, inner), noindex: true };
+</details>
+</div>`;
+  const side = [
+    ctx.flags.account.includes("passkey") ? `<div class="card account-card">${passkeySection(ctx)}</div>` : "",
+    ctx.flags.account.includes("tokens") ? `<div class="card account-card">${tokenSection(ctx)}</div>` : "",
+  ].join("\n");
+  const html = `<section class="account-page stack">
+<div class="stack8"><h1 class="h1">${t("我的账号", "Your account")}</h1>${welcome ? `<p class="lead">${t("登录好啦～", "You're logged in~")}</p>` : ""}</div>
+<div class="account-grid">
+${main}
+${side.trim() ? `<div class="account-side stack">${side}</div>` : ""}
+</div>
+</section>`;
+  return { id: "account", title: pageTitle(ctx, "我的账号", "Account"), main: html, noindex: true };
 }
