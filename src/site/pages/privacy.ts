@@ -220,5 +220,5 @@ export function privacyPage(ctx: Ctx): Page {
 <section class="faq privacy">
 ${sections.map((s) => `<div class="card policy"><h2 class="h2">${t(s.zh, s.en)}</h2>\n${paragraphs(ctx, s)}</div>`).join("\n")}
 </section>`;
-  return { id: "privacy", title: t("隐私政策 · sugi.moe", "Privacy · sugi.moe"), main: html };
+  return { id: "privacy", title: t("隐私政策 · sugi.moe", "Privacy · sugi.moe"), main: html, description: t("sugi.moe 收集什么信息、为什么、保存多久，以及你有哪些权利。", "What sugi.moe collects, why, how long it is kept, and your rights.") };
 }

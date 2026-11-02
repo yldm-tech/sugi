@@ -1,5 +1,6 @@
 import { MAX_FILE_BYTES } from "../../limits";
-import { Ctx, Page, tr } from "../layout";
+import { Ctx, Page, siteDescription, tr } from "../layout";
+import { ICONS } from "../og-images";
 import { mascotStage } from "../svg";
 
 const MiB = 1024 * 1024;
@@ -96,5 +97,26 @@ ${
 }
 </div>
 </section>`;
-  return { id: "home", title: t("sugi.moe · 可爱过头的图床", "sugi.moe · the cutest image host"), main };
+  const origin = ctx.env.MAIN_ORIGIN;
+  const jsonLd = [
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      name: "sugi.moe",
+      url: `${origin}/`,
+      inLanguage: ["zh-CN", "en"],
+      description: siteDescription(ctx),
+      publisher: { "@id": `${origin}/#organization` },
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "@id": `${origin}/#organization`,
+      name: "YLDM Co., Ltd.",
+      url: `${origin}/`,
+      logo: `${origin}${ICONS.png512}`,
+      email: "hi@sugi.moe",
+    },
+  ];
+  return { id: "home", title: t("sugi.moe · 可爱过头的图床", "sugi.moe · the cutest image host"), main, jsonLd };
 }

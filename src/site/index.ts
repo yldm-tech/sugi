@@ -55,6 +55,7 @@ export async function handleSite(request: Request, env: Env, pathname: string): 
   const { ctx, setCookie } = makeCtx(request, env);
   const page = await resolvePage(ctx, pathname);
   const headers: Record<string, string> = {
+    ...(page.noindex ? { "x-robots-tag": "noindex" } : {}),
     "x-content-type-options": "nosniff",
     "referrer-policy": "strict-origin-when-cross-origin",
     "content-language": ctx.lang === "zh" ? "zh-CN" : "en",
