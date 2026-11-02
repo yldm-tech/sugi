@@ -1,3 +1,4 @@
+import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { ASSETS } from "../src/generated/assets";
 import { call, MAIN, mp4, png, upload, freshIp, TRUSTED } from "./helpers";
@@ -186,7 +187,9 @@ describe("static files", () => {
 
 describe("privacy policy", () => {
   it("renders in both languages, is linked everywhere and never shows the review notes", async () => {
-    const { PRIVACY } = await import("../src/site/pages/privacy");
+    const { privacySections } = await import("../src/site/pages/privacy");
+    const { brand } = await import("../src/config");
+    const PRIVACY = privacySections(brand(env));
     for (const lang of ["zh", "en"] as const) {
       const html = await (await page("/privacy", lang === "zh" ? zh : {})).text();
       expect(html).toContain(lang === "zh" ? "隐私政策" : "Privacy policy");

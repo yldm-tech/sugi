@@ -12,6 +12,19 @@ export const OG_IMAGES: Record<string, string> = {
   "privacy-en": "/static/og/privacy-en-266657935e.png"
 };
 
+export const OG_IMAGES_GENERIC: Record<string, string> = {
+  "home-zh": "/static/og/generic-home-zh-0dceea837e.png",
+  "home-en": "/static/og/generic-home-en-7cfd79cca5.png",
+  "dev-zh": "/static/og/generic-dev-zh-f6461f10bb.png",
+  "dev-en": "/static/og/generic-dev-en-582c70c029.png",
+  "faq-zh": "/static/og/generic-faq-zh-f58b4729dc.png",
+  "faq-en": "/static/og/generic-faq-en-885ab26758.png",
+  "terms-zh": "/static/og/generic-terms-zh-dd60bdec2d.png",
+  "terms-en": "/static/og/generic-terms-en-fef5f5566e.png",
+  "privacy-zh": "/static/og/generic-privacy-zh-bd15419e8e.png",
+  "privacy-en": "/static/og/generic-privacy-en-1878e11a94.png"
+};
+
 export const ICONS = {
   "png32": "/static/icons/favicon-32-4b22e3763e.png",
   "png192": "/static/icons/icon-192-3b282752d1.png",

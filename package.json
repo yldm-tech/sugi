@@ -2,6 +2,12 @@
   "name": "sugi",
   "version": "0.1.0",
   "private": true,
+  "description": "Anonymous image and short-video host on Cloudflare Workers, R2 and D1",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yldm-tech/sugi"
+  },
   "type": "module",
   "scripts": {
     "build": "node scripts/build-client.mjs",
@@ -10,7 +16,24 @@
     "types": "wrangler types --strict-vars=false",
     "typecheck": "node scripts/build-client.mjs && tsc --noEmit && tsc --noEmit -p client",
     "test": "node scripts/build-client.mjs && vitest run",
-    "fonts": "scripts/subset-fonts.sh"
+    "fonts": "scripts/subset-fonts.sh",
+    "deploy:production": "scripts/deploy-production.sh"
+  },
+  "cloudflare": {
+    "bindings": {
+      "IP_HASH_SECRET": {
+        "description": "Random secret (e.g. `openssl rand -hex 32`). Uploads are fingerprinted with an HMAC of the uploader IP under this key instead of storing the IP; uploads are refused until it is set."
+      },
+      "ADMIN_TOKEN": {
+        "description": "Random token (e.g. `openssl rand -hex 32`) for the admin endpoints: deleting any file and purging everything uploaded from one source."
+      },
+      "DB": {
+        "description": "D1 database for albums. The Worker creates its tables on the first request."
+      },
+      "BUCKET": {
+        "description": "R2 bucket that stores the uploaded files."
+      }
+    }
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "^1.4.12",

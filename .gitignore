@@ -5,3 +5,5 @@ node_modules/
 *.log
 public/static/build/
 src/generated/
+
+!.dev.vars.example

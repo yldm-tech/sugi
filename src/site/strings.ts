@@ -43,10 +43,10 @@ const zh = {
   errRate: "传得太快啦，歇 {s} 秒再来",
   errNetwork: "网络断了，没传完",
   errFailed: "没传成功（{status}）：{msg}",
-  titleBusy: "({pct}%) 仓仓搬运中… · sugi.moe",
-  titleDone: "✓ 屯好 {n} 个啦 · sugi.moe",
-  titleSleep: "zzz… · sugi.moe",
-  titleIdle: "sugi.moe · 可爱过头的图床",
+  titleBusy: "({pct}%) 仓仓搬运中… · {site}",
+  titleDone: "✓ 屯好 {n} 个啦 · {site}",
+  titleSleep: "zzz… · {site}",
+  titleIdle: "{site} · 可爱过头的图床",
   copy: "复制",
   copyLink: "复制链接",
   fmtUrl: "直链",
@@ -119,10 +119,10 @@ const en: typeof zh = {
   errRate: "Too fast! Wait {s} seconds and try again",
   errNetwork: "The connection dropped before it finished",
   errFailed: "Upload failed ({status}): {msg}",
-  titleBusy: "({pct}%) Hauling… · sugi.moe",
-  titleDone: "✓ {n} stashed · sugi.moe",
-  titleSleep: "zzz… · sugi.moe",
-  titleIdle: "sugi.moe · the cutest image host",
+  titleBusy: "({pct}%) Hauling… · {site}",
+  titleDone: "✓ {n} stashed · {site}",
+  titleSleep: "zzz… · {site}",
+  titleIdle: "{site} · the cutest image host",
   copy: "Copy",
   copyLink: "Copy link",
   fmtUrl: "Link",
@@ -155,6 +155,7 @@ const en: typeof zh = {
 
 export type ClientStrings = typeof zh;
 
-export function clientStrings(lang: Lang): ClientStrings {
-  return lang === "zh" ? zh : en;
+export function clientStrings(lang: Lang, site: string): ClientStrings {
+  const table = lang === "zh" ? zh : en;
+  return Object.fromEntries(Object.entries(table).map(([k, v]) => [k, v.replace(/\{site\}/g, site)])) as ClientStrings;
 }

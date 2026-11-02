@@ -1,5 +1,7 @@
 import { MAX_FILE_BYTES } from "../../limits";
-import { Ctx, Page, siteDescription, tr } from "../layout";
+import { brand } from "../../config";
+import { esc } from "../i18n";
+import { Ctx, homeTitle, Page, siteDescription, tr } from "../layout";
 import { ICONS } from "../og-images";
 import { mascotStage } from "../svg";
 
@@ -7,6 +9,10 @@ const MiB = 1024 * 1024;
 
 export function homePage(ctx: Ctx): Page {
   const t = tr(ctx);
+  const b = brand(ctx.env);
+  const strip = (o: string) => esc(o.replace(/^https?:\/\//, ""));
+  const filesHost = strip(ctx.env.FILES_ORIGIN);
+  const tmpHost = strip(ctx.env.TMP_ORIGIN);
   const maxMb = MAX_FILE_BYTES / MiB;
   const main = `<section class="hero">
 <span class="deco d1" aria-hidden="true">✦</span><span class="deco d2" aria-hidden="true">♡</span><span class="deco d3" aria-hidden="true">✿</span><span class="deco d4" aria-hidden="true">✦</span>
@@ -27,6 +33,7 @@ ${mascotStage(t("今天屯点什么呢？", "What shall we stash today?"), t("�
 </div>
 <input type="file" id="file" multiple accept="image/png,image/jpeg,image/webp,image/gif,image/avif,video/mp4,video/webm" hidden>
 </div>
+${ctx.env.IP_HASH_SECRET ? "" : `<p class="gate">${t("这个网站还没配置好：缺少 IP_HASH_SECRET 密钥，上传会失败。运营者可以用 wrangler secret put IP_HASH_SECRET 设置。", "This site is not set up yet: the IP_HASH_SECRET secret is missing, so uploads will fail. The operator can set it with wrangler secret put IP_HASH_SECRET.")}</p>`}
 ${ctx.gated ? `<p class="gate" id="gate">${t("暂未开放匿名上传：服务还在内测，目前只接受带令牌的上传。", "Anonymous uploads are not open yet: the service is in a closed test and only accepts uploads with a token.")}</p>` : ""}
 <div class="opts">
 <div class="expiry">
@@ -87,13 +94,13 @@ ${ctx.gated ? `<p class="gate" id="gate">${t("暂未开放匿名上传：服务�
 ${
   ctx.flags.cli
     ? `<div class="cmdl"><span class="ps">$ </span>sugi up cat.png</div>
-<div class="out">✿ files.sugi.moe/k3x9qa2m.png${t("（已复制）", " (copied)")}</div>
+<div class="out">✿ ${filesHost}/k3x9qa2m.png${t("（已复制）", " (copied)")}</div>
 <div class="cmdl mt6"><span class="ps">$ </span>sugi up -e 1h secret.jpg</div>
-<div class="out">✿ tmp.sugi.moe/8fj2mz7q.jpg · ${t("1 小时后消失", "gone in 1 hour")}</div>`
-    : `<div class="cmdl"><span class="ps">$ </span>curl -F file=@cat.png https://sugi.moe/api/upload</div>
-<div class="out">✿ https://files.sugi.moe/k3x9qa2m.png</div>
-<div class="cmdl mt6"><span class="ps">$ </span>curl -F file=@secret.jpg -F expire=1h https://sugi.moe/api/upload</div>
-<div class="out">✿ https://tmp.sugi.moe/8fj2mz7q.jpg · ${t("1 小时后消失", "gone in 1 hour")}</div>`
+<div class="out">✿ ${tmpHost}/8fj2mz7q.jpg · ${t("1 小时后消失", "gone in 1 hour")}</div>`
+    : `<div class="cmdl"><span class="ps">$ </span>curl -F file=@cat.png ${esc(ctx.env.MAIN_ORIGIN)}/api/upload</div>
+<div class="out">✿ ${esc(ctx.env.FILES_ORIGIN)}/k3x9qa2m.png</div>
+<div class="cmdl mt6"><span class="ps">$ </span>curl -F file=@secret.jpg -F expire=1h ${esc(ctx.env.MAIN_ORIGIN)}/api/upload</div>
+<div class="out">✿ ${esc(ctx.env.TMP_ORIGIN)}/8fj2mz7q.jpg · ${t("1 小时后消失", "gone in 1 hour")}</div>`
 }
 </div>
 </section>`;
@@ -102,21 +109,25 @@ ${
     {
       "@context": "https://schema.org",
       "@type": "WebSite",
-      name: "sugi.moe",
+      name: b.siteName,
       url: `${origin}/`,
       inLanguage: ["zh-CN", "en"],
       description: siteDescription(ctx),
-      publisher: { "@id": `${origin}/#organization` },
+      ...(b.operator ? { publisher: { "@id": `${origin}/#organization` } } : {}),
     },
-    {
-      "@context": "https://schema.org",
-      "@type": "Organization",
-      "@id": `${origin}/#organization`,
-      name: "YLDM Co., Ltd.",
-      url: `${origin}/`,
-      logo: `${origin}${ICONS.png512}`,
-      email: "hi@sugi.moe",
-    },
+    ...(b.operator
+      ? [
+          {
+            "@context": "https://schema.org",
+            "@type": "Organization",
+            "@id": `${origin}/#organization`,
+            name: b.operator,
+            url: `${origin}/`,
+            logo: `${origin}${ICONS.png512}`,
+            ...(b.contactEmail ? { email: b.contactEmail } : {}),
+          },
+        ]
+      : []),
   ];
-  return { id: "home", title: t("sugi.moe · 可爱过头的图床", "sugi.moe · the cutest image host"), main, jsonLd };
+  return { id: "home", title: homeTitle(ctx), main, jsonLd };
 }

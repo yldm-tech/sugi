@@ -1,0 +1,71 @@
+// Production configuration of https://sugi.moe, used only by scripts/deploy-production.sh (`wrangler deploy --config wrangler.production.jsonc`). Self-hosters use wrangler.jsonc, which has no sugi.moe specifics.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sugi",
+  // The account that holds the sugi.moe zone; a Worker custom domain must live in the zone's account.
+  "account_id": "e2b27aea5f599efdbe0a7016a2580d05",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": false,
+  "preview_urls": false,
+  "observability": { "enabled": false },
+  "build": {
+    "command": "node scripts/build-client.mjs"
+  },
+  "routes": [
+    { "pattern": "sugi.moe", "custom_domain": true },
+    { "pattern": "files.sugi.moe", "custom_domain": true },
+    { "pattern": "tmp.sugi.moe", "custom_domain": true }
+  ],
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "triggers": {
+    "crons": ["*/10 * * * *"]
+  },
+  "vars": {
+    "SITE_NAME": "sugi.moe",
+    "MAIN_ORIGIN": "https://sugi.moe",
+    "FILES_ORIGIN": "https://files.sugi.moe",
+    "TMP_ORIGIN": "https://tmp.sugi.moe",
+    "OPERATOR_NAME": "YLDM Co., Ltd.",
+    "CONTACT_EMAIL": "hi@sugi.moe",
+    "ABUSE_EMAIL": "abuse@sugi.moe",
+    "CSAM_SCANNING": "1",
+    "EMAIL_ROUTING": "1",
+    "WAF_RATE_LIMIT": "1",
+    "STORAGE_LOCATION": "APAC",
+    "RESEND_REGION": "ap-northeast-1",
+    "MAIL_FROM": "sugi.moe <login@sugi.moe>",
+    // The bucket's R2 custom domain; files are served through the zone cache so the CSAM Scanning Tool sees them.
+    "CACHE_ORIGIN": "https://r2.sugi.moe",
+    "ZONE_ID": "0ec67ba827776b3d9e3452483205b04c",
+    "FEATURE_ACCOUNTS": "0",
+    "FEATURE_CLI": "1",
+    "FEATURE_DONATE": "0"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "sugi",
+      "database_id": "61f7d685-83be-4cad-9a56-b6ce9887affb",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "BUCKET",
+      "bucket_name": "sugi"
+    }
+  ],
+  "ratelimits": [
+    {
+      "name": "UPLOAD_LIMITER",
+      "namespace_id": "48613",
+      "simple": { "limit": 10, "period": 60 }
+    }
+  ]
+  // Secrets come from ~/.config/sugi/secrets.env via --secrets-file: IP_HASH_SECRET, ADMIN_TOKEN, TRUSTED_TOKEN, CF_PURGE_TOKEN, RESEND_API_KEY, GITHUB_CLIENT_ID/SECRET, GOOGLE_CLIENT_ID/SECRET. Never UPLOAD_TOKEN: it would close uploads to the public.
+}

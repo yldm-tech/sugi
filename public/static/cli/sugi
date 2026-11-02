@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# sugi: upload images and short videos to sugi.moe from the terminal.
+# sugi: upload images and short videos to a sugi server (https://sugi.moe unless SUGI_URL or the installer says otherwise) from the terminal.
 #
 #   sugi up [-e 1h|12h|72h] [--cute] [--name NAME] [--clipboard] [--json] [--no-copy] FILE...|-
 #   sugi album [--json] TITLE FILE|ID|LINK...
@@ -28,8 +28,8 @@ say() { if [ "$ZH" = 1 ]; then printf '%s\n' "$1"; else printf '%s\n' "$2"; fi; 
 err() { if [ "$ZH" = 1 ]; then printf 'sugi: %s\n' "$1" >&2; else printf 'sugi: %s\n' "$2" >&2; fi; }
 
 usage() {
-  cat <<'EOF'
-sugi: upload images and short videos to sugi.moe
+  cat <<EOF
+sugi: upload images and short videos to ${BASE#*://}
 
   sugi up [options] FILE...      upload; prints one link per file and copies them
       -e, --expire 1h|12h|72h    delete after this long (default: keep forever)
@@ -42,7 +42,7 @@ sugi: upload images and short videos to sugi.moe
   sugi album TITLE FILE|ID|LINK...   upload files (or reuse links) and make one share link
   sugi ls [--json]               uploads made from this machine
   sugi rm ID|LINK...             delete uploads made from this machine
-  sugi login [TOKEN]             save an API token (create one at https://sugi.moe/dev)
+  sugi login [TOKEN]             save an API token (create one at $BASE/dev)
   sugi logout                    forget the saved token
   sugi version
 

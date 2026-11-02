@@ -1,4 +1,4 @@
-// Renders the Open Graph images (1200x630) and the PNG icons from SVG with resvg, writes them to public/static/og and public/static/icons with content-hashed names, and records the names in src/site/og-images.ts. Run after changing the copy below or the artwork:
+// Renders the Open Graph images (1200x630) and the PNG icons from SVG with resvg, in two sets: the sugi.moe-branded one used only by the sugi.moe deployment, and a generic one without the sugi.moe wordmark and domain for every other deployment. It writes them to public/static/og and public/static/icons with content-hashed names, and records the names in src/site/og-images.ts. Run after changing the copy below or the artwork:
 //
 //   scripts/subset-fonts.sh   # downloads the full fonts into ~/.cache/sugi-fonts on first run
 //   node scripts/build-og.mjs
@@ -20,6 +20,13 @@ export const OG_COPY = {
   faq: { zh: ["问问仓仓", "关于 sugi 的常见问题"], en: ["Ask the hamster", "Questions about sugi"] },
   terms: { zh: ["使用条款", "用 sugi.moe 的规则"], en: ["Terms of use", "The rules of sugi.moe"] },
   privacy: { zh: ["隐私政策", "我们存什么、为什么、存多久"], en: ["Privacy policy", "What we keep, why, and for how long"] },
+};
+
+// The generic set never names sugi.moe.
+export const OG_COPY_GENERIC = {
+  ...OG_COPY,
+  faq: { zh: ["问问仓仓", "常见问题都在这里"], en: ["Ask the hamster", "Answers to common questions"] },
+  terms: { zh: ["使用条款", "用这个网站的规则"], en: ["Terms of use", "The rules of this site"] },
 };
 
 const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
@@ -64,7 +71,7 @@ const FACE = `<g stroke="#4A5646" stroke-width="2.2" stroke-linejoin="round" str
 <path d="M21.5 32 Q22.75 33.6 24 32 Q25.25 33.6 26.5 32" fill="none" stroke-width="1.6"/>
 </g>`;
 
-function ogSvg(lang, [headline, subtitle]) {
+function ogSvg(lang, [headline, subtitle], official) {
   const lines = headline.split("\n");
   const size = lang === "zh" ? (headline.length > 8 ? 62 : 84) : lines.length > 1 ? 66 : 72;
   const lineH = size * 1.15;
@@ -85,20 +92,20 @@ function ogSvg(lang, [headline, subtitle]) {
 <g transform="translate(1100 520)" fill="#BFD9AE"><circle r="7" cx="0" cy="-12"/><circle r="7" cx="11" cy="-4"/><circle r="7" cx="7" cy="10"/><circle r="7" cx="-7" cy="10"/><circle r="7" cx="-11" cy="-4"/><circle r="5" fill="#F6F4EA"/></g>
 <ellipse cx="300" cy="520" rx="210" ry="26" fill="#E8EBD9"/>
 <g transform="translate(70 115) scale(2.3)">${MASCOT}</g>
-<g transform="translate(${textX} 70)">
+${official ? `<g transform="translate(${textX} 70)">
 <rect x="0" y="0" width="258" height="70" rx="35" fill="#D6E2C8"/>
 <rect x="0" y="-6" width="258" height="70" rx="35" fill="#FFFFFF" stroke="#D6E2C8" stroke-width="3"/>
 <g transform="translate(16 2) scale(1.15)">${FACE}</g>
 <text x="80" y="42" font-family="Fredoka" font-weight="700" font-size="34" fill="#3F4A3C">sugi</text>
 <path d="${HEART}" transform="translate(150 20) scale(1.25)" fill="#F4A6A0"/>
 <text x="174" y="42" font-family="Fredoka" font-weight="700" font-size="34" fill="#3F4A3C">moe</text>
-</g>
+</g>` : ""}
 ${head(4, 4, "#E1EDD3")}
 ${head(0, 0, "#3F4A3C")}
 <text x="${textX}" y="${subY}" font-family="${lang === "zh" ? "ZCOOL KuaiLe" : "Fredoka"}" font-weight="500" font-size="32" fill="#66705F">${esc(subtitle)}</text>
 <rect x="${textX}" y="${subY + 34}" width="250" height="44" rx="22" fill="#EAF3E3"/>
 <text x="${textX + 125}" y="${subY + 64}" text-anchor="middle" font-family="Fredoka" font-weight="600" font-size="22" fill="#3F7A50">kawaii-sugi f&#8204;ile host</text>
-<text x="1140" y="600" text-anchor="end" font-family="Fredoka" font-weight="700" font-size="30" fill="#4E8A5F">sugi.moe</text>
+${official ? `<text x="1140" y="600" text-anchor="end" font-family="Fredoka" font-weight="700" font-size="30" fill="#4E8A5F">sugi.moe</text>` : ""}
 </svg>`;
 }
 
@@ -128,14 +135,20 @@ for (const dir of ["og", "icons"]) {
   for (const f of readdirSync(join("public/static", dir))) rmSync(join("public/static", dir, f));
 }
 
-const og = {};
-for (const [page, copy] of Object.entries(OG_COPY)) {
-  for (const lang of ["zh", "en"]) {
-    const svg = ogSvg(lang, copy[lang]);
-    og[`${page}-${lang}`] = writeHashed("og", `${page}-${lang}`, render(svg));
-    if (process.env.SUGI_OG_SVG_OUT) writeFileSync(join(process.env.SUGI_OG_SVG_OUT, `${page}-${lang}.svg`), svg);
+function renderSet(copySet, official, prefix) {
+  const out = {};
+  for (const [page, copy] of Object.entries(copySet)) {
+    for (const lang of ["zh", "en"]) {
+      const svg = ogSvg(lang, copy[lang], official);
+      out[`${page}-${lang}`] = writeHashed("og", `${prefix}${page}-${lang}`, render(svg));
+      if (process.env.SUGI_OG_SVG_OUT) writeFileSync(join(process.env.SUGI_OG_SVG_OUT, `${prefix}${page}-${lang}.svg`), svg);
+    }
   }
+  return out;
 }
+
+const og = renderSet(OG_COPY, true, "");
+const ogGeneric = renderSet(OG_COPY_GENERIC, false, "generic-");
 
 const icons = {
   png32: writeHashed("icons", "favicon-32", render(iconSvg(32, null))),
@@ -146,6 +159,6 @@ const icons = {
 
 writeFileSync(
   "src/site/og-images.ts",
-  `// Written by scripts/build-og.mjs; do not edit by hand. Rendered PNGs live in public/static/og and public/static/icons.\nexport const OG_IMAGES: Record<string, string> = ${JSON.stringify(og, null, 2)};\n\nexport const ICONS = ${JSON.stringify(icons, null, 2)} as const;\n`,
+  `// Written by scripts/build-og.mjs; do not edit by hand. Rendered PNGs live in public/static/og and public/static/icons.\nexport const OG_IMAGES: Record<string, string> = ${JSON.stringify(og, null, 2)};\n\nexport const OG_IMAGES_GENERIC: Record<string, string> = ${JSON.stringify(ogGeneric, null, 2)};\n\nexport const ICONS = ${JSON.stringify(icons, null, 2)} as const;\n`,
 );
-console.log(`og: ${Object.keys(og).length} images, icons: ${Object.keys(icons).length}`);
+console.log(`og: ${Object.keys(og).length} + ${Object.keys(ogGeneric).length} generic images, icons: ${Object.keys(icons).length}`);

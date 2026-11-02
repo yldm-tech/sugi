@@ -4,6 +4,8 @@ import { handleFileDelete, handleFileInfo, handleFileServe, handleUploadPost, ha
 import { errorResponse, HttpError, methodNotAllowed } from "./http";
 import { handleInfo, handleLegacyDelete, handleLegacyServe, handleLegacyUpload, handlePurgeBySource, LEGACY_KEY_RE } from "./legacy";
 import { handleSite } from "./site";
+import { withDefaults } from "./config";
+import { ensureSchema } from "./migrate";
 import { ICONS } from "./site/og-images";
 import { fileHostRobotsTxt, robotsTxt, sitemapXml, webManifest } from "./site/seo";
 import { handleLinkUpload } from "./links";
@@ -117,11 +119,13 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (fileMatch) return routeFileHost(request, env, fileMatch);
 
   if (pathname.startsWith("/static/")) return serveStatic(request, env, pathname);
+  // Everything past this point may touch D1; make sure the schema exists (a no-op after the first request of an isolate).
+  await ensureSchema(env.DB).catch(() => undefined);
   if (pathname === "/favicon.ico") return serveStatic(new Request(new URL(ICONS.png32, url), request), env, ICONS.png32);
   if (pathname === "/apple-touch-icon.png" || pathname === "/apple-touch-icon-precomposed.png") return serveStatic(new Request(new URL(ICONS.apple, url), request), env, ICONS.apple);
   if (pathname === "/robots.txt") return robotsTxt(env);
   if (pathname === "/sitemap.xml") return sitemapXml(env);
-  if (pathname === "/manifest.webmanifest") return webManifest();
+  if (pathname === "/manifest.webmanifest") return webManifest(env);
   if (pathname.startsWith("/api/")) return routeApi(request, env, pathname);
   if (env.FEATURE_CLI === "1") {
     if (pathname === "/mcp") return handleMcp(request, env);
@@ -161,7 +165,8 @@ async function route(request: Request, env: Env): Promise<Response> {
 }
 
 export default {
-  async fetch(request, env): Promise<Response> {
+  async fetch(request, rawEnv): Promise<Response> {
+    const env = withDefaults(rawEnv, request);
     try {
       return await route(request, env);
     } catch (err) {

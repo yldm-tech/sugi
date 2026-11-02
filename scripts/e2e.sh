@@ -19,6 +19,8 @@ trusted_token="$(sed -n 's/^TRUSTED_TOKEN=//p' "$secrets")"
 burst="${SUGI_E2E_BURST:-100}"
 # Set to 0 when checking an instance without the zone WAF rate limiting rule (e.g. workers.dev, which the zone rules do not cover).
 expect_waf="${SUGI_E2E_EXPECT_WAF:-1}"
+# The abuse address the terms page must show (ABUSE_EMAIL); set to empty for an instance without one, such as a fresh template deployment.
+abuse_email="${SUGI_E2E_ABUSE_EMAIL-abuse@sugi.moe}"
 # The R2 custom domain the Worker reads images through (wrangler.jsonc CACHE_ORIGIN); set to empty to skip the cache checks.
 cache_origin="${SUGI_CACHE_ORIGIN-https://r2.sugi.moe}"
 
@@ -67,7 +69,9 @@ echo "== $base"
 code="$(c "" -o "$work/index.html" -D "$work/index.h" -w '%{http_code}' "$base/")"
 check "GET / status" "$code" 200
 c "" -o "$work/terms.html" "$base/terms"
-grep -q 'abuse@sugi.moe' "$work/terms.html" && pass "terms page names the abuse contact" || fail "terms page lacks the abuse contact"
+if [ -n "$abuse_email" ]; then
+  grep -q "$abuse_email" "$work/terms.html" && pass "terms page names the abuse contact" || fail "terms page lacks the abuse contact"
+fi
 
 # The gate is optional: production runs without UPLOAD_TOKEN. With a token in the secrets file, anonymous uploads must be refused; without one, they must work (checked on the current API further down, where the object can be deleted with its own token).
 if [ -n "$upload_token" ]; then

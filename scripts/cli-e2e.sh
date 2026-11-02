@@ -62,6 +62,14 @@ n="$("$sugi" ls | wc -l | tr -d ' ')"
 ids="$(sed -nE 's/.*"id":"([^"]+)".*/\1/p' "$SUGI_CONFIG_DIR/history.jsonl" | sort -u)"
 if "$sugi" rm $ids >/dev/null; then pass "sugi rm deletes everything this run uploaded"; else fail "sugi rm"; fi
 [ ! -s "$SUGI_CONFIG_DIR/history.jsonl" ] && pass "history is empty afterwards" || fail "history not empty"
+# `sugi rm` only deletes files; albums are deleted with the delete token the CLI saved.
+while IFS= read -r line; do
+  aid="$(printf '%s' "$line" | sed -nE 's/.*"id":"([a-z0-9]{8})".*/\1/p')"
+  atok="$(printf '%s' "$line" | sed -nE 's/.*"delete_token":"([^"]+)".*/\1/p')"
+  [ -n "$aid" ] || continue
+  code="$(printf 'header = "Sugi-Token: %s"\n' "$atok" | curl -s -K - -o /dev/null -w '%{http_code}' -X DELETE "$base/api/albums/$aid")"
+  [ "$code" = 200 ] && pass "album $aid deleted" || fail "album $aid delete answered $code"
+done <"$SUGI_CONFIG_DIR/albums.jsonl"
 code="$(curl -s -o /dev/null -w '%{http_code}' "$big_url")"
 [ "$code" = 404 ] && pass "deleted file is gone" || fail "deleted file answers $code"
 
