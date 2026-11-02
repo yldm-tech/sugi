@@ -1,6 +1,8 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "sugi",
+  // Evan@yldm.tech's Account, which also holds the sugi.moe zone; a Worker custom domain must live in the zone's account.
+  "account_id": "e2b27aea5f599efdbe0a7016a2580d05",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
   "workers_dev": true,
