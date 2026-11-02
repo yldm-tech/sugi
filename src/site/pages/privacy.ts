@@ -216,7 +216,7 @@ export function privacySections(b: Brand, features: string[] = ["email", "github
           zh: "为了防止数据丢失，我们会把永久保存的文件复制一份到同一存储区域里的备份存储（临时文件不备份）。文件被删除后，它在备份里的副本最多再保留 7 天，然后删除；因为违反使用条款被删除的文件，备份副本立即删除。",
           en: "To guard against data loss we keep a copy of files kept “forever” in backup storage in the same storage region (temporary files are not backed up). When a file is deleted, its backup copy is kept for at most 7 more days and then deleted; the backup copy of a file removed for breaking the terms is deleted at once.",
           review:
-            "Proposed 2026-11-02 (needs the operator's confirmation): R2 backup bucket in the same location (APAC); copies of deleted files kept 7 days; takedowns removed from the backup immediately.",
+            "Decided (2026-11-02): R2 backup bucket in the same location (APAC); copies of deleted files kept 7 days; takedowns removed from the backup immediately.",
         }),
         {
           zh: "因为违反使用条款而被删除的文件，我们会保留一条删除记录：文件 id、删除的时间和原因，以及上传来源的 HMAC 指纹，用来处理同一来源后续的滥用。来源指纹最长保留 2 年，到期后从记录里抹掉，只留下文件 id、时间和原因。必要时我们还会把文件内容的 SHA-256 哈希放进屏蔽列表，阻止同样的文件再次上传：哈希是单向的指纹，不能从它还原出文件，它会保留到不再需要阻止重新上传为止，你也可以请求解除。被禁止上传的来源按各自设定的期限解除。被删除文件的链接会一直显示「已删除」。",
