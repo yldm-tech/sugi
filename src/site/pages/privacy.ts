@@ -2,7 +2,7 @@ import { Brand, brand } from "../../config";
 import { esc } from "../i18n";
 import { Ctx, Page, pageTitle, tr } from "../layout";
 
-// Privacy policy. Every paragraph carries the text in both languages; `review` notes are never rendered and record the decision behind a legally sensitive sentence (2026-11-02 review on PR #1). Operator-specific sentences (who runs the site, contacts, storage region, CSAM scanning, mail providers) come from the deployment's configuration, so another deployment never describes sugi.moe's arrangements; whoever deploys it is responsible for reviewing the result.
+// Privacy policy. Every paragraph carries the text in both languages. `review` notes are never rendered: they record why a legally sensitive sentence is worded the way it is (decided for sugi.moe; other operators should review those paragraphs for their own service). Operator-specific sentences (who runs the site, contacts, storage region, CSAM scanning, mail providers) come from the deployment's configuration, and the account section describes only the live ACCOUNT_FEATURES.
 interface Para {
   zh: string;
   en: string;

@@ -59,7 +59,7 @@ export function devPage(ctx: Ctx): Page {
   const html = `<section class="stack8">
 <h1 class="h1">${t("给开发者的仓仓", "The hamster for developers")}</h1>
 <p class="lead">${t(`HTTP API 和网页用的是同一套规则：不登录也能直接用，单个文件最大 ${maxMb} MB，只收图片和短视频（PNG、JPEG、WebP、GIF、AVIF、MP4、WebM，按内容识别格式）。`, `The HTTP API follows the same rules as the website: no account needed, up to ${maxMb} MB per file, images and short videos only (PNG, JPEG, WebP, GIF, AVIF, MP4, WebM, detected from the content).`)}</p>
-${ctx.gated ? `<p class="lead">${t("现在还在内测：上传接口暂时需要请求头 <code class=\"chip\">Authorization: Bearer &lt;token&gt;</code>，匿名请求会得到 401。", "Closed test for now: the upload endpoints need <code class=\"chip\">Authorization: Bearer &lt;token&gt;</code>, anonymous requests get 401.")}</p>` : ""}
+${ctx.gated ? `<p class="lead">${t("这个网站的上传接口需要请求头 <code class=\"chip\">Authorization: Bearer &lt;token&gt;</code>，匿名请求会得到 401。", "Uploads on this site need <code class=\"chip\">Authorization: Bearer &lt;token&gt;</code>; anonymous requests get 401.")}</p>` : ""}
 </section>
 ${ctx.flags.cli ? `<div class="seg big" data-tabs="dev" role="tablist"><button type="button" class="on" data-tab="api" role="tab">HTTP API</button><button type="button" data-tab="cli" role="tab">${t("命令行 CLI", "CLI")}</button><button type="button" data-tab="mcp" role="tab">MCP</button></div>` : ""}
 
@@ -151,7 +151,7 @@ function mcpPanel(ctx: Ctx): string {
 <div class="results-head"><h2 class="h2">${t("接入", "Connect")}</h2><div class="seg" data-tabs="mcp" role="tablist"><button type="button" class="on" data-tab="code" role="tab">Claude Code</button><button type="button" data-tab="desktop" role="tab">Claude Desktop</button><button type="button" data-tab="cursor" role="tab">Cursor</button></div></div>
 <div data-panel="mcp:code">${codeBlock(ctx, [
   { kind: "cmd", text: `claude mcp add --transport http sugi ${mcp}` },
-  ...(ctx.gated ? [{ kind: "comment" as const, text: t("# 内测期间带上令牌", "# during the closed test, add your token"), gap: true }, { kind: "cmd" as const, text: `claude mcp add --transport http sugi ${mcp} --header "Authorization: Bearer <token>"` }] : []),
+  ...(ctx.gated ? [{ kind: "comment" as const, text: t("# 这个网站要求带上令牌", "# this site requires a token"), gap: true }, { kind: "cmd" as const, text: `claude mcp add --transport http sugi ${mcp} --header "Authorization: Bearer <token>"` }] : []),
 ])}</div>
 <div data-panel="mcp:desktop" hidden><p class="lead">${t('把下面这段加进 <code class="chip">claude_desktop_config.json</code>，重启一下就好（用 mcp-remote 把远程服务接到桌面版）。', 'Add this to <code class="chip">claude_desktop_config.json</code> and restart (mcp-remote bridges the remote server into the desktop app).')}</p>
 ${codeBlock(ctx, [
