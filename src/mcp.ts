@@ -8,6 +8,8 @@ import { deleteFile, findFile, parseOptions, publicInfo, type UploadResult } fro
 import { importUrl, storeBytes } from "./upload";
 import { authorizeUpload, HttpError, isAdmin, isTrusted } from "./http";
 import { latestMessage } from "./inbox";
+import { dailyNumbers, sendDailyReport } from "./ops";
+import { today } from "./quota";
 import {
   assertFileNotRemoved,
   blockSource,
@@ -206,6 +208,28 @@ function registerAdminTools(server: McpServer, env: Env): void {
       annotations: { readOnlyHint: true },
     },
     async () => run(async () => (await latestMessage(env)) ?? { empty: true }),
+  );
+  server.registerTool(
+    "ops_report",
+    {
+      title: "Operations numbers (admin)",
+      description:
+        "Uploads, bytes, quota rejections, server errors, takedowns, reports, login emails and storage for a UTC day (default today). email: true also sends the daily report email to OPS_EMAIL now.",
+      inputSchema: {
+        day: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .optional(),
+        email: z.boolean().optional(),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async (args) =>
+      run(async () => ({
+        day: args.day ?? today(),
+        ...(await dailyNumbers(env, args.day ?? today())),
+        ...(args.email ? { emailed: await sendDailyReport(env, Date.parse(`${args.day ?? today()}T12:00:00Z`) + 86400e3) } : {}),
+      })),
   );
   server.registerTool(
     "takedown_log",
