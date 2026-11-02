@@ -35,6 +35,25 @@ if [ -z "$trusted" ] && [ -r "$secrets_file" ]; then
 fi
 token="${trusted:-${SUGI_UPLOAD_TOKEN:-}}"
 
+# upload FILE [extra curl args...]: prints the body followed by a line with the HTTP status.
+upload() {
+  local f="$1"
+  shift
+  # The token goes through a curl config read from stdin so it never appears in the process list. The zone's WAF rate limiting rule exempts exactly this Authorization header value, so both layers see the trusted token in the same place.
+  local config=""
+  if [ -n "$token" ]; then
+    config="header = \"Authorization: Bearer ${token}\""
+  fi
+  printf '%s\n' "$config" | curl --silent --show-error \
+    --connect-timeout 10 --max-time 120 \
+    --config - \
+    --header "Accept: text/plain" \
+    --upload-file "$f" \
+    --write-out $'\n%{http_code}' \
+    "$@" \
+    "$base/upload"
+}
+
 status=0
 for file in "$@"; do
   if [ ! -f "$file" ] || [ ! -r "$file" ]; then
@@ -43,22 +62,28 @@ for file in "$@"; do
     continue
   fi
 
-  # The token goes through a curl config read from stdin so it never appears in the process list.
-  # The zone's WAF rate limiting rule exempts exactly this Authorization header value, so both layers see the trusted token in the same place.
-  config=""
-  if [ -n "$token" ]; then
-    config="header = \"Authorization: Bearer ${token}\""
-  fi
 
   # Raw PUT avoids curl -F's special handling of ';' and ',' in file names.
-  response="$(printf '%s\n' "$config" | curl --silent --show-error \
-    --connect-timeout 10 --max-time 120 \
-    --config - \
-    --header "Accept: text/plain" \
-    --upload-file "$file" \
-    --write-out $'\n%{http_code}' \
-    "$base/upload")"
+  response="$(upload "$file")"
   rc=$?
+  # Exit 7 is a connect failure. A resolver that only has AAAA records cached on a host without working IPv6 fails this way, so retry once over IPv4; the upload is content-addressed, so repeating it is harmless.
+  if [ "$rc" -eq 7 ]; then
+    response="$(upload "$file" --ipv4)"
+    rc=$?
+    # Exit 6 here means the system resolver has no A record cached at all (macOS can negatively cache A while keeping AAAA). Ask DNS directly and pin the address for this one request.
+    if [ "$rc" -eq 6 ] && command -v dig >/dev/null 2>&1; then
+      hostport="${base#*://}"
+      hostport="${hostport%%/*}"
+      host="${hostport%%:*}"
+      port="${hostport##*:}"
+      [ "$port" = "$hostport" ] && { [ "${base%%://*}" = "http" ] && port=80 || port=443; }
+      ip="$(dig +short +time=3 +tries=1 A "$host" 2>/dev/null | grep -E '^[0-9]+(\.[0-9]+){3}$' | head -n1)"
+      if [ -n "$ip" ]; then
+        response="$(upload "$file" --ipv4 --resolve "$host:$port:$ip")"
+        rc=$?
+      fi
+    fi
+  fi
   if [ "$rc" -ne 0 ]; then
     echo "sugi-upload: $file: curl failed (exit $rc)" >&2
     status=1
