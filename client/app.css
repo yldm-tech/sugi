@@ -283,6 +283,11 @@ main {
 .account-card h2 {
   margin: 0;
 }
+/* The passkey and token sections bring their own wrapper; inside a card it adds no extra space, so every card's heading sits at the same height. */
+.account-card > .stack8 {
+  padding-top: 0;
+  gap: 14px;
+}
 .account-card {
   padding: 24px;
   display: flex;
