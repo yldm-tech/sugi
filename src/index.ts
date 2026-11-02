@@ -67,7 +67,7 @@ async function routeFileHost(request: Request, env: Env, m: { temporary: boolean
   if (m.dedicatedHost && m.name === "robots.txt") return fileHostRobotsTxt();
   // Uploads are never meant to be found through search engines.
   const res = await handleFileServe(request, env, m.temporary, m.name).catch((err) => {
-    if (err instanceof HttpError) return errorResponse(request, err);
+    if (err instanceof HttpError) return errorResponse(request, err, true);
     throw err;
   });
   const out = new Response(res.body, res);
