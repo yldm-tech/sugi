@@ -1,6 +1,7 @@
 import { env } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import worker, { MAX_BYTES } from "../src/index";
+import worker from "../src/index";
+import { LEGACY_MAX_BYTES as MAX_BYTES } from "../src/limits";
 
 const ORIGIN = "https://sugi.test";
 const UPLOAD_AUTH = { authorization: "Bearer test-upload-token" };
@@ -275,97 +276,14 @@ describe("serving", () => {
   });
 
   it("returns 404 for unknown keys and malformed paths", async () => {
-    for (const path of ["/0000000000000000.png", "/0000000000000000.svg", "/ABCDEF0000000000.png", "/foo", "/favicon.ico", "/admin"]) {
+    for (const path of ["/0000000000000000.png", "/0000000000000000.svg", "/ABCDEF0000000000.png", "/foo", "/admin"]) {
       expect((await call(new Request(`${ORIGIN}${path}`))).status, path).toBe(404);
     }
   });
 
 });
 
-describe("homepage", () => {
-  const page = (init: RequestInit = {}, path = "/", overrides: Partial<Env> = {}) => call(new Request(`${ORIGIN}${path}`, init), overrides);
-  const nonceOf = (res: Response) => /script-src 'nonce-([A-Za-z0-9+/=]+)'/.exec(res.headers.get("content-security-policy") ?? "")?.[1];
-
-  it("has a nonce-based CSP that allows only its own inline script and style", async () => {
-    const res = await page();
-    expect(res.status).toBe(200);
-    expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
-    const csp = res.headers.get("content-security-policy")!;
-    const nonce = nonceOf(res)!;
-    expect(nonce).toMatch(/^[A-Za-z0-9+/]{22}==$/);
-    expect(csp).toBe(`default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`);
-    expect(csp).not.toContain("unsafe-inline");
-    expect(res.headers.get("cache-control")).toBe("private, no-cache");
-    expect(res.headers.get("vary")).toBe("Accept-Language");
-    const html = await res.text();
-    // Every executable script and every style element carries the nonce; the only other script is a JSON data block.
-    const scripts = [...html.matchAll(/<script\b([^>]*)>/g)].map((m) => m[1]);
-    expect(scripts).toEqual([' type="application/json" id="i18n"', ` nonce="${nonce}"`]);
-    expect([...html.matchAll(/<style\b([^>]*)>/g)].map((m) => m[1])).toEqual([` nonce="${nonce}"`]);
-    // Inline handlers and style attributes would be blocked by the CSP, so the page must not rely on them.
-    expect(html).not.toMatch(/\son[a-z]+=/i);
-    expect(html).not.toMatch(/\sstyle=/i);
-    expect(html).not.toMatch(/<link\b|\ssrc=["']?https?:/i);
-  });
-
-  it("uses a fresh nonce per response", async () => {
-    expect(nonceOf(await page())).not.toBe(nonceOf(await page()));
-  });
-
-  it("keeps the strict CSP on image responses", async () => {
-    const res = await call(putUpload(pngBytes()));
-    const key = new URL((await res.text()).trim()).pathname;
-    expect((await page({}, key)).headers.get("content-security-policy")).toBe("default-src 'none'; img-src 'self'; style-src 'unsafe-inline'");
-  });
-
-  it("defaults to English and picks Chinese from Accept-Language", async () => {
-    const en = await page();
-    expect(en.headers.get("content-language")).toBe("en");
-    const enHtml = await en.text();
-    expect(enHtml).toContain('<html lang="en">');
-    expect(enHtml).toContain('href="/?lang=zh"');
-    expect((await page({ headers: { "accept-language": "fr-FR,fr;q=0.9" } })).headers.get("content-language")).toBe("en");
-    expect((await page({ headers: { "accept-language": "ja,en;q=0.8,zh;q=0.5" } })).headers.get("content-language")).toBe("en");
-
-    const zh = await page({ headers: { "accept-language": "zh-TW,zh;q=0.9,en;q=0.8" } });
-    expect(zh.headers.get("content-language")).toBe("zh-CN");
-    const zhHtml = await zh.text();
-    expect(zhHtml).toContain('<html lang="zh-CN">');
-    expect(zhHtml).toContain('href="/?lang=en"');
-  });
-
-  it("lets ?lang= override Accept-Language", async () => {
-    expect((await page({ headers: { "accept-language": "zh-CN" } }, "/?lang=en")).headers.get("content-language")).toBe("en");
-    expect((await page({}, "/?lang=zh")).headers.get("content-language")).toBe("zh-CN");
-    expect((await page({}, "/?lang=xx")).headers.get("content-language")).toBe("en");
-  });
-
-  it.each([
-    ["en", "/?lang=en", ["public", "permanent", "personal information", "PNG, JPEG, WebP and GIF", "20 MB", "10 files per 60 seconds", "abuse@sugi.moe", "Drop images here"]],
-    ["zh", "/?lang=zh", ["公开", "永久", "个人信息", "PNG、JPEG、WebP、GIF", "20 MB", "每 60 秒最多 10 次上传", "abuse@sugi.moe", "把图片拖到这里"]],
-  ])("renders the %s page with the upload UI and all notices", async (_lang, path, needles) => {
-    const html = await (await page({}, path)).text();
-    for (const n of needles) expect(html, n).toContain(n);
-    expect(html).toContain('id="drop"');
-    expect(html).toContain('<input type="file" id="file" multiple');
-    expect(html).toContain(`curl -F file=@image.png ${ORIGIN}/upload`);
-    expect(html).not.toMatch(/msime|水杉|screenshot|截图/i);
-  });
-
-  it("embeds the browser messages as inert JSON that cannot break out of its script element", async () => {
-    const html = await (await page({}, "/?lang=zh")).text();
-    const json = /<script type="application\/json" id="i18n">([^<]*)<\/script>/.exec(html)![1];
-    const msgs = JSON.parse(json);
-    expect(msgs).toMatchObject({ gated: "暂未开放匿名上传。", maxBytes: MAX_BYTES });
-    expect(msgs.rateLimited).toContain("{s}");
-  });
-
-  it("answers HEAD without a body", async () => {
-    const res = await page({ method: "HEAD" });
-    expect(res.status).toBe(200);
-    expect(res.body).toBeNull();
-  });
-});
+// The redesigned site pages are covered in site.test.ts.
 
 describe("admin", () => {
   async function uploadFrom(ip: string): Promise<string> {

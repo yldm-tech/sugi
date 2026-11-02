@@ -9,6 +9,7 @@
     "noEmit": true,
     "isolatedModules": true,
     "skipLibCheck": true,
+    "allowSyntheticDefaultImports": true,
     "noUncheckedIndexedAccess": false
   },
   "include": ["src/**/*.ts", "test/**/*.ts", "vitest.config.ts", "worker-configuration.d.ts"]

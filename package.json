@@ -4,16 +4,23 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build": "node scripts/build-client.mjs",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "types": "wrangler types --strict-vars=false",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "typecheck": "node scripts/build-client.mjs && tsc --noEmit && tsc --noEmit -p client",
+    "test": "node scripts/build-client.mjs && vitest run",
+    "fonts": "scripts/subset-fonts.sh"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "^1.4.12",
+    "esbuild": "0.28.2",
     "typescript": "^7.0.2",
     "vitest": "^4.1.12",
     "wrangler": "^4.156.1"
+  },
+  "dependencies": {
+    "@remix-run/multipart-parser": "1.1.0",
+    "qrcode-generator": "2.0.4"
   }
 }

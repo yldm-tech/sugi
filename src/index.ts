@@ -1,347 +1,108 @@
-import { constantTimeEqual, hmacSha256Hex, sha256Hex } from "./crypto";
-import { pageCsp, pickLang, renderIndex } from "./page";
-import { sniffImageType, TYPES_BY_EXT } from "./sniff";
+import { handleAlbumCreate, handleAlbumDelete, handleAlbumGet } from "./albums";
+import { handleChunkAbort, handleChunkComplete, handleChunkCreate, handleChunkPart } from "./chunked";
+import { handleFileDelete, handleFileInfo, handleFileServe, handleUploadPost, handleUploadPut, sweepExpired } from "./files";
+import { errorResponse, HttpError, methodNotAllowed } from "./http";
+import { handleInfo, handleLegacyDelete, handleLegacyServe, handleLegacyUpload, handlePurgeBySource, LEGACY_KEY_RE } from "./legacy";
+import { handleSite } from "./site";
 
-export const MAX_BYTES = 20 * 1024 * 1024;
-// Room for multipart boundaries and part headers on top of the file itself.
-const MULTIPART_OVERHEAD = 64 * 1024;
-// Keep in sync with the `ratelimits` entry in wrangler.jsonc; the binding does not expose its own configuration.
-const RATE_LIMIT = 10;
-const RATE_LIMIT_PERIOD_SECONDS = 60;
+// Only the default handler may be exported from this module: workerd treats every named export of the main module as an entrypoint.
 
-const KEY_RE = /^[0-9a-f]{16}\.(png|jpg|webp|gif)$/;
-const SOURCE_RE = /^[0-9a-f]{64}$/;
+const ADMIN_KEY_RE = /^(?:[0-9a-f]{16}\.(?:png|jpg|webp|gif)|[ft]\/[a-z0-9-]{1,64})$/;
 
-const IMAGE_CSP = "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'";
-
-class HttpError extends Error {
-  constructor(
-    readonly status: number,
-    message: string,
-    readonly headers: Record<string, string> = {},
-  ) {
-    super(message);
-  }
-}
-
-function wantsJson(request: Request): boolean {
-  return (request.headers.get("accept") ?? "").includes("application/json");
-}
-
-function errorResponse(request: Request, err: HttpError): Response {
-  const headers = new Headers(err.headers);
-  headers.set("x-content-type-options", "nosniff");
-  headers.set("cache-control", "no-store");
-  if (wantsJson(request)) {
-    headers.set("content-type", "application/json; charset=utf-8");
-    return new Response(JSON.stringify({ error: err.message }) + "\n", { status: err.status, headers });
-  }
-  headers.set("content-type", "text/plain; charset=utf-8");
-  return new Response(err.message + "\n", { status: err.status, headers });
-}
-
-function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body) + "\n", {
-    status,
-    headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" },
-  });
-}
-
-function bearerToken(request: Request): string | null {
-  const m = /^Bearer\s+(\S+)\s*$/i.exec(request.headers.get("authorization") ?? "");
-  return m ? m[1] : null;
-}
-
-async function requireBearer(request: Request, expected: string | undefined, realm: string): Promise<void> {
-  if (!expected) throw new HttpError(403, `${realm} is disabled`);
-  const given = bearerToken(request);
-  if (given === null || !(await constantTimeEqual(given, expected))) {
-    throw new HttpError(401, "unauthorized", { "www-authenticate": `Bearer realm="${realm}"` });
-  }
-}
-
-function methodNotAllowed(allow: string): HttpError {
-  return new HttpError(405, "method not allowed", { allow });
-}
-
-// Reads the request body into memory but gives up as soon as it grows past `cap`, so an oversized or lying upload never gets fully buffered.
-async function readBodyCapped(request: Request, cap: number): Promise<Uint8Array> {
-  const declared = request.headers.get("content-length");
-  if (declared !== null && Number(declared) > cap) throw tooLarge();
-  if (request.body === null) return new Uint8Array(0);
-  const reader = request.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > cap) {
-      await reader.cancel();
-      throw tooLarge();
+// FILES_ORIGIN and TMP_ORIGIN are normally hostnames of their own (files.sugi.moe, tmp.sugi.moe) that serve uploaded files and nothing else. An origin with a path (e.g. http://localhost:8787/_files) is served under that path on any host instead, which is how local development works: `wrangler dev` rewrites every request's host to the first route.
+function matchFileOrigin(env: Env, url: URL): { temporary: boolean; name: string; dedicatedHost: boolean } | null {
+  for (const [origin, temporary] of [
+    [env.FILES_ORIGIN, false],
+    [env.TMP_ORIGIN, true],
+  ] as const) {
+    if (!origin) continue;
+    let o: URL;
+    try {
+      o = new URL(origin);
+    } catch {
+      continue;
     }
-    chunks.push(value);
+    const prefix = o.pathname.replace(/\/$/, "");
+    if (prefix) {
+      if (url.pathname.startsWith(prefix + "/")) return { temporary, name: url.pathname.slice(prefix.length + 1), dedicatedHost: false };
+    } else if (url.hostname === o.hostname) {
+      return { temporary, name: url.pathname.slice(1), dedicatedHost: true };
+    }
   }
-  const out = new Uint8Array(total);
-  let offset = 0;
-  for (const c of chunks) {
-    out.set(c, offset);
-    offset += c.byteLength;
-  }
+  return null;
+}
+
+async function routeFileHost(request: Request, env: Env, m: { temporary: boolean; name: string; dedicatedHost: boolean }): Promise<Response> {
+  if (request.method !== "GET" && request.method !== "HEAD") throw methodNotAllowed("GET, HEAD");
+  if (m.dedicatedHost && m.name === "") return Response.redirect(env.MAIN_ORIGIN + "/", 302);
+  if (m.dedicatedHost && m.name === "robots.txt") return new Response("User-agent: *\nAllow: /\n", { headers: { "content-type": "text/plain; charset=utf-8" } });
+  return handleFileServe(request, env, m.temporary, m.name);
+}
+
+async function serveStatic(request: Request, env: Env, pathname: string): Promise<Response> {
+  if (request.method !== "GET" && request.method !== "HEAD") throw methodNotAllowed("GET, HEAD");
+  const res = await env.ASSETS.fetch(request);
+  if (res.status === 404) throw new HttpError(404, "not found");
+  const out = new Response(res.body, res);
+  out.headers.set("x-content-type-options", "nosniff");
+  // Build output carries a content hash in its file name; everything else may change in place.
+  out.headers.set("cache-control", pathname.startsWith("/static/build/") ? "public, max-age=31536000, immutable" : "public, max-age=86400");
   return out;
 }
 
-function tooLarge(): HttpError {
-  return new HttpError(413, `file too large (max ${MAX_BYTES / 1024 / 1024} MB)`);
-}
-
-async function extractUpload(request: Request): Promise<Uint8Array> {
-  const contentType = request.headers.get("content-type") ?? "";
-  if (request.method === "POST" && /^multipart\/form-data/i.test(contentType)) {
-    const raw = await readBodyCapped(request, MAX_BYTES + MULTIPART_OVERHEAD);
-    let form: FormData;
-    try {
-      form = await new Response(raw, { headers: { "content-type": contentType } }).formData();
-    } catch {
-      throw new HttpError(400, "malformed multipart body");
-    }
-    const file = form.get("file");
-    if (file === null || typeof file === "string") throw new HttpError(400, 'missing multipart field "file"');
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    if (bytes.byteLength > MAX_BYTES) throw tooLarge();
-    return bytes;
+async function routeApi(request: Request, env: Env, pathname: string): Promise<Response> {
+  const method = request.method;
+  if (pathname === "/api/upload") {
+    if (method === "POST") return handleUploadPost(request, env);
+    if (method === "PUT") return handleUploadPut(request, env);
+    throw methodNotAllowed("POST, PUT");
   }
-  return readBodyCapped(request, MAX_BYTES);
-}
-
-// The maintainers' own token: never rate limited and accepted while the upload gate is on.
-async function isTrusted(request: Request, env: Env): Promise<boolean> {
-  if (!env.TRUSTED_TOKEN) return false;
-  const given = bearerToken(request);
-  return given !== null && (await constantTimeEqual(given, env.TRUSTED_TOKEN));
-}
-
-async function handleUpload(request: Request, env: Env): Promise<Response> {
-  const trusted = await isTrusted(request, env);
-  if (!trusted && env.UPLOAD_TOKEN) await requireBearer(request, env.UPLOAD_TOKEN, "upload");
-  // Without the secret there is no way to record a traceable source, so refuse rather than store untraceable uploads.
-  if (!env.IP_HASH_SECRET) throw new HttpError(503, "uploads are not configured");
-
-  const ip = request.headers.get("cf-connecting-ip") ?? "unknown";
-  const source = await hmacSha256Hex(env.IP_HASH_SECRET, ip);
-
-  const { success } = trusted ? { success: true } : await env.UPLOAD_LIMITER.limit({ key: source });
-  if (!success) throw new HttpError(429, "too many uploads, slow down", { "retry-after": String(RATE_LIMIT_PERIOD_SECONDS) });
-
-  const bytes = await extractUpload(request);
-  if (bytes.byteLength === 0) throw new HttpError(400, "empty upload");
-  const type = sniffImageType(bytes);
-  if (type === null) throw new HttpError(415, "unsupported file type (only PNG, JPEG, WebP and GIF)");
-
-  const sha256 = await sha256Hex(bytes);
-  const key = `${sha256.slice(0, 16)}.${type.ext}`;
-  const url = `${new URL(request.url).origin}/${key}`;
-
-  let created = false;
-  const existing = await env.BUCKET.head(key);
-  if (existing === null) {
-    // The conditional put closes the race between head() and put(): if another request stored the key in between, R2 returns null instead of overwriting.
-    const stored = await env.BUCKET.put(key, bytes, {
-      httpMetadata: { contentType: type.mime },
-      customMetadata: { uploaded: new Date().toISOString(), source, sha256 },
-      onlyIf: { etagDoesNotMatch: "*" },
-    });
-    created = stored !== null;
-  } else if (existing.customMetadata?.sha256 && existing.customMetadata.sha256 !== sha256) {
-    // A 64-bit prefix collision with different content; never overwrite, never pretend the old URL serves this file.
-    throw new HttpError(409, "key collision with different content");
+  if (pathname === "/api/uploads") {
+    if (method === "POST") return handleChunkCreate(request, env);
+    if (method === "DELETE") return handleChunkAbort(request, env);
+    throw methodNotAllowed("POST, DELETE");
   }
-
-  const status = created ? 201 : 200;
-  if (wantsJson(request)) {
-    return jsonResponse({ url, key, size: bytes.byteLength, type: type.mime, deduplicated: !created }, status);
+  if (pathname === "/api/uploads/complete") {
+    if (method === "POST") return handleChunkComplete(request, env);
+    throw methodNotAllowed("POST");
   }
-  return new Response(url + "\n", {
-    status,
-    headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" },
-  });
-}
-
-function hasBody(obj: R2Object): obj is R2ObjectBody {
-  return "body" in obj;
-}
-
-function etagMatches(header: string | null, etag: string): boolean {
-  if (header === null) return false;
-  return header.split(",").some((t) => {
-    const v = t.trim().replace(/^W\//, "");
-    return v === "*" || v === etag;
-  });
-}
-
-// Fetches the image through the zone's CDN cache by way of the bucket's R2 custom domain, so that Cloudflare's cache-based features (the CSAM Scanning Tool in particular) see every image that is served. The bucket is still the source of truth: handleServe has already confirmed the object exists, so a deleted object stops being served even before its cached copy is purged.
-async function fetchViaCache(env: Env, key: string): Promise<Response> {
-  return fetch(`${env.CACHE_ORIGIN}/${key}`, {
-    cf: { cacheEverything: true, cacheTtlByStatus: { "200-299": 31536000, "404": 1, "500-599": 0 } },
-  });
-}
-
-async function handleServe(request: Request, env: Env, key: string): Promise<Response> {
-  const viaCache = Boolean(env.CACHE_ORIGIN) && request.method === "GET";
-  const obj = request.method === "HEAD" || viaCache ? await env.BUCKET.head(key) : await env.BUCKET.get(key);
-  if (obj === null) throw new HttpError(404, "not found");
-
-  const ext = key.slice(key.lastIndexOf(".") + 1);
-  const stored = obj.httpMetadata?.contentType;
-  const allowed = Object.values(TYPES_BY_EXT).map((t) => t.mime as string);
-  const contentType = stored && allowed.includes(stored) ? stored : TYPES_BY_EXT[ext].mime;
-
-  const headers = new Headers({
-    "content-type": contentType,
-    "x-content-type-options": "nosniff",
-    "content-disposition": `inline; filename="${key}"`,
-    "content-security-policy": IMAGE_CSP,
-    "cache-control": "public, max-age=31536000, immutable",
-    etag: obj.httpEtag,
-    "last-modified": obj.uploaded.toUTCString(),
-  });
-
-  if (etagMatches(request.headers.get("if-none-match"), obj.httpEtag)) {
-    if (hasBody(obj)) await obj.body.cancel();
-    return new Response(null, { status: 304, headers });
+  const part = /^\/api\/uploads\/(\d{1,5})$/.exec(pathname);
+  if (part) {
+    if (method === "PUT") return handleChunkPart(request, env, Number(part[1]));
+    throw methodNotAllowed("PUT");
   }
-  headers.set("content-length", String(obj.size));
-
-  if (viaCache) {
-    const upstream = await fetchViaCache(env, key);
-    if (!upstream.ok) {
-      // Passes through blocks such as a CSAM match (451) instead of falling back to the bucket, which would defeat the block.
-      await upstream.body?.cancel();
-      throw new HttpError(upstream.status === 404 ? 404 : upstream.status >= 500 ? 502 : upstream.status, upstream.status === 404 ? "not found" : "unavailable");
-    }
-    return new Response(upstream.body, { status: 200, headers });
+  const file = /^\/api\/files\/([^/]+)$/.exec(pathname);
+  if (file) {
+    if (method === "GET") return handleFileInfo(env, file[1]);
+    if (method === "DELETE") return handleFileDelete(request, env, file[1]);
+    throw methodNotAllowed("GET, DELETE");
   }
-  if (!hasBody(obj)) return new Response(null, { status: 200, headers });
-  return new Response(obj.body, { status: 200, headers });
-}
-
-// Free plans accept at most 30 URLs per purge request.
-const PURGE_BATCH = 30;
-
-// Removes deleted objects' copies from the zone cache. Returns false if cache-through serving is on but the purge could not be done, so the caller can report that the cached copies may still be reachable at the origin hostname.
-async function purgeCache(env: Env, keys: string[]): Promise<boolean> {
-  if (!env.CACHE_ORIGIN || keys.length === 0) return true;
-  if (!env.ZONE_ID || !env.CF_PURGE_TOKEN) return false;
-  let ok = true;
-  for (let i = 0; i < keys.length; i += PURGE_BATCH) {
-    const files = keys.slice(i, i + PURGE_BATCH).map((k) => `${env.CACHE_ORIGIN}/${k}`);
-    const res = await fetch(`https://api.cloudflare.com/client/v4/zones/${env.ZONE_ID}/purge_cache`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${env.CF_PURGE_TOKEN}`, "content-type": "application/json" },
-      body: JSON.stringify({ files }),
-    });
-    const body = await res.json<{ success?: boolean }>().catch(() => ({ success: false }));
-    ok = ok && res.ok && body.success === true;
+  if (pathname === "/api/albums") {
+    if (method === "POST") return handleAlbumCreate(request, env);
+    throw methodNotAllowed("POST");
   }
-  return ok;
-}
-
-function deletionResponse(deleted: string[], cachePurged: boolean, extra: Record<string, unknown> = {}): Response {
-  // 502 tells the operator to retry: the objects are gone from the bucket, but cached copies may still be served by the origin hostname.
-  return jsonResponse({ ...extra, deleted, cache_purged: cachePurged }, cachePurged ? 200 : 502);
-}
-
-async function handleDelete(request: Request, env: Env, key: string): Promise<Response> {
-  await requireBearer(request, env.ADMIN_TOKEN, "admin");
-  const existing = await env.BUCKET.head(key);
-  if (existing === null) {
-    // Purge anyway so that retrying a DELETE whose purge failed finishes the job.
-    if (!(await purgeCache(env, [key]))) return deletionResponse([], false);
-    throw new HttpError(404, "not found");
+  const album = /^\/api\/albums\/([^/]+)$/.exec(pathname);
+  if (album) {
+    if (method === "GET") return handleAlbumGet(env, album[1]);
+    if (method === "DELETE") return handleAlbumDelete(request, env, album[1]);
+    throw methodNotAllowed("GET, DELETE");
   }
-  await env.BUCKET.delete(key);
-  return deletionResponse([key], await purgeCache(env, [key]));
-}
-
-async function handleInfo(request: Request, env: Env, key: string): Promise<Response> {
-  await requireBearer(request, env.ADMIN_TOKEN, "admin");
-  const obj = await env.BUCKET.head(key);
-  if (obj === null) throw new HttpError(404, "not found");
-  return jsonResponse({
-    key,
-    size: obj.size,
-    type: obj.httpMetadata?.contentType ?? null,
-    uploaded: obj.customMetadata?.uploaded ?? obj.uploaded.toISOString(),
-    source: obj.customMetadata?.source ?? null,
-    sha256: obj.customMetadata?.sha256 ?? null,
-  });
-}
-
-async function handlePurgeBySource(request: Request, env: Env): Promise<Response> {
-  await requireBearer(request, env.ADMIN_TOKEN, "admin");
-  let body: { source?: unknown; dry_run?: unknown };
-  try {
-    body = await request.json();
-  } catch {
-    throw new HttpError(400, 'expected JSON body {"source": "<64 hex chars>"}');
-  }
-  const source = typeof body.source === "string" ? body.source.toLowerCase() : "";
-  if (!SOURCE_RE.test(source)) throw new HttpError(400, '"source" must be a 64-character hex HMAC');
-  const dryRun = body.dry_run === true;
-
-  const matched: string[] = [];
-  let cursor: string | undefined;
-  do {
-    const page = await env.BUCKET.list({ include: ["customMetadata"], limit: 1000, cursor });
-    for (const obj of page.objects) {
-      if (obj.customMetadata?.source === source) matched.push(obj.key);
-    }
-    cursor = page.truncated ? page.cursor : undefined;
-  } while (cursor);
-
-  if (dryRun) return jsonResponse({ source, dry_run: true, count: matched.length, matched });
-  for (let i = 0; i < matched.length; i += 1000) await env.BUCKET.delete(matched.slice(i, i + 1000));
-  return deletionResponse(matched, await purgeCache(env, matched), { source, dry_run: false, count: matched.length });
-}
-
-function handleIndex(request: Request, env: Env): Response {
-  const url = new URL(request.url);
-  const lang = pickLang(url.searchParams.get("lang"), request.headers.get("accept-language"));
-  const nonceBytes = crypto.getRandomValues(new Uint8Array(16));
-  const nonce = btoa(String.fromCharCode(...nonceBytes));
-  const html = renderIndex({
-    origin: url.origin,
-    lang,
-    maxMiB: MAX_BYTES / 1024 / 1024,
-    rateLimit: RATE_LIMIT,
-    ratePeriodSeconds: RATE_LIMIT_PERIOD_SECONDS,
-    gated: Boolean(env.UPLOAD_TOKEN),
-    nonce,
-  });
-  return new Response(request.method === "HEAD" ? null : html, {
-    headers: {
-      "content-type": "text/html; charset=utf-8",
-      "content-language": lang === "zh" ? "zh-CN" : "en",
-      "content-security-policy": pageCsp(nonce),
-      "x-content-type-options": "nosniff",
-      "referrer-policy": "no-referrer",
-      // Each response carries a fresh CSP nonce, so shared caches must not reuse it across visitors.
-      "cache-control": "private, no-cache",
-      vary: "Accept-Language",
-    },
-  });
+  throw new HttpError(404, "no such endpoint");
 }
 
 async function route(request: Request, env: Env): Promise<Response> {
-  const { pathname } = new URL(request.url);
+  const url = new URL(request.url);
+  const { pathname } = url;
   const method = request.method;
+  const fileMatch = matchFileOrigin(env, url);
+  if (fileMatch) return routeFileHost(request, env, fileMatch);
 
-  if (pathname === "/") {
-    if (method === "GET" || method === "HEAD") return handleIndex(request, env);
-    throw methodNotAllowed("GET, HEAD");
-  }
+  if (pathname.startsWith("/static/")) return serveStatic(request, env, pathname);
+  if (pathname === "/favicon.ico") return Response.redirect(new URL("/static/favicon.svg", url).toString(), 301);
+  if (pathname === "/robots.txt") return new Response("User-agent: *\nDisallow: /api/\nDisallow: /admin/\n", { headers: { "content-type": "text/plain; charset=utf-8" } });
+  if (pathname.startsWith("/api/")) return routeApi(request, env, pathname);
   if (pathname === "/upload") {
-    if (method === "POST" || method === "PUT") return handleUpload(request, env);
+    if (method === "POST" || method === "PUT") return handleLegacyUpload(request, env);
     throw methodNotAllowed("POST, PUT");
   }
   if (pathname === "/admin/purge-by-source") {
@@ -350,16 +111,18 @@ async function route(request: Request, env: Env): Promise<Response> {
   }
   if (pathname.startsWith("/admin/info/")) {
     const key = pathname.slice("/admin/info/".length);
-    if (!KEY_RE.test(key)) throw new HttpError(404, "not found");
+    if (!ADMIN_KEY_RE.test(key)) throw new HttpError(404, "not found");
     if (method === "GET") return handleInfo(request, env, key);
     throw methodNotAllowed("GET");
   }
   const key = pathname.slice(1);
-  if (KEY_RE.test(key)) {
-    if (method === "GET" || method === "HEAD") return handleServe(request, env, key);
-    if (method === "DELETE") return handleDelete(request, env, key);
+  if (LEGACY_KEY_RE.test(key)) {
+    if (method === "GET" || method === "HEAD") return handleLegacyServe(request, env, key);
+    if (method === "DELETE") return handleLegacyDelete(request, env, key);
     throw methodNotAllowed("GET, HEAD, DELETE");
   }
+  if (method === "GET" || method === "HEAD") return handleSite(request, env, pathname);
+  if (pathname === "/") throw methodNotAllowed("GET, HEAD");
   throw new HttpError(404, "not found");
 }
 
@@ -371,5 +134,8 @@ export default {
       if (err instanceof HttpError) return errorResponse(request, err);
       throw err;
     }
+  },
+  async scheduled(_controller, env, ctx): Promise<void> {
+    ctx.waitUntil(sweepExpired(env).then(() => undefined));
   },
 } satisfies ExportedHandler<Env>;

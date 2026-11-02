@@ -66,10 +66,14 @@ echo "== $base"
 
 code="$(c "" -o "$work/index.html" -D "$work/index.h" -w '%{http_code}' "$base/")"
 check "GET / status" "$code" 200
-grep -q 'abuse@sugi.moe' "$work/index.html" && pass "index mentions abuse contact" || fail "index lacks abuse contact"
+c "" -o "$work/terms.html" "$base/terms"
+grep -q 'abuse@sugi.moe' "$work/terms.html" && pass "terms page names the abuse contact" || fail "terms page lacks the abuse contact"
 
-code="$(c "" -o "$work/anon.txt" -w '%{http_code}' -T "$image" "$base/upload")"
-check "anonymous upload rejected while gate is on" "$code" 401
+# The gate is optional: production runs without UPLOAD_TOKEN. With a token in the secrets file, anonymous uploads must be refused; without one, they must work (checked on the current API further down, where the object can be deleted with its own token).
+if [ -n "$upload_token" ]; then
+  code="$(c "" -o "$work/anon.txt" -w '%{http_code}' -T "$image" "$base/upload")"
+  check "anonymous upload rejected while the gate is on" "$code" 401
+fi
 
 expected_key="$(shasum -a 256 "$image" | cut -c1-16).png"
 code="$(c "$trusted_token" -o "$work/first.json" -w '%{http_code}' -H 'Accept: application/json' -T "$image" "$base/upload")"
@@ -144,6 +148,54 @@ if [ "$owned" = 1 ] && [ "$stored_sha" = "$(shasum -a 256 "$image" | cut -d' ' -
   fi
 else
   fail "not deleting $key: this run did not create it (owned=$owned, uploaded=$stored_at)"
+fi
+
+# Current API (/api/upload, files and tmp hosts, delete tokens, albums). Every object here is created by this run with fresh random content and deleted with its own delete token, so nothing anyone else uploaded can be touched.
+if [ "${SUGI_E2E_NEW_API:-1}" = 1 ]; then
+  api_png="$work/api.png"
+  make_png "$api_png" "$run_id-api"
+  # Anonymous when the gate is off, so this also proves anonymous uploads work.
+  api_auth="$trusted_token"
+  [ -z "$upload_token" ] && api_auth=""
+  code="$(c "$api_auth" -o "$work/api.json" -w '%{http_code}' -H 'Accept: application/json' -T "$api_png" "$base/api/upload?style=cute&name=e2e.png")"
+  api_label="anonymous"
+  [ -n "$api_auth" ] && api_label="trusted"
+  check "PUT /api/upload ($api_label)" "$code" 201
+  api_url="$(sed -nE 's/.*"url":"([^"]+)".*/\1/p' "$work/api.json")"
+  api_id="$(sed -nE 's/.*"id":"([^"]+)".*/\1/p' "$work/api.json")"
+  api_tok="$(sed -nE 's/.*"delete_token":"([^"]+)".*/\1/p' "$work/api.json")"
+  [[ "$api_id" =~ ^[a-z]+-[a-z]+-[0-9]{2}$ ]] && pass "cute id ($api_id)" || fail "unexpected id: $api_id"
+  code="$(c "" -o "$work/api-back.png" -D "$work/api.h" -w '%{http_code}' "$api_url")"
+  check "GET on the files origin" "$code" 200
+  cmp -s "$api_png" "$work/api-back.png" && pass "files origin bytes identical" || fail "files origin bytes differ"
+  check "files origin Content-Type" "$(header content-type "$work/api.h")" "image/png"
+  check "files origin CSP" "$(header content-security-policy "$work/api.h")" "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'"
+  check "Range request" "$(c "" -o /dev/null -w '%{http_code}' -H 'Range: bytes=0-7' "$api_url")" 206
+  check "file page" "$(c "" -o /dev/null -w '%{http_code}' "$base/f/$api_id")" 200
+
+  code="$(c "$trusted_token" -o "$work/tmp.json" -w '%{http_code}' -H 'Accept: application/json' -F "file=@$api_png;filename=tmp.png" -F expire=1h "$base/api/upload")"
+  check "multipart upload with expire=1h" "$code" 201
+  tmp_url="$(sed -nE 's/.*"url":"([^"]+)".*/\1/p' "$work/tmp.json")"
+  tmp_id="$(sed -nE 's/.*"id":"([^"]+)".*/\1/p' "$work/tmp.json")"
+  tmp_tok="$(sed -nE 's/.*"delete_token":"([^"]+)".*/\1/p' "$work/tmp.json")"
+  check "temporary file served" "$(c "" -o /dev/null -w '%{http_code}' "$tmp_url")" 200
+
+  code="$(c "$trusted_token" -o "$work/album.json" -w '%{http_code}' -H 'Accept: application/json' -H 'Content-Type: application/json' -d "{\"files\":[\"$api_id\",\"$tmp_id\"],\"title\":\"e2e $run_id\"}" "$base/api/albums")"
+  check "POST /api/albums" "$code" 201
+  album_id="$(sed -nE 's/.*"id":"([^"]+)".*/\1/p' "$work/album.json")"
+  album_tok="$(sed -nE 's/.*"delete_token":"([^"]+)".*/\1/p' "$work/album.json")"
+  grep -q "\"$tmp_id\"" <(c "" "$base/api/albums/$album_id") && pass "album lists its files" || fail "album does not list its files"
+  check "album page" "$(c "" -o /dev/null -w '%{http_code}' "$base/a/$album_id")" 200
+  check "DELETE album with wrong token" "$(c "" -o /dev/null -w '%{http_code}' -X DELETE -H 'Sugi-Token: a_wrong' "$base/api/albums/$album_id")" 403
+  check "DELETE album" "$(c "" -o /dev/null -w '%{http_code}' -X DELETE -H "Sugi-Token: $album_tok" "$base/api/albums/$album_id")" 200
+
+  check "DELETE file with wrong token" "$(c "" -o /dev/null -w '%{http_code}' -X DELETE -H 'Sugi-Token: d_wrong' "$base/api/files/$api_id")" 403
+  for pair in "$api_id:$api_tok:$api_url" "$tmp_id:$tmp_tok:$tmp_url"; do
+    IFS=: read -r fid ftok _ <<<"$pair"
+    furl="${pair#*:*:}"
+    check "DELETE /api/files/$fid" "$(c "" -o /dev/null -w '%{http_code}' -X DELETE -H "Sugi-Token: $ftok" "$base/api/files/$fid")" 200
+    check "gone after delete" "$(c "" -o /dev/null -w '%{http_code}' "$furl")" 404
+  done
 fi
 
 # Rate limits: a burst well above both the Worker limiter and the zone WAF rule must all pass with the trusted token, and must start returning 429 without it. Cleanup deletes exactly the keys that came back 201, never by source, because purge-by-source would also remove real uploads made from this machine.
