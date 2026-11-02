@@ -24,6 +24,7 @@ import {
 } from "./moderation";
 import { createUploadLinks } from "./links";
 import { listReports, resolveReport } from "./reports";
+import { backupStatus, restoreFromBackup } from "./backup";
 import { resolvePrincipal } from "./auth/core";
 import {
   ACCOUNT_RATE_LIMIT,
@@ -272,6 +273,33 @@ function registerAdminTools(server: McpServer, env: Env): void {
       annotations: { destructiveHint: true },
     },
     async (args) => run(() => resolveReport(env, args.id, args.action, { note: args.note ?? null, blockContent: args.block_content })),
+  );
+  server.registerTool(
+    "backup_status",
+    {
+      title: "Backup status (admin)",
+      description:
+        "Whether the backup bucket is on, how many objects and bytes it holds, and how many copies of deleted files are waiting out their grace period before they are dropped.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true },
+    },
+    async () => run(() => backupStatus(env)),
+  );
+  server.registerTool(
+    "restore_from_backup",
+    {
+      title: "Restore files from the backup (admin)",
+      description:
+        "Copy files back from the backup bucket. Give keys (f/<id> or a legacy <16 hex>.<ext>) to restore those, or none to go through the backup page by page (limit, cursor) and restore every copy whose original is missing. dry_run defaults to true and only lists what would be restored. Taken-down files are never restored, and nothing that exists is overwritten.",
+      inputSchema: {
+        keys: z.array(z.string()).max(1000).optional(),
+        dry_run: z.boolean().optional(),
+        limit: z.number().int().min(1).max(1000).optional(),
+        cursor: z.string().optional(),
+      },
+      annotations: { destructiveHint: false },
+    },
+    async (args) => run(() => restoreFromBackup(env, { keys: args.keys, dryRun: args.dry_run ?? true, limit: args.limit ?? 200, cursor: args.cursor })),
   );
   server.registerTool(
     "takedown_log",

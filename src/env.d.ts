@@ -14,6 +14,8 @@ interface SugiSecrets {
   E2E_INBOX?: string;
   /** Where the daily ops report and alert emails go. */
   OPS_EMAIL?: string;
+  /** Optional second R2 bucket the cron backs permanent files up to (src/backup.ts); not in the template config. */
+  BACKUP?: R2Bucket;
 }
 
 interface Env extends SugiSecrets {}
