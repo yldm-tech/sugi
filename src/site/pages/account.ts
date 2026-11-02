@@ -120,7 +120,7 @@ export function accountPage(ctx: Ctx): Page {
   const u = ctx.user!;
   const welcome = ctx.query?.get("welcome") === "1";
   // A settings layout: the account itself on the left, passkeys and API tokens as cards of their own on the right; one column on narrower screens.
-  const main = `<div class="card account-card stack8">
+  const main = `<div class="card account-card">
 <h2 class="h2">${t("账号", "Account")}</h2>
 <p class="lead">${u.email ? t("邮箱", "Email") : t("名字", "Name")}${t("：", ": ")}<strong>${esc(u.email ?? u.name)}</strong></p>
 ${u.providers.length ? `<p class="small">${t("登录方式", "Log in with")}${t("：", ": ")}${u.providers.map((p) => `<span class="nw provider">${BRAND_ICONS[p] ?? ""}${esc(PROVIDER_NAMES[p] ?? p)}</span>`).join(" · ")}</p>` : ""}
