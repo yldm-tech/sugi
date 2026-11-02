@@ -17,7 +17,8 @@
     "typecheck": "node scripts/build-client.mjs && tsc --noEmit && tsc --noEmit -p client",
     "test": "node scripts/build-client.mjs && vitest run",
     "fonts": "scripts/subset-fonts.sh",
-    "deploy:production": "scripts/deploy-production.sh"
+    "deploy:production": "scripts/deploy-production.sh",
+    "check:layout": "node scripts/layout-check.mjs"
   },
   "cloudflare": {
     "bindings": {
@@ -39,6 +40,7 @@
     "@cloudflare/vitest-plugin": "^1.4.12",
     "@resvg/resvg-js": "2.6.2",
     "esbuild": "0.28.2",
+    "playwright": "^1.64.1",
     "typescript": "^7.0.2",
     "vitest": "^4.1.12",
     "wrangler": "^4.156.1"

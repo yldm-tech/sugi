@@ -64,7 +64,7 @@ describe("language", () => {
 
 describe("pages", () => {
   it.each([
-    ["/", "zh", ["把图图交给仓仓吧～", "把图片和视频拖到这里", "单个文件最大 200MB", "传完自动复制", "抹掉照片位置信息", "可爱链接名", "传完啾一声", "搬过来", "暂未开放匿名上传"]],
+    ["/", "zh", ["把图图交给仓仓吧～", "把图片和视频拖到这里", "单个文件最大 200 MB", "传完自动复制", "抹掉照片位置信息", "可爱链接名", "传完啾一声", "搬过来", "暂未开放匿名上传"]],
     ["/", "en", ["Hand your pics to the hamster~", "Drop images and videos here", "up to 200 MB per file", "Strip photo location", "Cute link names", "Anonymous uploads are not open yet"]],
     ["/mine", "zh", ["我的文件", "仓库还空空的", "导出记录", "打包链接"]],
     ["/mine", "en", ["My files", "Nothing stashed yet", "Export"]],
@@ -216,5 +216,14 @@ describe("operator sentence", () => {
     const terms = await (await page("/terms?lang=en")).text();
     expect(terms).toContain("sugi.moe is operated by YLDM Co., Ltd. By using sugi.moe");
     expect(terms).not.toContain("Ltd..");
+  });
+});
+
+describe("responsive markup", () => {
+  it("keeps the header tools out of the scrolling link row, and fact phrases whole", async () => {
+    const html = await (await page("/", zh)).text();
+    expect(html).toMatch(/<\/nav>\s*<div class="tools">\s*<a class="lang"/);
+    expect(html).toContain('<span class="nw">单个文件最大 200 MB</span>');
+    expect(html).toMatch(/<span class="nw">也可以 <span class="kbd" id="paste-key">/);
   });
 });
