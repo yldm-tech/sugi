@@ -2,6 +2,20 @@
 
 All notable changes to sugi are listed here. The format follows [Keep a Changelog](https://keepachangelog.com/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Daily upload quotas per source, per account and for the whole site (`QUOTA_*`); 429 or 507 with Retry-After.
+- `/healthz`, a daily operations report and threshold alerts by email (`OPS_EMAIL`, `ALERT_*`), and the admin MCP tool `ops_report`.
+- A report form on file and album pages (`POST /api/reports`), an hourly digest to the abuse address, and the admin MCP tools `list_reports` and `resolve_report`.
+- Integrations: a ShareX custom uploader at `/integrations/sharex.sxcu`, settings for PicGo / PicList, uPic, Typora and Obsidian on `/dev#tools`, and `sugi up --plain` for tools that read bare links.
+
+### Changed
+
+- Videos need an account or a maintainer token by default (`VIDEO_UPLOADS`), since Cloudflare's CSAM Scanning Tool checks images only.
+- Upload links from the MCP tool `create_upload` carry who asked for them, so quotas, ownership and the video rule apply to that account.
+
 ## [1.0.0] - 2026-11-02
 
 The first public release.

@@ -94,6 +94,7 @@ const pages = [
   ["dev", "/dev"],
   ["dev-cli", "/dev#cli"],
   ["dev-mcp", "/dev#mcp"],
+  ["dev-tools", "/dev#tools"],
   ["faq", "/faq"],
   ["terms", "/terms"],
   ["privacy", "/privacy"],

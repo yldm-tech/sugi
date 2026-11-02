@@ -13,7 +13,7 @@
 
 set -uo pipefail
 
-SUGI_CLI_VERSION="1.1.1"
+SUGI_CLI_VERSION="1.2.0"
 BASE="${SUGI_URL:-https://sugi.moe}"
 BASE="${BASE%/}"
 CONF_DIR="${SUGI_CONFIG_DIR:-$HOME/.config/sugi}"
@@ -37,6 +37,7 @@ sugi: upload images and short videos to ${BASE#*://}
       --name NAME                display name (useful with "-" for stdin)
       --clipboard                upload the image on the clipboard
       --json                     print the full JSON responses
+      --plain                    print only the links, one per line (for Typora and other tools)
       --no-copy                  do not copy links to the clipboard
       -                          read the file from stdin
   sugi album TITLE FILE|ID|LINK...   upload files (or reuse links) and make one share link
@@ -188,6 +189,7 @@ EXPIRE=""
 STYLE="random"
 NAME=""
 JSON=0
+PLAIN=0
 COPY=1
 CLIP=0
 
@@ -201,6 +203,7 @@ parse_up_flags() {
       --name) NAME="${2:-}"; shift ;;
       --name=*) NAME="${1#*=}" ;;
       --json) JSON=1 ;;
+      --plain) PLAIN=1 ;;
       --no-copy) COPY=0 ;;
       --clipboard) CLIP=1 ;;
       --) shift; while [ $# -gt 0 ]; do ARGS+=("$1"); shift; done; break ;;
@@ -241,6 +244,7 @@ upload_all() {
     UPLOADED_IDS+=("$(json_field id "$resp")")
     UPLOADED_URLS+=("$url")
     if [ "$JSON" = 1 ]; then cat "$resp"; printf '\n'
+    elif [ "$PLAIN" = 1 ]; then printf '%s\n' "$url"
     else printf '✿ %s  →  %s' "$name" "$url"; expiry_note; fi
   done
   return "$fails"

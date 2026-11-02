@@ -147,6 +147,16 @@ sugi ls ; sugi rm <id>
 
 命令行工具只依赖 bash 和 curl，默认连到安装它的那个实例。MCP 服务在 `https://<域名>/mcp`（Streamable HTTP，无状态），工具有 `upload_file`、`upload_url`、`create_album`、`get_file`、`delete_file`，例如 `claude mcp add --transport http sugi https://<域名>/mcp`。
 
+
+### 上传工具
+
+每个实例的 `/dev#tools` 都有这些工具的设置说明，地址已经填好。它们发的都是同一个请求：向 `https://<域名>/api/upload` 用 multipart 发送字段 `file`，请求头 `Accept: application/json`，从返回的 `url` 取链接。要传视频，或者让上传记在账号下，再加 `Authorization: Bearer sugi_…`（个人 API 令牌）。
+
+- **ShareX**：导入 `https://<域名>/integrations/sharex.sxcu`（下载后双击）。
+- **PicGo / PicList**：装插件 `web-uploader`，API 地址 `https://<域名>/api/upload`，POST 参数名 `file`，JSON 路径 `url`，自定义请求头 `{"Accept":"application/json"}`。
+- **Typora**：偏好设置 → 图像 → 上传服务 → Custom Command，填 `~/.local/bin/sugi up --plain --no-copy`（`--plain` 每行只输出一个链接），或者用 PicGo.app。
+- **uPic**：添加「自定义」图床，填同一个 API 地址，POST，文件字段 `file`，请求头 `Accept: application/json`，URL 路径 `["url"]`。
+- **Obsidian**：装社区插件 Image auto upload，配合上面设置好的 PicGo 或 PicList。
 ## 开发
 
 ```sh

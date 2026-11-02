@@ -605,6 +605,13 @@ html.night .theme-night {
   font-size: 16px;
   padding: 6px 16px;
 }
+/* Four tabs on the developer page fit one row on a phone. */
+@media (max-width: 480px) {
+  .seg.big button {
+    font-size: 16px;
+    padding: 8px 12px;
+  }
+}
 .mini {
   font-family: var(--f-body);
   font-weight: 600;

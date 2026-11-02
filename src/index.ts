@@ -13,6 +13,7 @@ import { fileHostRobotsTxt, robotsTxt, sitemapXml, webManifest } from "./site/se
 import { eraseOldFingerprints } from "./moderation";
 import { handleLinkUpload } from "./links";
 import { installScript } from "./site/install";
+import { handleSharexConfig } from "./site/integrations";
 import { handleMcp } from "./mcp";
 import { checkAlerts, countOps, DAILY_REPORT_CRON, handleHealthz, sendDailyReport, sweepOps } from "./ops";
 import { sweepUsage } from "./quota";
@@ -180,6 +181,7 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (pathname === "/healthz") return handleHealthz(env);
   if (pathname === "/sitemap.xml") return sitemapXml(env);
   if (pathname === "/manifest.webmanifest") return webManifest(env);
+  if (pathname === "/integrations/sharex.sxcu") return handleSharexConfig(request, env);
   if (pathname.startsWith("/api/")) return routeApi(request, env, pathname);
   if (env.FEATURE_CLI === "1") {
     if (pathname === "/mcp") return handleMcp(request, env);
