@@ -1,4 +1,4 @@
-// The donate page ("Feed the hamster"). It appears only when a payment method is configured (DONATE_ALIPAY_QR or DONATE_ALIPAY_LINK). A warm, simple page: who runs the site and what chipping in is for, a few playful amounts that only change the hint next to the QR code (no claims about what each buys, no progress bars), the QR code itself, and a thank-you list only when the operator configures one. Running costs and provider prices live in docs/operations.md, not here.
+// The donate page ("Feed the hamster"). It appears only when a payment method is configured (DONATE_ALIPAY_QR or DONATE_ALIPAY_LINK). A warm, simple page: what chipping in is for, a few playful amounts that only change the hint next to the QR code (no claims about what each buys, no progress bars), the QR code itself, and a thank-you list only when the operator configures one. Running costs and provider prices live in docs/operations.md, not here.
 import { brand } from "../../config";
 import { esc } from "../i18n";
 import { type Ctx, type Page, pageTitle, tr } from "../layout";
@@ -48,8 +48,6 @@ export function donatePage(ctx: Ctx): Page {
   const b = brand(ctx.env);
   const c = donateConfig(ctx.env);
   const site = esc(b.siteName);
-  // Latin names get spaces around them in Chinese text; 维护者 does not.
-  const who = b.operator ? t(` ${esc(b.operator)} `, esc(b.operator)) : t("维护者", "its maintainers");
   const hint = (yuan: number) => t(`扫码后输入 ¥${yuan}`, `Scan, then enter ¥${yuan}`);
   const amounts = `<div class="donate-amounts" role="radiogroup" aria-label="${t("选一份口粮", "Pick a snack")}" data-hint-zh="扫码后输入 ¥{n}" data-hint-en="Scan, then enter ¥{n}">
 ${DONATE_AMOUNTS.map(
@@ -63,8 +61,8 @@ ${DONATE_AMOUNTS.map(
 ${mascot}
 <h1 class="h1">${t("投喂仓仓", "Feed the hamster")}</h1>
 <p class="lead">${t(
-    `${site} 没有广告，也不卖数据，由${who}运营。投喂会用来付服务器和域名，让仓仓一直开着。`,
-    `${site} has no ads and sells no data. It is <span class="nw">run by ${who}${who.endsWith(".") ? "" : "."}</span> Chipping in pays for the servers and the domain, so the hamster stays open.`,
+    `${site} 没有广告，也不卖数据。投喂会用来付服务器和域名，让仓仓一直开着。`,
+    `${site} has no ads and sells no data. Chipping in pays for the servers and the domain, so the hamster stays open.`,
   )}</p>
 </section>
 <section class="stack8">

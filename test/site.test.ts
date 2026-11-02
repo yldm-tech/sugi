@@ -163,7 +163,8 @@ describe("pages", () => {
     const html = await res.text();
     expect(html).toContain('<img class="donate-qr" src="https://files.sugi.moe/qrcode.webp"');
     expect(html).toContain('<a class="btn phone-only" href="https://qr.alipay.com/test"');
-    expect(html).toContain("由 YLDM Co., Ltd. 运营");
+    expect(html).toContain('<span class="sent"><span class="ph">sugi.moe 没有广告，</span><span class="ph">也不卖数据。</span></span>');
+    expect(html).not.toContain("YLDM");
     expect(html).toContain("扫码后输入 ¥18");
     for (const n of [6, 18, 50, 200]) expect(html).toContain(`data-yuan="${n}"`);
     expect(html).toContain("不投喂也完全没关系，常来玩就好。");

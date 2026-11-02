@@ -149,11 +149,11 @@ export function faqPage(ctx: Ctx): Page {
     ),
     faqItem(
       t("仓仓靠什么活下去？", "Who pays for the hamster?"),
-      `${t(`目前由${b.operator ? ` ${esc(b.operator)} ` : "维护者"}自费运行，没有广告，也不卖数据。`, `For now ${b.operator ? esc(b.operator) : "the maintainers"} ${b.operator ? "pays" : "pay"} for it. There are no ads and no data is sold.`)}${
+      `${t("没有广告，也不卖数据。", "There are no ads and no data is sold.")}${
         ctx.flags.donate
           ? t(
-              '花了多少钱、怎么投喂，见 <a href="/donate" data-nav>投喂仓仓</a>。',
-              ' What it costs and how to chip in: <a href="/donate" data-nav>Feed the hamster</a>.',
+              '想帮仓仓付服务器和域名的话，可以 <a href="/donate" data-nav>投喂仓仓</a>。',
+              ' If you would like to help pay for the servers and the domain: <a href="/donate" data-nav>Feed the hamster</a>.',
             )
           : ""
       }`,
