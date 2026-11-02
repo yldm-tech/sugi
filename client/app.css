@@ -308,10 +308,13 @@ button,
 }
 
 /* ---- header ---- */
+/* The header may be wider than the 860px content column (centred over it), so the logo, every link and the tools fit on one row on a desktop screen. */
 .top {
   display: flex;
   align-items: center;
   gap: 14px;
+  width: min(1180px, calc(100vw - 40px));
+  align-self: center;
 }
 .brand {
   flex: 0 0 auto;

@@ -241,7 +241,10 @@ try {
         await page.evaluate(() => document.fonts.ready);
         await page.waitForTimeout(100);
         for (const p of await page.evaluate(headerCheck)) problems.push(`header ${lang}/${user ? "logged in" : "logged out"}/${width}px: ${p}`);
-        if (shots && (width === 1300 || width === 1440) && lang === "zh")
+        // On a desktop screen the whole header (logo, every link, the tools) must sit on one row.
+        if (width >= 1280 && (await page.evaluate(() => document.querySelector(".top").classList.contains("compact"))))
+          problems.push(`header ${lang}/${user ? "logged in" : "logged out"}/${width}px: two-row header on a desktop width`);
+        if (shots && (width === 1300 || width === 1440 || width === 1920) && lang === "zh")
           await page.screenshot({ path: `${shots}/zh-header-${user ? "user" : "anon"}-${width}.png`, clip: { x: 0, y: 0, width, height: 140 } });
       }
       await ctx.close();
