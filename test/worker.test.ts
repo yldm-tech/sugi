@@ -1,5 +1,5 @@
 import { env } from "cloudflare:test";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import worker, { MAX_BYTES } from "../src/index";
 
 const ORIGIN = "https://sugi.test";
@@ -305,7 +305,7 @@ describe("admin", () => {
 
     const ok = await call(new Request(`${ORIGIN}/${key}`, { method: "DELETE", headers: ADMIN_AUTH }));
     expect(ok.status).toBe(200);
-    expect(await ok.json()).toEqual({ deleted: [key] });
+    expect(await ok.json()).toEqual({ deleted: [key], cache_purged: true });
     expect(await env.BUCKET.head(key)).toBeNull();
     expect((await call(new Request(`${ORIGIN}/${key}`))).status).toBe(404);
     expect((await call(new Request(`${ORIGIN}/${key}`, { method: "DELETE", headers: ADMIN_AUTH }))).status).toBe(404);
@@ -395,5 +395,142 @@ describe("trusted token", () => {
 
   it("does nothing when TRUSTED_TOKEN is unset", async () => {
     expect((await call(putUpload(pngBytes(), { headers: TRUSTED_AUTH }), { TRUSTED_TOKEN: undefined })).status).toBe(401);
+  });
+});
+
+describe("cache-through serving and cache purge", () => {
+  const CACHE = { CACHE_ORIGIN: "https://r2.sugi.test", ZONE_ID: "zone123", CF_PURGE_TOKEN: "test-purge-token" };
+  const TRUSTED_AUTH = { authorization: "Bearer test-trusted-token" };
+
+  type Call = { url: string; init?: RequestInit & { cf?: Record<string, unknown> } };
+  // Stands in for the R2 custom domain (served from the bucket binding) and the zone purge API.
+  function stubFetch(opts: { originStatus?: number; purgeOk?: boolean } = {}): Call[] {
+    const calls: Call[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input instanceof Request ? input.url : String(input);
+      calls.push({ url, init: init as Call["init"] });
+      if (url.startsWith(CACHE.CACHE_ORIGIN)) {
+        if (opts.originStatus) return new Response("blocked", { status: opts.originStatus });
+        const obj = await env.BUCKET.get(new URL(url).pathname.slice(1));
+        return obj ? new Response(obj.body, { headers: { "content-type": "application/octet-stream" } }) : new Response("nope", { status: 404 });
+      }
+      if (url.startsWith("https://api.cloudflare.com/")) {
+        return opts.purgeOk === false ? Response.json({ success: false, errors: [{ code: 10000 }] }, { status: 403 }) : Response.json({ success: true });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    });
+    return calls;
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  async function upload(bytes = pngBytes(500), ip = freshIp()): Promise<string> {
+    const res = await call(putUpload(bytes, { ip, headers: TRUSTED_AUTH }));
+    expect(res.status).toBe(201);
+    return new URL((await res.text()).trim()).pathname.slice(1);
+  }
+
+  it("GET goes through the cache origin with cacheEverything and keeps sugi's own headers", async () => {
+    const bytes = pngBytes(500);
+    const key = await upload(bytes);
+    const calls = stubFetch();
+    const res = await call(new Request(`${ORIGIN}/${key}`), CACHE);
+    expect(res.status).toBe(200);
+    expect(new Uint8Array(await res.arrayBuffer())).toEqual(bytes);
+    expect(res.headers.get("content-type")).toBe("image/png");
+    expect(res.headers.get("content-security-policy")).toBe("default-src 'none'; img-src 'self'; style-src 'unsafe-inline'");
+    expect(res.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toBe(`${CACHE.CACHE_ORIGIN}/${key}`);
+    expect(calls[0].init?.cf).toMatchObject({ cacheEverything: true });
+  });
+
+  it("HEAD, 304 and unknown keys never touch the cache origin", async () => {
+    const key = await upload();
+    const calls = stubFetch();
+    const head = await call(new Request(`${ORIGIN}/${key}`, { method: "HEAD" }), CACHE);
+    expect(head.status).toBe(200);
+    expect((await call(new Request(`${ORIGIN}/${key}`, { headers: { "if-none-match": head.headers.get("etag")! } }), CACHE)).status).toBe(304);
+    expect((await call(new Request(`${ORIGIN}/0123456789abcdef.png`), CACHE)).status).toBe(404);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("a deleted object is not served even if the cache still had it", async () => {
+    const key = await upload();
+    await env.BUCKET.delete(key);
+    const calls = stubFetch();
+    expect((await call(new Request(`${ORIGIN}/${key}`), CACHE)).status).toBe(404);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("passes through a block from the cache layer instead of falling back to the bucket", async () => {
+    const key = await upload();
+    stubFetch({ originStatus: 451 });
+    const res = await call(new Request(`${ORIGIN}/${key}`), CACHE);
+    expect(res.status).toBe(451);
+    expect(res.headers.get("content-type")).toMatch(/^text\/plain/);
+  });
+
+  it("DELETE purges the cached origin URL from the zone cache", async () => {
+    const key = await upload();
+    const calls = stubFetch();
+    const res = await call(new Request(`${ORIGIN}/${key}`, { method: "DELETE", headers: ADMIN_AUTH }), CACHE);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ deleted: [key], cache_purged: true });
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toBe("https://api.cloudflare.com/client/v4/zones/zone123/purge_cache");
+    expect(calls[0].init?.method).toBe("POST");
+    expect(new Headers(calls[0].init?.headers).get("authorization")).toBe("Bearer test-purge-token");
+    expect(JSON.parse(String(calls[0].init?.body))).toEqual({ files: [`${CACHE.CACHE_ORIGIN}/${key}`] });
+  });
+
+  it("reports 502 when the purge fails, and a retried DELETE purges again", async () => {
+    const key = await upload();
+    stubFetch({ purgeOk: false });
+    const res = await call(new Request(`${ORIGIN}/${key}`, { method: "DELETE", headers: ADMIN_AUTH }), CACHE);
+    expect(res.status).toBe(502);
+    expect(await res.json()).toEqual({ deleted: [key], cache_purged: false });
+    expect(await env.BUCKET.head(key)).toBeNull();
+
+    vi.restoreAllMocks();
+    const calls = stubFetch();
+    const retry = await call(new Request(`${ORIGIN}/${key}`, { method: "DELETE", headers: ADMIN_AUTH }), CACHE);
+    expect(retry.status).toBe(404);
+    expect(calls).toHaveLength(1);
+  });
+
+  it("reports 502 when cache-through is on but no purge token is configured", async () => {
+    const key = await upload();
+    stubFetch();
+    const res = await call(new Request(`${ORIGIN}/${key}`, { method: "DELETE", headers: ADMIN_AUTH }), { ...CACHE, CF_PURGE_TOKEN: undefined });
+    expect(res.status).toBe(502);
+  });
+
+  it("purge-by-source purges every deleted URL, 30 per request", async () => {
+    const ip = freshIp();
+    const keys: string[] = [];
+    for (let i = 0; i < 31; i++) keys.push(await upload(pngBytes(), ip));
+    const source = await hmacHex("test-ip-hash-secret", ip);
+    const calls = stubFetch();
+    const res = await call(
+      new Request(`${ORIGIN}/admin/purge-by-source`, { method: "POST", body: JSON.stringify({ source }), headers: { "content-type": "application/json", ...ADMIN_AUTH } }),
+      CACHE,
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ count: 31, cache_purged: true });
+    expect(calls).toHaveLength(2);
+    const purged = calls.flatMap((c) => JSON.parse(String(c.init?.body)).files as string[]);
+    expect(purged.sort()).toEqual(keys.map((k) => `${CACHE.CACHE_ORIGIN}/${k}`).sort());
+    expect(JSON.parse(String(calls[0].init?.body)).files).toHaveLength(30);
+  });
+
+  it("without CACHE_ORIGIN nothing is fetched and deletes do not call the purge API", async () => {
+    const key = await upload();
+    const calls = stubFetch();
+    expect((await call(new Request(`${ORIGIN}/${key}`))).status).toBe(200);
+    expect((await call(new Request(`${ORIGIN}/${key}`, { method: "DELETE", headers: ADMIN_AUTH }))).status).toBe(200);
+    expect(calls).toHaveLength(0);
   });
 });

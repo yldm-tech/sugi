@@ -180,8 +180,16 @@ function etagMatches(header: string | null, etag: string): boolean {
   });
 }
 
+// Fetches the image through the zone's CDN cache by way of the bucket's R2 custom domain, so that Cloudflare's cache-based features (the CSAM Scanning Tool in particular) see every image that is served. The bucket is still the source of truth: handleServe has already confirmed the object exists, so a deleted object stops being served even before its cached copy is purged.
+async function fetchViaCache(env: Env, key: string): Promise<Response> {
+  return fetch(`${env.CACHE_ORIGIN}/${key}`, {
+    cf: { cacheEverything: true, cacheTtlByStatus: { "200-299": 31536000, "404": 1, "500-599": 0 } },
+  });
+}
+
 async function handleServe(request: Request, env: Env, key: string): Promise<Response> {
-  const obj = request.method === "HEAD" ? await env.BUCKET.head(key) : await env.BUCKET.get(key);
+  const viaCache = Boolean(env.CACHE_ORIGIN) && request.method === "GET";
+  const obj = request.method === "HEAD" || viaCache ? await env.BUCKET.head(key) : await env.BUCKET.get(key);
   if (obj === null) throw new HttpError(404, "not found");
 
   const ext = key.slice(key.lastIndexOf(".") + 1);
@@ -204,16 +212,56 @@ async function handleServe(request: Request, env: Env, key: string): Promise<Res
     return new Response(null, { status: 304, headers });
   }
   headers.set("content-length", String(obj.size));
+
+  if (viaCache) {
+    const upstream = await fetchViaCache(env, key);
+    if (!upstream.ok) {
+      // Passes through blocks such as a CSAM match (451) instead of falling back to the bucket, which would defeat the block.
+      await upstream.body?.cancel();
+      throw new HttpError(upstream.status === 404 ? 404 : upstream.status >= 500 ? 502 : upstream.status, upstream.status === 404 ? "not found" : "unavailable");
+    }
+    return new Response(upstream.body, { status: 200, headers });
+  }
   if (!hasBody(obj)) return new Response(null, { status: 200, headers });
   return new Response(obj.body, { status: 200, headers });
+}
+
+// Free plans accept at most 30 URLs per purge request.
+const PURGE_BATCH = 30;
+
+// Removes deleted objects' copies from the zone cache. Returns false if cache-through serving is on but the purge could not be done, so the caller can report that the cached copies may still be reachable at the origin hostname.
+async function purgeCache(env: Env, keys: string[]): Promise<boolean> {
+  if (!env.CACHE_ORIGIN || keys.length === 0) return true;
+  if (!env.ZONE_ID || !env.CF_PURGE_TOKEN) return false;
+  let ok = true;
+  for (let i = 0; i < keys.length; i += PURGE_BATCH) {
+    const files = keys.slice(i, i + PURGE_BATCH).map((k) => `${env.CACHE_ORIGIN}/${k}`);
+    const res = await fetch(`https://api.cloudflare.com/client/v4/zones/${env.ZONE_ID}/purge_cache`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${env.CF_PURGE_TOKEN}`, "content-type": "application/json" },
+      body: JSON.stringify({ files }),
+    });
+    const body = await res.json<{ success?: boolean }>().catch(() => ({ success: false }));
+    ok = ok && res.ok && body.success === true;
+  }
+  return ok;
+}
+
+function deletionResponse(deleted: string[], cachePurged: boolean, extra: Record<string, unknown> = {}): Response {
+  // 502 tells the operator to retry: the objects are gone from the bucket, but cached copies may still be served by the origin hostname.
+  return jsonResponse({ ...extra, deleted, cache_purged: cachePurged }, cachePurged ? 200 : 502);
 }
 
 async function handleDelete(request: Request, env: Env, key: string): Promise<Response> {
   await requireBearer(request, env.ADMIN_TOKEN, "admin");
   const existing = await env.BUCKET.head(key);
-  if (existing === null) throw new HttpError(404, "not found");
+  if (existing === null) {
+    // Purge anyway so that retrying a DELETE whose purge failed finishes the job.
+    if (!(await purgeCache(env, [key]))) return deletionResponse([], false);
+    throw new HttpError(404, "not found");
+  }
   await env.BUCKET.delete(key);
-  return jsonResponse({ deleted: [key] });
+  return deletionResponse([key], await purgeCache(env, [key]));
 }
 
 async function handleInfo(request: Request, env: Env, key: string): Promise<Response> {
@@ -252,10 +300,9 @@ async function handlePurgeBySource(request: Request, env: Env): Promise<Response
     cursor = page.truncated ? page.cursor : undefined;
   } while (cursor);
 
-  if (!dryRun) {
-    for (let i = 0; i < matched.length; i += 1000) await env.BUCKET.delete(matched.slice(i, i + 1000));
-  }
-  return jsonResponse({ source, dry_run: dryRun, count: matched.length, [dryRun ? "matched" : "deleted"]: matched });
+  if (dryRun) return jsonResponse({ source, dry_run: true, count: matched.length, matched });
+  for (let i = 0; i < matched.length; i += 1000) await env.BUCKET.delete(matched.slice(i, i + 1000));
+  return deletionResponse(matched, await purgeCache(env, matched), { source, dry_run: false, count: matched.length });
 }
 
 function handleIndex(request: Request, env: Env): Response {

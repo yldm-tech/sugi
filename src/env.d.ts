@@ -4,6 +4,7 @@ interface SugiSecrets {
   ADMIN_TOKEN?: string;
   UPLOAD_TOKEN?: string;
   TRUSTED_TOKEN?: string;
+  CF_PURGE_TOKEN?: string;
 }
 
 interface Env extends SugiSecrets {}
