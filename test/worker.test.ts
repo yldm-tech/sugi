@@ -355,3 +355,45 @@ describe("admin", () => {
     expect(await env.BUCKET.head(good)).not.toBeNull();
   });
 });
+
+describe("trusted token", () => {
+  const TRUSTED_AUTH = { authorization: "Bearer test-trusted-token" };
+
+  it("bypasses the rate limiter", async () => {
+    const ip = freshIp();
+    const statuses: number[] = [];
+    for (let i = 0; i < 25; i++) statuses.push((await call(putUpload(pngBytes(), { ip, headers: TRUSTED_AUTH }))).status);
+    expect(statuses).toEqual(Array(25).fill(201));
+    // The same source without the trusted token is still limited: the trusted uploads did not count, so it gets exactly 10.
+    const untrusted: number[] = [];
+    for (let i = 0; i < 11; i++) untrusted.push((await call(putUpload(pngBytes(), { ip }))).status);
+    expect(untrusted).toEqual([...Array(10).fill(201), 429]);
+    expect((await call(putUpload(pngBytes(), { ip, headers: TRUSTED_AUTH }))).status).toBe(201);
+  });
+
+  it("a wrong or near-miss token does not bypass the limiter or the gate", async () => {
+    const ip = freshIp();
+    for (const authorization of ["Bearer test-trusted-tokenX", "Bearer test-trusted-toke", "Bearer TEST-TRUSTED-TOKEN", "test-trusted-token"]) {
+      expect((await call(putUpload(pngBytes(), { ip, headers: { authorization } }))).status, authorization).toBe(401);
+    }
+    // With the gate off, a wrong trusted token is just an anonymous upload and is rate limited normally.
+    const statuses: number[] = [];
+    for (let i = 0; i < 11; i++) statuses.push((await call(putUpload(pngBytes(), { ip, headers: { authorization: "Bearer test-trusted-tokenX" } }), { UPLOAD_TOKEN: undefined })).status);
+    expect(statuses).toEqual([...Array(10).fill(201), 429]);
+  });
+
+  it("passes the upload gate", async () => {
+    const res = await call(putUpload(pngBytes(), { headers: TRUSTED_AUTH }));
+    expect(res.status).toBe(201);
+  });
+
+  it("is not an admin token", async () => {
+    const res = await call(putUpload(pngBytes(), { headers: TRUSTED_AUTH }));
+    const url = (await res.text()).trim();
+    expect((await call(new Request(url.replace("https://sugi.test", ORIGIN), { method: "DELETE", headers: TRUSTED_AUTH }))).status).toBe(401);
+  });
+
+  it("does nothing when TRUSTED_TOKEN is unset", async () => {
+    expect((await call(putUpload(pngBytes(), { headers: TRUSTED_AUTH }), { TRUSTED_TOKEN: undefined })).status).toBe(401);
+  });
+});

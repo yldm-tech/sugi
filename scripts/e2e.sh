@@ -14,6 +14,8 @@ here="$(cd "$(dirname "$0")/.." && pwd)"
 
 upload_token="$(sed -n 's/^UPLOAD_TOKEN=//p' "$secrets")"
 admin_token="$(sed -n 's/^ADMIN_TOKEN=//p' "$secrets")"
+trusted_token="$(sed -n 's/^TRUSTED_TOKEN=//p' "$secrets")"
+burst="${SUGI_E2E_BURST:-60}"
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -45,7 +47,7 @@ grep -q 'abuse@sugi.moe' "$work/index.html" && pass "index mentions abuse contac
 code="$(c "" -o "$work/anon.txt" -w '%{http_code}' -T "$image" "$base/upload")"
 check "anonymous upload rejected while gate is on" "$code" 401
 
-url="$(SUGI_URL="$base" SUGI_UPLOAD_TOKEN="$upload_token" "$here/bin/sugi-upload" "$image")"
+url="$(SUGI_URL="$base" SUGI_TRUSTED_TOKEN="$trusted_token" "$here/bin/sugi-upload" "$image")"
 expected_key="$(shasum -a 256 "$image" | cut -c1-16).png"
 check "sugi-upload returns content-addressed URL" "$url" "$base/$expected_key"
 key="${url##*/}"
@@ -88,6 +90,28 @@ grep -Eq '"source":"[0-9a-f]{64}"' "$work/info.json" && pass "source HMAC record
 
 check "DELETE with admin token" "$(c "$admin_token" -o /dev/null -w '%{http_code}' -X DELETE "$url")" 200
 check "GET after delete" "$(c "" -o /dev/null -w '%{http_code}' "$url")" 404
+
+# Rate limits: a burst well above both the Worker limiter and the zone WAF rule must all pass with the trusted token, and must start returning 429 without it. Every burst object comes from this client, so one purge-by-source cleans them all up.
+burst_upload() {
+  local token="$1" tag="$2" i codes=""
+  for i in $(seq 1 "$burst"); do
+    printf '\x89PNG\r\n\x1a\nsugi-e2e-%s-%s-%s' "$tag" "$i" "$(date +%s%N)" >"$work/burst.png"
+    codes="$codes $(c "$token" -o "$work/burst.out" -w '%{http_code}' -T "$work/burst.png" "$base/upload")"
+    [ ! -s "$work/burst.key" ] && grep -q '^https://' "$work/burst.out" && sed 's#.*/##' "$work/burst.out" >"$work/burst.key"
+  done
+  echo "$codes"
+}
+trusted_codes="$(burst_upload "$trusted_token" trusted)"
+check "trusted burst of $burst: non-201 responses" "$(echo $trusted_codes | tr ' ' '\n' | grep -vc '^201$' || true)" 0
+untrusted_codes="$(burst_upload "$upload_token" untrusted)"
+n429="$(echo $untrusted_codes | tr ' ' '\n' | grep -c '^429$' || true)"
+if [ "$n429" -gt 0 ]; then pass "untrusted burst of $burst hit 429 ($n429 times, first at #$(echo $untrusted_codes | tr ' ' '\n' | grep -n '^429$' | head -n1 | cut -d: -f1))"; else fail "untrusted burst of $burst never got 429"; fi
+if [ -s "$work/burst.key" ]; then
+  burst_key="$(cat "$work/burst.key")"
+  src="$(c "$admin_token" "$base/admin/info/$burst_key" | sed -E 's/.*"source":"([0-9a-f]+)".*/\1/')"
+  purged="$(c "$admin_token" -H 'content-type: application/json' -d "{\"source\":\"$src\"}" "$base/admin/purge-by-source" | grep -oE '"count":[0-9]+' | cut -d: -f2)"
+  pass "purged $purged burst objects"
+fi
 
 if [ "$failures" -ne 0 ]; then
   echo "$failures check(s) failed"

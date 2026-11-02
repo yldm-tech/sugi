@@ -115,15 +115,23 @@ async function extractUpload(request: Request): Promise<Uint8Array> {
   return readBodyCapped(request, MAX_BYTES);
 }
 
+// The maintainers' own token: never rate limited and accepted while the upload gate is on.
+async function isTrusted(request: Request, env: Env): Promise<boolean> {
+  if (!env.TRUSTED_TOKEN) return false;
+  const given = bearerToken(request);
+  return given !== null && (await constantTimeEqual(given, env.TRUSTED_TOKEN));
+}
+
 async function handleUpload(request: Request, env: Env): Promise<Response> {
-  if (env.UPLOAD_TOKEN) await requireBearer(request, env.UPLOAD_TOKEN, "upload");
+  const trusted = await isTrusted(request, env);
+  if (!trusted && env.UPLOAD_TOKEN) await requireBearer(request, env.UPLOAD_TOKEN, "upload");
   // Without the secret there is no way to record a traceable source, so refuse rather than store untraceable uploads.
   if (!env.IP_HASH_SECRET) throw new HttpError(503, "uploads are not configured");
 
   const ip = request.headers.get("cf-connecting-ip") ?? "unknown";
   const source = await hmacSha256Hex(env.IP_HASH_SECRET, ip);
 
-  const { success } = await env.UPLOAD_LIMITER.limit({ key: source });
+  const { success } = trusted ? { success: true } : await env.UPLOAD_LIMITER.limit({ key: source });
   if (!success) throw new HttpError(429, "too many uploads, slow down", { "retry-after": String(RATE_LIMIT_PERIOD_SECONDS) });
 
   const bytes = await extractUpload(request);

@@ -4,8 +4,12 @@
 # Usage: sugi-upload FILE...
 #
 # Environment:
-#   SUGI_URL           service base URL (default https://sugi.moe)
-#   SUGI_UPLOAD_TOKEN  bearer token, needed while the service has its upload gate on
+#   SUGI_URL            service base URL (default https://sugi.moe)
+#   SUGI_TRUSTED_TOKEN  maintainers' token: passes the upload gate and is exempt from rate limits
+#   SUGI_UPLOAD_TOKEN   bearer token, needed while the service has its upload gate on
+#   SUGI_SECRETS_FILE   where to look for TRUSTED_TOKEN when SUGI_TRUSTED_TOKEN is unset (default ~/.config/sugi/secrets.env)
+#
+# The trusted token wins over the upload token when both are available.
 #
 # Exits non-zero if any file fails; the remaining files are still attempted and errors go to stderr.
 
@@ -24,6 +28,13 @@ if ! command -v curl >/dev/null 2>&1; then
   exit 2
 fi
 
+trusted="${SUGI_TRUSTED_TOKEN:-}"
+secrets_file="${SUGI_SECRETS_FILE:-$HOME/.config/sugi/secrets.env}"
+if [ -z "$trusted" ] && [ -r "$secrets_file" ]; then
+  trusted="$(sed -n 's/^TRUSTED_TOKEN=//p' "$secrets_file" | head -n1)"
+fi
+token="${trusted:-${SUGI_UPLOAD_TOKEN:-}}"
+
 status=0
 for file in "$@"; do
   if [ ! -f "$file" ] || [ ! -r "$file" ]; then
@@ -33,9 +44,10 @@ for file in "$@"; do
   fi
 
   # The token goes through a curl config read from stdin so it never appears in the process list.
+  # The zone's WAF rate limiting rule exempts exactly this Authorization header value, so both layers see the trusted token in the same place.
   config=""
-  if [ -n "${SUGI_UPLOAD_TOKEN:-}" ]; then
-    config="header = \"Authorization: Bearer ${SUGI_UPLOAD_TOKEN}\""
+  if [ -n "$token" ]; then
+    config="header = \"Authorization: Bearer ${token}\""
   fi
 
   # Raw PUT avoids curl -F's special handling of ';' and ',' in file names.

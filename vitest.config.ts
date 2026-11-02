@@ -11,6 +11,7 @@ export default defineConfig({
           IP_HASH_SECRET: "test-ip-hash-secret",
           ADMIN_TOKEN: "test-admin-token",
           UPLOAD_TOKEN: "test-upload-token",
+          TRUSTED_TOKEN: "test-trusted-token",
         },
       },
     }),

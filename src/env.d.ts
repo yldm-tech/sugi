@@ -3,6 +3,7 @@ interface SugiSecrets {
   IP_HASH_SECRET?: string;
   ADMIN_TOKEN?: string;
   UPLOAD_TOKEN?: string;
+  TRUSTED_TOKEN?: string;
 }
 
 interface Env extends SugiSecrets {}
