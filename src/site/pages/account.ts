@@ -33,7 +33,8 @@ function providerButtons(ctx: Ctx, skip: string, link = false): string {
   const t = tr(ctx);
   const live = PROVIDERS.filter(([id]) => ctx.flags.account.includes(id) && !skip.split(",").includes(id));
   if (!live.length) return "";
-  return `<div class="row-actions center">${live.map(([id, name]) => `<a class="mini with-icon" href="/auth/${id}">${BRAND_ICONS[id] ?? ""}<span>${link ? t(`关联 ${name}`, `Link ${name}`) : t(`用 ${name} 登录`, `Log in with ${name}`)}</span></a>`).join("")}</div>`;
+  // Logging in: centred under the login form. Linking on the account page: left-aligned like the rest of the card.
+  return `<div class="row-actions${link ? "" : " center"}">${live.map(([id, name]) => `<a class="mini with-icon" href="/auth/${id}">${BRAND_ICONS[id] ?? ""}<span>${link ? t(`关联 ${name}`, `Link ${name}`) : t(`用 ${name} 登录`, `Log in with ${name}`)}</span></a>`).join("")}</div>`;
 }
 
 function tokenSection(ctx: Ctx): string {
