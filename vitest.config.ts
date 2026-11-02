@@ -16,6 +16,10 @@ export default defineConfig(async () => {
             TRUSTED_TOKEN: "test-trusted-token",
             // Production serves through r2.sugi.moe; tests default to reading the bucket directly and opt in to cache-through per test with a stubbed fetch, so nothing leaves the sandbox.
             CACHE_ORIGIN: "",
+            // Pin the public origins so a local .dev.vars (used by `wrangler dev`) cannot leak into tests.
+            MAIN_ORIGIN: "https://sugi.moe",
+            FILES_ORIGIN: "https://files.sugi.moe",
+            TMP_ORIGIN: "https://tmp.sugi.moe",
             TEST_MIGRATIONS: migrations,
           },
         },
