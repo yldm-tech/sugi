@@ -19,3 +19,5 @@ cd "$here"
 echo "rollback target (current version):"
 npx wrangler deployments list --config wrangler.production.jsonc 2>/dev/null | grep -E 'Version\(s\)' | tail -n 1 || true
 npx wrangler deploy --config wrangler.production.jsonc --secrets-file "$secrets"
+# A light check of the live site; the full suites run against staging (scripts/deploy-staging.sh) before this.
+scripts/smoke.sh https://sugi.moe

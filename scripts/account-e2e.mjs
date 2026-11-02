@@ -1,6 +1,8 @@
 // End-to-end check of email login, my-files sync, API tokens and the video rule (VIDEO_UPLOADS) against a deployment: one login email to the E2E_INBOX test address (read back through the admin-only inbox), then uploads, claiming, listing and deleting by session. Synthetic files only; everything created is deleted. Secrets come from ~/.config/sugi/secrets.env and ops.env (or SUGI_SECRETS_FILE / SUGI_OPS_FILE) and are never printed.
 //
-//   node scripts/account-e2e.mjs [BASE_URL]      (default https://sugi.moe)
+//   node scripts/account-e2e.mjs [BASE_URL]      (default the staging Worker, https://sugi-staging.evan-e2b.workers.dev)
+//
+// Mail to the E2E_INBOX address reaches only the sugi.moe Worker (Email Routing), so the login email is always read back from https://sugi.moe (SUGI_INBOX_BASE) with its ADMIN_TOKEN, even when BASE_URL is staging.
 //
 // Login emails count against the mail provider's daily quota, so run this sparingly.
 import { readFileSync } from "node:fs";
@@ -8,7 +10,8 @@ import { homedir } from "node:os";
 import { randomBytes } from "node:crypto";
 import { deflateSync } from "node:zlib";
 
-const base = (process.argv[2] ?? "https://sugi.moe").replace(/\/$/, "");
+const base = (process.argv[2] ?? "https://sugi-staging.evan-e2b.workers.dev").replace(/\/$/, "");
+const inboxBase = (process.env.SUGI_INBOX_BASE ?? "https://sugi.moe").replace(/\/$/, "");
 const env = (f) =>
   Object.fromEntries(
     readFileSync(f, "utf8")
@@ -62,7 +65,7 @@ function mp4() {
 }
 
 // Log in through the emailed link.
-const before = await fetch(`${base}/admin/e2e-inbox`, { headers: admin });
+const before = await fetch(`${inboxBase}/admin/e2e-inbox`, { headers: admin });
 const beforeId = before.ok ? (await before.json()).id : 0;
 const form = new FormData();
 form.append("email", E2E_INBOX);
@@ -72,7 +75,7 @@ check("login email sent", sent.headers.get("location") === `${base}/login?sent=1
 let link = null;
 for (let i = 0; i < 30 && !link; i++) {
   await sleep(4000);
-  const r = await fetch(`${base}/admin/e2e-inbox`, { headers: admin });
+  const r = await fetch(`${inboxBase}/admin/e2e-inbox`, { headers: admin });
   if (r.ok) {
     const m = await r.json();
     if (m.id !== beforeId) link = m.links.find((u) => u.startsWith(`${base}/auth/email/verify?token=`));

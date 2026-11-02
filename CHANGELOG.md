@@ -15,6 +15,8 @@ All notable changes to sugi are listed here. The format follows [Keep a Changelo
 - Resumable chunked uploads: the website keeps an unfinished big upload's progress in the browser, waits out a lost connection and continues after a reload when the file is picked again; the CLI keeps it in `~/.config/sugi/pending/`, continues on the next run, shows progress bars and has `sugi abort FILE`. Cancelling aborts the multipart upload on the server.
 - The upload queue on the website and the CLI pace themselves under the server's limits and retry after a 429 on their own; logged-in accounts may start 60 uploads a minute.
 
+- `NOINDEX` keeps an instance out of search engines (robots.txt and `X-Robots-Tag`), for staging and private instances.
+
 ### Changed
 
 - Videos need an account or a maintainer token by default (`VIDEO_UPLOADS`), since Cloudflare's CSAM Scanning Tool checks images only.

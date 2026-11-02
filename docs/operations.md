@@ -31,6 +31,16 @@
 - **监控**：日报和告警发到 secret `OPS_EMAIL`（在 `secrets.env` 里），由 cron `5 0 * * *` 发前一天的日报，每 10 分钟检查一次告警。`/healthz` 可以接 UptimeRobot 一类的外部监控。日报和告警都走 Resend，与登录邮件共用每天 100 封的免费额度。
 - **Cloudflare 通知**（要在控制台里开，API 令牌没有 Notifications 权限）：Manage Account → Notifications → Add → Billing → Usage Based Billing，分别给 Workers、R2、D1 设阈值；以及 Workers Weekly Summary。
 
+## Staging
+
+- **地址**：https://sugi-staging.evan-e2b.workers.dev （Worker `sugi-staging`，配置 `wrangler.staging.jsonc`）。和 sugi.moe 跑同一份代码、同样的设置，但数据库（D1 `sugi-staging`，`e0345a79-7076-447b-bd8f-e6015aeb1bdd`）、bucket（R2 `sugi-staging`）、限流计数（namespace 48615、48616）和 secrets 都是独立的。`NOINDEX=1`：robots.txt 全部禁止，所有响应带 `X-Robots-Tag: noindex`。
+- **和生产的区别**：workers.dev 前面没有 zone，所以没有 WAF 规则、没有经 r2.sugi.moe 的缓存回源、没有 CSAM 扫描；文件从同一域名的 `/_files`、`/_tmp` 出图。没有 OAuth（GitHub、Google 的回调只登记了 sugi.moe），`ACCOUNT_FEATURES=email,passkey,sync,tokens`。不发日报（没有 `OPS_EMAIL`）。
+- **secrets**：`~/.config/sugi/staging.env`（600）：自己的 `IP_HASH_SECRET`、`ADMIN_TOKEN`、`TRUSTED_TOKEN`，以及和生产共用的 `RESEND_API_KEY`、`E2E_INBOX`（为了能测邮件登录）。
+- **部署**：`npm run deploy:staging`（先 `d1 migrations apply --remote`，再 deploy）。改动先上 staging、跑完测试再上生产。
+- **测试默认打 staging**：`scripts/e2e.sh`、`scripts/cli-e2e.sh`、`npm run check:layout`、`npm run check:passkey`、`npm run check:account` 不带地址时都打 staging，令牌自动从 `staging.env` 取。`check:account` 的登录邮件只能投递到生产 Worker（Email Routing），所以它从 https://sugi.moe 的 E2E 收件箱（生产的 `ADMIN_TOKEN`）读信，再去 staging 点链接，每次运行发一封 Resend 邮件。要测生产时把 `https://sugi.moe` 作为参数传进去（e2e.sh 会自动打开 WAF 和缓存回源检查）。
+- **生产只做轻量检查**：`scripts/deploy-production.sh` 部署完会自动跑 `scripts/smoke.sh https://sugi.moe`：`/healthz`、几个页面、用可信令牌传一个文件、原样取回、用删除凭证删掉、确认 404。
+- **CI 部署 staging 需要的 API 令牌**（还没建，现在从本机部署）：Account 级别、只限 yldm 账号（`e2b27aea5f599efdbe0a7016a2580d05`）：`Workers Scripts: Edit`（部署、secrets、workers.dev）、`D1: Edit`（远程迁移）、`Workers R2 Storage: Read`（部署时校验 bucket 绑定）、`Account Settings: Read`。不需要任何 Zone 权限。放进 GitHub 仓库 secret `CLOUDFLARE_API_TOKEN`，staging 的 secrets 另存为仓库 secret 后用 `wrangler secret bulk` 写入。以后要让 CI 部署生产，还要加 Zone `sugi.moe` 的 `Workers Routes: Edit` 和 `DNS: Edit`（自定义域名），建议用另一枚令牌、只给受保护的环境用。
+
 ## Secrets
 
 Secrets 只存在两处：Cloudflare 的 Worker secrets，以及本机 `~/.config/sugi/secrets.env`（权限 600）。`TRUSTED_TOKEN` 例外，它的值还在 zone 的 WAF 自定义规则里。`secrets.env` 会被 `wrangler deploy --secrets-file` 整个上传，所以只放 Worker 要用的东西；改 WAF 用的 ops token 放在 `~/.config/sugi/ops.env`。

@@ -2,9 +2,10 @@
 //
 //   node scripts/layout-check.mjs [BASE_URL] [--shots DIR] [--widths 360,390,...]
 //
-// BASE_URL defaults to http://localhost:8787 (`npm run dev`). The instance must accept anonymous uploads (no UPLOAD_TOKEN) and have ADMIN_TOKEN set to LAYOUT_ADMIN_TOKEN (default "layout-check-admin") for the 451 page; it creates a few synthetic files and an album, and takes one of them down.
+// BASE_URL defaults to the staging Worker (https://sugi-staging.evan-e2b.workers.dev); CI passes http://localhost:8787 (`npm run dev`). The instance must accept anonymous uploads (no UPLOAD_TOKEN); for the 451 page it needs its admin token: LAYOUT_ADMIN_TOKEN, else ADMIN_TOKEN from ~/.config/sugi/staging.env for the staging Worker, else "layout-check-admin" (the local and CI value); it creates a few synthetic files and an album, and takes one of them down.
 import { chromium } from "playwright";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { randomBytes } from "node:crypto";
 import { deflateSync } from "node:zlib";
 
@@ -13,8 +14,16 @@ const shotsAt = args.indexOf("--shots");
 const shots = shotsAt >= 0 ? args[shotsAt + 1] : null;
 const widthsAt = args.indexOf("--widths");
 const widths = (widthsAt >= 0 ? args[widthsAt + 1] : "360,390,430,600,768,1024,1280").split(",").map(Number);
-const adminToken = process.env.LAYOUT_ADMIN_TOKEN ?? "layout-check-admin";
-const base = (args.find((a, i) => !a.startsWith("--") && !args[i - 1]?.startsWith("--")) ?? "http://localhost:8787").replace(/\/$/, "");
+const STAGING = "https://sugi-staging.evan-e2b.workers.dev";
+const base = (args.find((a, i) => !a.startsWith("--") && !args[i - 1]?.startsWith("--")) ?? STAGING).replace(/\/$/, "");
+const stagingAdmin = () => {
+  try {
+    return /^ADMIN_TOKEN=(.*)$/m.exec(readFileSync(`${homedir()}/.config/sugi/staging.env`, "utf8"))?.[1];
+  } catch {
+    return undefined;
+  }
+};
+const adminToken = process.env.LAYOUT_ADMIN_TOKEN ?? (base === STAGING ? stagingAdmin() : undefined) ?? "layout-check-admin";
 if (shots) mkdirSync(shots, { recursive: true });
 
 // A real (random-coloured, 64x48) PNG, so thumbnails and previews render like a photo would.

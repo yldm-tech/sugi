@@ -1,0 +1,84 @@
+// Staging: the same code and settings as sugi.moe on its own Worker, database, bucket, rate limiter counters and secrets, at https://sugi-staging.<account>.workers.dev. Deployed by scripts/deploy-staging.sh; the end-to-end scripts default to it. Never indexed (NOINDEX).
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sugi-staging",
+  "account_id": "e2b27aea5f599efdbe0a7016a2580d05",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": { "enabled": false },
+  "build": {
+    "command": "node scripts/build-client.mjs"
+  },
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "triggers": {
+    "crons": ["*/10 * * * *", "5 0 * * *"]
+  },
+  "vars": {
+    "SITE_NAME": "sugi staging",
+    "MAIN_ORIGIN": "",
+    "FILES_ORIGIN": "",
+    "TMP_ORIGIN": "",
+    "OPERATOR_NAME": "YLDM Co., Ltd.",
+    "CONTACT_EMAIL": "hi@sugi.moe",
+    "ABUSE_EMAIL": "abuse@sugi.moe",
+    "SOURCE_URL": "https://github.com/yldm-tech/sugi",
+    "CSAM_SCANNING": "0",
+    "EMAIL_ROUTING": "1",
+    "WAF_RATE_LIMIT": "0",
+    "STORAGE_LOCATION": "APAC",
+    "RESEND_REGION": "ap-northeast-1",
+    "MAIL_FROM": "sugi.moe <login@sugi.moe>",
+    // No zone in front of workers.dev: no cache-through, no WAF rule, no CSAM Scanning Tool; files are served from /_files and /_tmp on the same host.
+    "CACHE_ORIGIN": "",
+    "ZONE_ID": "",
+    "QUOTA_ANON_BYTES_PER_DAY": "1073741824",
+    "QUOTA_ACCOUNT_BYTES_PER_DAY": "5368709120",
+    "QUOTA_GLOBAL_BYTES_PER_DAY": "53687091200",
+    "ALERT_5XX_PER_HOUR": "20",
+    "ALERT_DAILY_UPLOAD_BYTES": "0",
+    "VIDEO_UPLOADS": "account",
+    "MAINLAND_CHINA_FAQ": "1",
+    "DONATE_ALIPAY_QR": "https://files.sugi.moe/asdqxrfa.webp",
+    "DONATE_ALIPAY_LINK": "https://qr.alipay.com/fkx18192ol0ftc6z3e3rba7",
+    "DONATE_DOMAIN_COST_USD": "",
+    "DONATE_THANKS": "",
+    "FEATURE_ACCOUNTS": "1",
+    "ACCOUNT_FEATURES": "email,passkey,sync,tokens",
+    "FEATURE_CLI": "1",
+    "NOINDEX": "1"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "sugi-staging",
+      "database_id": "e0345a79-7076-447b-bd8f-e6015aeb1bdd",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "BUCKET",
+      "bucket_name": "sugi-staging"
+    }
+  ],
+  "ratelimits": [
+    {
+      "name": "UPLOAD_LIMITER",
+      "namespace_id": "48615",
+      "simple": { "limit": 10, "period": 60 }
+    },
+    // Logged-in accounts (session or API token), counted per account: keep in sync with ACCOUNT_RATE_LIMIT in src/limits.ts.
+    {
+      "name": "ACCOUNT_LIMITER",
+      "namespace_id": "48616",
+      "simple": { "limit": 60, "period": 60 }
+    }
+  ]
+  // Secrets come from ~/.config/sugi/staging.env via --secrets-file (its own IP_HASH_SECRET, ADMIN_TOKEN and TRUSTED_TOKEN; RESEND_API_KEY and E2E_INBOX shared with production so email login can be tested). No OAuth apps: their callbacks only point at sugi.moe.
+}

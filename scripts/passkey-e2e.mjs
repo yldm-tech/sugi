@@ -2,10 +2,10 @@
 //
 //   node scripts/passkey-e2e.mjs [BASE_URL]
 //
-// BASE_URL defaults to http://localhost:8787. The instance needs FEATURE_ACCOUNTS=1 and passkey in ACCOUNT_FEATURES. The run deletes the account it creates.
+// BASE_URL defaults to the staging Worker (https://sugi-staging.evan-e2b.workers.dev). The instance needs FEATURE_ACCOUNTS=1 and passkey in ACCOUNT_FEATURES. The run deletes the account it creates.
 import { chromium } from "playwright";
 
-const base = (process.argv[2] ?? "http://localhost:8787").replace(/\/$/, "");
+const base = (process.argv[2] ?? "https://sugi-staging.evan-e2b.workers.dev").replace(/\/$/, "");
 const host = new URL(base).hostname;
 const browser = await chromium.launch({
   ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}),

@@ -70,7 +70,9 @@
     "FEATURE_ACCOUNTS": "0",
     // With accounts on: which parts are live, comma-separated, from email, github, google, passkey, sync, tokens.
     "ACCOUNT_FEATURES": "email",
-    "FEATURE_CLI": "1"
+    "FEATURE_CLI": "1",
+    // "1" keeps search engines out entirely (robots.txt disallows everything, every response says noindex); for staging and private instances.
+    "NOINDEX": "0"
   },
   // Created on the first deploy (named after the Worker). The schema is applied by the Worker itself.
   "d1_databases": [

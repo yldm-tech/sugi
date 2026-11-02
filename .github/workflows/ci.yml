@@ -49,4 +49,4 @@ jobs:
           for i in $(seq 1 60); do curl -sf -o /dev/null http://localhost:8787/ && exit 0; sleep 2; done
           cat wrangler-dev.log
           exit 1
-      - run: npm run check:layout
+      - run: npm run check:layout -- http://localhost:8787

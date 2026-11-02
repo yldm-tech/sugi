@@ -6,6 +6,8 @@ const TEXT = { "content-type": "text/plain; charset=utf-8", "cache-control": "pu
 
 // Crawl everything public; user content pages carry noindex themselves (meta robots and X-Robots-Tag), which only works if crawlers may fetch them.
 export function robotsTxt(env: Env): Response {
+  if (env.NOINDEX === "1")
+    return new Response("User-agent: *\nDisallow: /\n", { headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=3600" } });
   const body = [
     "User-agent: *",
     "Allow: /",

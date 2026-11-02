@@ -26,6 +26,8 @@
     "fonts": "scripts/subset-fonts.sh",
     "deploy": "wrangler deploy",
     "deploy:production": "scripts/deploy-production.sh",
+    "deploy:staging": "scripts/deploy-staging.sh",
+    "smoke": "scripts/smoke.sh",
     "check:passkey": "node scripts/passkey-e2e.mjs",
     "check:account": "node scripts/account-e2e.mjs",
     "icons": "node scripts/build-brand-icons.mjs"
