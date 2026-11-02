@@ -76,3 +76,16 @@ describe("R2 cost on the donate page", () => {
     expect(r2MonthlyCost(100 * GB)).toBeCloseTo(1.35);
   });
 });
+
+describe("email counter", () => {
+  it("counts every email sent, for the donate page's free-tier bars", async () => {
+    const { mailCounts } = await import("../src/ops");
+    const { sendEmail } = await import("../src/auth/email");
+    const before = await mailCounts(env);
+    stubResend();
+    await sendEmail({ ...env, RESEND_API_KEY: "re_test" } as Env, { to: "a@example.org", subject: "s", text: "t", html: "h" });
+    const after = await mailCounts(env);
+    expect(after.today).toBe(before.today + 1);
+    expect(after.month).toBe(before.month + 1);
+  });
+});

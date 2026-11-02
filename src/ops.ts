@@ -192,9 +192,20 @@ export async function checkAlerts(env: Env, now = Date.now()): Promise<string[]>
   return sent;
 }
 
-/** Cron: drop counters older than two weeks. */
+/** Cron: drop counters older than 40 days (a calendar month of email counts must survive). */
 export async function sweepOps(env: Env, now = Date.now()): Promise<void> {
   await env.DB.prepare("DELETE FROM ops_counters WHERE hour < ?")
-    .bind(hourOf(now - 14 * 86400e3))
+    .bind(hourOf(now - 40 * 86400e3))
     .run();
+}
+
+/** Emails sent today and this calendar month (UTC), and since when they have been counted (the counter may be younger than the month). */
+export async function mailCounts(env: Env, now = Date.now()): Promise<{ today: number; month: number; countedSince: string }> {
+  const day = today(now);
+  const monthStart = `${day.slice(0, 7)}-01T00`;
+  const today_ = await sumOps(env, "mail", `${day}T00`, `${day}T23`);
+  const month = await sumOps(env, "mail", monthStart, `${day}T23`);
+  const first = await env.DB.prepare("SELECT MIN(hour) AS h FROM ops_counters WHERE name = 'mail'").first<{ h: string | null }>();
+  const since = first?.h && first.h > monthStart ? first.h.slice(0, 10) : monthStart.slice(0, 10);
+  return { today: today_, month, countedSince: since };
 }
