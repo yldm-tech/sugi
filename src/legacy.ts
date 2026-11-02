@@ -1,7 +1,7 @@
 // The original content-addressed API, kept unchanged because its links are embedded in pull requests and bin/sugi-upload and other scripts post to /upload: images only, at most 20 MB, key = first 16 hex of SHA-256 + extension, served from the main origin at /<key>.
 import { deletionResponse, fetchViaCache, purgeCache } from "./cache";
 import { sha256Hex } from "./crypto";
-import { authorizeUpload, etagMatches, hasBody, HttpError, jsonResponse, RemovedError, requireBearer, textResponse, wantsJson } from "./http";
+import { authorizeUpload, etagMatches, hasBody, HttpError, jsonResponse, RemovedError, requireAdmin, textResponse, wantsJson } from "./http";
 import { assertHashAllowed, isTombstone, takedown, takedownBySource } from "./moderation";
 import { LEGACY_MAX_BYTES } from "./limits";
 import { sniffImageType, TYPES_BY_EXT } from "./sniff";
@@ -148,7 +148,7 @@ export async function handleLegacyServe(request: Request, env: Env, key: string)
 
 // Admin deletion of a legacy object is a takedown: tombstone (451 from now on), audit log, cache purge.
 export async function handleLegacyDelete(request: Request, env: Env, key: string): Promise<Response> {
-  await requireBearer(request, env.ADMIN_TOKEN, "admin");
+  await requireAdmin(request, env);
   const existing = await env.BUCKET.head(key);
   if (existing === null) {
     // Purge anyway so that retrying a DELETE whose purge failed finishes the job.
@@ -166,7 +166,7 @@ export async function handleLegacyDelete(request: Request, env: Env, key: string
 
 // Admin view of any stored object: legacy keys ("<hex>.<ext>") and current ones ("f/<id>", "t/<id>").
 export async function handleInfo(request: Request, env: Env, key: string): Promise<Response> {
-  await requireBearer(request, env.ADMIN_TOKEN, "admin");
+  await requireAdmin(request, env);
   const obj = await env.BUCKET.head(key);
   if (obj === null) throw new HttpError(404, "not found");
   const m = obj.customMetadata ?? {};
@@ -184,7 +184,7 @@ export async function handleInfo(request: Request, env: Env, key: string): Promi
 
 // Deletes every object (legacy and current) and every album recorded with a given source HMAC.
 export async function handlePurgeBySource(request: Request, env: Env): Promise<Response> {
-  await requireBearer(request, env.ADMIN_TOKEN, "admin");
+  await requireAdmin(request, env);
   let body: { source?: unknown; dry_run?: unknown };
   try {
     body = await request.json();

@@ -1,5 +1,5 @@
 import { resolvePrincipal } from "./auth/core";
-import { constantTimeEqual, hmacSha256Hex } from "./crypto";
+import { constantTimeEqual, hmacSha256Hex, sha256Hex } from "./crypto";
 import { RATE_LIMIT_PERIOD_SECONDS } from "./limits";
 
 export class HttpError extends Error {
@@ -77,9 +77,23 @@ export async function requireBearer(request: Request, expected: string | undefin
   }
 }
 
+/** The shared ADMIN_TOKEN, or a personal API token whose role is "admin" (set by hand in D1), so a maintainer can use their own token instead of the shared one. */
 export async function isAdmin(request: Request, env: Env): Promise<boolean> {
   const given = bearerToken(request);
-  return Boolean(env.ADMIN_TOKEN) && given !== null && (await constantTimeEqual(given, env.ADMIN_TOKEN!));
+  if (given === null) return false;
+  if (env.ADMIN_TOKEN && (await constantTimeEqual(given, env.ADMIN_TOKEN))) return true;
+  if (!given.startsWith("sugi_") || env.FEATURE_ACCOUNTS !== "1" || !(env.ACCOUNT_FEATURES ?? "").split(",").some((f) => f.trim() === "tokens")) return false;
+  const row = await env.DB.prepare("SELECT role FROM api_tokens WHERE token_hash = ?")
+    .bind(await sha256Hex(new TextEncoder().encode(given)))
+    .first<{ role: string }>();
+  return row?.role === "admin";
+}
+
+/** Gate for the admin HTTP endpoints. */
+export async function requireAdmin(request: Request, env: Env): Promise<void> {
+  if (await isAdmin(request, env)) return;
+  if (!env.ADMIN_TOKEN) throw new HttpError(403, "admin is disabled");
+  throw new HttpError(401, "unauthorized", { "www-authenticate": 'Bearer realm="admin"' });
 }
 
 // The maintainers' own tokens (TRUSTED_TOKEN, and ADMIN_TOKEN, which can do everything TRUSTED_TOKEN can): never rate limited, never source-blocked, and accepted while the upload gate is on.
@@ -87,7 +101,7 @@ export async function isTrusted(request: Request, env: Env): Promise<boolean> {
   const given = bearerToken(request);
   if (given === null) return false;
   if (env.TRUSTED_TOKEN && (await constantTimeEqual(given, env.TRUSTED_TOKEN))) return true;
-  return Boolean(env.ADMIN_TOKEN) && (await constantTimeEqual(given, env.ADMIN_TOKEN!));
+  return isAdmin(request, env);
 }
 
 /** True while an admin has blocked this source from uploading (see moderation.ts). */

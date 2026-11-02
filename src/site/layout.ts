@@ -24,7 +24,13 @@ export interface Ctx {
   /** Query string of the request (login messages). */
   query?: URLSearchParams;
   /** The signed-in account, when accounts are on. */
-  user?: { email: string | null; name: string; providers: string[]; passkeys: { id: string; name: string | null; created_at: number }[] } | null;
+  user?: {
+    email: string | null;
+    name: string;
+    providers: string[];
+    passkeys: { id: string; name: string | null; created_at: number }[];
+    tokens: { id: string; prefix: string; created_at: number; last_used_at: number | null }[];
+  } | null;
 }
 
 export type PageId = "home" | "mine" | "dev" | "faq" | "terms" | "privacy" | "file" | "album" | "login" | "account" | "donate" | "notfound";

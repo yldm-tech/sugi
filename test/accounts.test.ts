@@ -523,3 +523,65 @@ describe("my files across devices", () => {
     expect(page).toContain("files in your account");
   });
 });
+
+describe("API tokens", () => {
+  const TK: Partial<Env> = { ...ON, ACCOUNT_FEATURES: "email,sync,tokens" };
+
+  it("are created from the website, shown once, used as Bearer, and revoked", async () => {
+    const cookie = `sugi_session=${await logIn("tokens@example.com")}`;
+    expect((await call(new Request(`${MAIN}/api/me/tokens`, { method: "POST", headers: { cookie, ...ORIGIN } }), ON)).status).toBe(404);
+    const created = await call(new Request(`${MAIN}/api/me/tokens`, { method: "POST", headers: { cookie, ...ORIGIN } }), TK);
+    expect(created.status).toBe(201);
+    const { id, token, prefix } = await created.json<{ id: string; token: string; prefix: string }>();
+    expect(token).toMatch(/^sugi_[A-Za-z0-9_-]{40}$/);
+    expect(token.startsWith(prefix)).toBe(true);
+    expect(await env.DB.prepare("SELECT 1 FROM api_tokens WHERE token_hash = ?").bind(token).first()).toBeNull();
+
+    const bearer = { authorization: `Bearer ${token}` };
+    expect(await (await call(new Request(`${MAIN}/api/me`, { headers: bearer }), TK)).json()).toMatchObject({ email: "tokens@example.com", via: null });
+    // A token cannot mint more tokens or delete the account.
+    expect((await call(new Request(`${MAIN}/api/me/tokens`, { method: "POST", headers: bearer }), TK)).status).toBe(403);
+    // Uploads with the token belong to the account (and still pass through the upload gate's own token check here).
+    const up = await call(
+      new Request(`${MAIN}/api/upload`, { method: "PUT", body: png(), headers: { ...bearer, accept: "application/json", "cf-connecting-ip": freshIp() } }),
+      { ...TK, UPLOAD_TOKEN: undefined },
+    );
+    const { id: fileId } = await up.json<{ id: string }>();
+    const files = await (await call(new Request(`${MAIN}/api/me/files`, { headers: bearer }), TK)).json<{ files: { id: string }[] }>();
+    expect(files.files.map((f) => f.id)).toContain(fileId);
+    expect(await (await call(new Request(`${MAIN}/account?lang=en`, { headers: { cookie } }), TK)).text()).toContain(`data-token-delete="${id}"`);
+
+    expect((await call(new Request(`${MAIN}/api/me/tokens/${id}`, { method: "DELETE", headers: { cookie, ...ORIGIN } }), TK)).status).toBe(200);
+    expect((await call(new Request(`${MAIN}/api/me`, { headers: bearer }), TK)).status).toBe(401);
+    // With the tokens feature off, sugi_ tokens are not accepted at all.
+    expect((await call(new Request(`${MAIN}/api/me`, { headers: bearer }), ON)).status).toBe(401);
+  });
+
+  it("a token with the admin role works like ADMIN_TOKEN", async () => {
+    const cookie = `sugi_session=${await logIn("maintainer@example.com")}`;
+    const { id, token } = await (await call(new Request(`${MAIN}/api/me/tokens`, { method: "POST", headers: { cookie, ...ORIGIN } }), TK)).json<{
+      id: string;
+      token: string;
+    }>();
+    const bearer = { authorization: `Bearer ${token}` };
+    const up = await upload(png());
+    expect((await call(new Request(`${MAIN}/admin/info/f/${up.id}`, { headers: bearer }), TK)).status).toBe(401);
+    await env.DB.prepare("UPDATE api_tokens SET role = 'admin' WHERE id = ?").bind(id).run();
+    expect((await call(new Request(`${MAIN}/admin/info/f/${up.id}`, { headers: bearer }), TK)).status).toBe(200);
+    const list = await call(
+      new Request(`${MAIN}/mcp`, {
+        method: "POST",
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }),
+        headers: { ...bearer, "content-type": "application/json", accept: "application/json, text/event-stream", "mcp-protocol-version": "2025-06-18" },
+      }),
+      { ...TK, FEATURE_CLI: "1" },
+    );
+    expect(((await list.json<any>()).result.tools as { name: string }[]).map((t) => t.name)).toContain("takedown");
+    // Admin tokens are never rate limited.
+    const ip = freshIp();
+    for (let i = 0; i < 12; i++)
+      expect((await call(new Request(`${MAIN}/api/upload`, { method: "PUT", body: png(), headers: { ...bearer, "cf-connecting-ip": ip } }), TK)).status).toBe(
+        201,
+      );
+  });
+});

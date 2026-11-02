@@ -13,7 +13,7 @@
 
 set -uo pipefail
 
-SUGI_CLI_VERSION="1.0.0"
+SUGI_CLI_VERSION="1.1.0"
 BASE="${SUGI_URL:-https://sugi.moe}"
 BASE="${BASE%/}"
 CONF_DIR="${SUGI_CONFIG_DIR:-$HOME/.config/sugi}"
@@ -42,7 +42,7 @@ sugi: upload images and short videos to ${BASE#*://}
   sugi album TITLE FILE|ID|LINK...   upload files (or reuse links) and make one share link
   sugi ls [--json]               uploads made from this machine
   sugi rm ID|LINK...             delete uploads made from this machine
-  sugi login [TOKEN]             save an API token (create one at $BASE/dev)
+  sugi login [TOKEN]             save an API token (create one at $BASE/account)
   sugi logout                    forget the saved token
   sugi version
 
@@ -330,11 +330,20 @@ cmd_rm() {
 cmd_login() {
   local t="${1:-}"
   if [ -z "$t" ]; then
-    say "在 $BASE/dev 生成一个 API 令牌，粘贴到这里：" "Create an API token at $BASE/dev and paste it here:"
+    say "在 $BASE/account 创建一个 API 令牌，粘贴到这里：" "Create an API token at $BASE/account and paste it here:"
     IFS= read -r -s t
     printf '\n'
   fi
   case "$t" in sugi_*) ;; *) err "这不像 sugi 的 API 令牌（应该以 sugi_ 开头）" "that does not look like a sugi API token (sugi_...)"; exit 1 ;; esac
+  # Check the token before keeping it; it goes to curl through a private config file, never the command line.
+  local cfg="$TMPDIR_SUGI/login.cfg"
+  (umask 077; printf 'header = "Authorization: Bearer %s"\n' "$t" >"$cfg")
+  local code
+  code="$(curl -sS -K "$cfg" -o "$TMPDIR_SUGI/me.json" -w '%{http_code}' "$BASE/api/me")" || code=000
+  if [ "$code" != 200 ]; then
+    err "这个令牌用不了（$code），去 $BASE/account 看看" "the server did not accept this token ($code); check $BASE/account"
+    exit 1
+  fi
   umask 077
   printf 'token=%s\n' "$t" >"$CONF_DIR/config"
   say "✿ 好啦，之后传的文件会进到你的账号" "✿ saved; uploads from now on go to your account"

@@ -16,7 +16,17 @@ import { installScript } from "./site/install";
 import { handleMcp } from "./mcp";
 import { handleInboxRead, receiveEmail, sweepInbox } from "./inbox";
 import { handleMagicRequest, handleMagicVerify } from "./auth/email";
-import { handleClaim, handleDeleteAccount, handleDeletePasskey, handleLogout, handleMe, handleMyAlbums, handleMyFiles } from "./auth/me";
+import {
+  handleClaim,
+  handleCreateToken,
+  handleDeleteAccount,
+  handleDeleteToken,
+  handleDeletePasskey,
+  handleLogout,
+  handleMe,
+  handleMyAlbums,
+  handleMyFiles,
+} from "./auth/me";
 import { handlePasskeyLoginOptions, handlePasskeyLoginVerify, handlePasskeyRegisterOptions, handlePasskeyRegisterVerify } from "./auth/passkey";
 import { handleOAuthCallback, handleOAuthStart, type Provider } from "./auth/oauth";
 
@@ -113,6 +123,15 @@ async function routeApi(request: Request, env: Env, pathname: string): Promise<R
   if (pathname === "/api/me/claim") {
     if (method === "POST") return handleClaim(request, env);
     throw methodNotAllowed("POST");
+  }
+  if (pathname === "/api/me/tokens") {
+    if (method === "POST") return handleCreateToken(request, env);
+    throw methodNotAllowed("POST");
+  }
+  const myToken = /^\/api\/me\/tokens\/([a-z0-9]{10})$/.exec(pathname);
+  if (myToken) {
+    if (method === "DELETE") return handleDeleteToken(request, env, myToken[1]);
+    throw methodNotAllowed("DELETE");
   }
   const myPasskey = /^\/api\/me\/passkeys\/([A-Za-z0-9_-]{1,512})$/.exec(pathname);
   if (myPasskey) {

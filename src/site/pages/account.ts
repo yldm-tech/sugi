@@ -35,6 +35,24 @@ function providerButtons(ctx: Ctx, skip: string, link = false): string {
   return `<div class="row-actions center">${live.map(([id, name]) => `<a class="mini" href="/auth/${id}">${link ? t(`关联 ${name}`, `Link ${name}`) : t(`用 ${name} 登录`, `Log in with ${name}`)}</a>`).join("")}</div>`;
 }
 
+function tokenSection(ctx: Ctx): string {
+  const t = tr(ctx);
+  const tokens = ctx.user?.tokens ?? [];
+  const fail = esc(t("操作没有成功，再试一次吧。", "That did not work; please try again."));
+  const day = (ms: number | null) => (ms ? new Date(ms).toISOString().slice(0, 10) : t("还没用过", "never"));
+  const list = tokens.length
+    ? `<ul class="keys">${tokens
+        .map(
+          (k) =>
+            `<li><span><code class="chip">${esc(k.prefix)}…</code> · <span class="nw">${t("创建于", "created")} ${day(k.created_at)}</span> · <span class="nw">${t("最近使用", "last used")} ${day(k.last_used_at)}</span></span><button type="button" class="mini danger" data-token-delete="${esc(k.id)}" data-confirm="${esc(t("吊销这个令牌？用它的命令行和脚本会立刻失效。", "Revoke this token? The CLI and scripts using it stop working at once."))}" data-fail="${fail}">${t("吊销", "Revoke")}</button></li>`,
+        )
+        .join("")}</ul>`
+    : `<p class="small">${t("API 令牌让命令行 sugi 和你的脚本以这个账号的身份上传：sugi login 令牌。", "API tokens let the sugi CLI and your scripts upload as this account: sugi login TOKEN.")}</p>`;
+  return `<div class="stack8"><p class="optlabel">${t("API 令牌", "API tokens")}</p>${list}
+<div class="new-token stack8" id="new-token" hidden><p class="small">${t("新令牌只显示这一次，请现在复制保存：", "The new token is shown only this once; copy it now:")}</p><div class="urlform"><input id="new-token-value" readonly aria-label="API token"><button type="button" data-token-copy data-done="${esc(t("已复制", "Copied"))}">${t("复制", "Copy")}</button></div></div>
+<div class="row-actions"><button type="button" class="mini" data-token-create data-fail="${fail}">${t("创建令牌", "Create a token")}</button></div></div>`;
+}
+
 function passkeySection(ctx: Ctx): string {
   const t = tr(ctx);
   const keys = ctx.user?.passkeys ?? [];
@@ -43,7 +61,7 @@ function passkeySection(ctx: Ctx): string {
     ? `<ul class="keys">${keys
         .map(
           (k) =>
-            `<li><span>${esc(k.name === "synced passkey" ? t("同步的通行密钥", "Synced passkey") : t("设备上的通行密钥", "Device passkey"))} · ${new Date(k.created_at).toISOString().slice(0, 10)}</span><button type="button" class="mini danger" data-passkey-delete="${esc(k.id)}" data-fail="${fail}">${t("删除", "Remove")}</button></li>`,
+            `<li><span>${esc(k.name === "synced passkey" ? t("同步的通行密钥", "Synced passkey") : t("设备上的通行密钥", "Device passkey"))} · <span class="nw">${new Date(k.created_at).toISOString().slice(0, 10)}</span></span><button type="button" class="mini danger" data-passkey-delete="${esc(k.id)}" data-fail="${fail}">${t("删除", "Remove")}</button></li>`,
         )
         .join("")}</ul>`
     : `<p class="small">${t("还没有通行密钥。用指纹、面容或设备密码就能登录，不用等邮件。", "No passkeys yet. Log in with your fingerprint, face or device PIN instead of waiting for an email.")}</p>`;
@@ -104,7 +122,8 @@ export function accountPage(ctx: Ctx): Page {
 ${u.providers.length ? `<p class="small">${t("登录方式", "Log in with")}${t("：", ": ")}${u.providers.map((p) => esc(PROVIDER_NAMES[p] ?? p)).join(" · ")}</p>` : ""}
 ${providerButtons(ctx, u.providers.join(","), true)}
 ${ctx.flags.account.includes("passkey") ? passkeySection(ctx) : ""}
-<p class="small">${t("登录状态下新上传的文件会记在这个账号下。在多台设备上查看和管理它们的功能还在路上。", "New uploads made while logged in are recorded under this account. Seeing and managing them across devices is on its way.")}</p>
+${ctx.flags.account.includes("tokens") ? tokenSection(ctx) : ""}
+<p class="small">${ctx.flags.account.includes("sync") ? t('登录状态下新上传的文件会记在这个账号下，在 <a href="/mine" data-nav>我的文件</a> 里换设备也能看到。', 'New uploads made while logged in are recorded under this account; see them on any device under <a href="/mine" data-nav>My files</a>.') : t("登录状态下新上传的文件会记在这个账号下。", "New uploads made while logged in are recorded under this account.")}</p>
 <form method="post" action="/auth/logout"><button class="mini" type="submit">${t("退出登录", "Log out")}</button></form>
 <details class="danger-zone"><summary>${t("删除账号", "Delete account")}</summary>
 <p class="small">${t("删除账号会删掉你的登录方式、通行密钥和会话。上传的文件默认保留（链接继续有效），勾选下面一项则一起删除。", "Deleting the account removes its logins, passkeys and sessions. Uploaded files stay (their links keep working) unless you tick the box below.")}</p>

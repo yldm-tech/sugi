@@ -195,8 +195,15 @@ ${codeBlock(ctx, [
   { kind: "cmd", text: "sugi rm k3x9qa2m" },
   ...(ctx.flags.account.includes("tokens")
     ? [
-        { kind: "comment" as const, text: t("# 登录账号，之后传的都会同步（可选）", "# log in so uploads go to your account (optional)"), gap: true },
-        { kind: "cmd" as const, text: "sugi login" },
+        {
+          kind: "comment" as const,
+          text: t(
+            "# 在账号页创建 API 令牌，之后传的都进你的账号（可选）",
+            "# create an API token on your account page so uploads go to your account (optional)",
+          ),
+          gap: true,
+        },
+        { kind: "cmd" as const, text: "sugi login sugi_…" },
       ]
     : []),
 ])}
