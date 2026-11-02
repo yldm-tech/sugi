@@ -17,6 +17,7 @@ import { quotas } from "../../quota";
 import { BRAND_ICONS } from "../brand-icons";
 import { brand } from "../../config";
 import { type Ctx, type Page, pageTitle, tr } from "../layout";
+import { picgoConfig, sharexConfig, uploadEndpoint } from "../integrations";
 
 const MiB = 1024 * 1024;
 
@@ -141,7 +142,7 @@ ${
 <p class="lead">${t(`HTTP API 和网页用的是同一套规则：不登录也能直接用，单个文件最大 ${maxMb} MB，只收图片和短视频（PNG、JPEG、WebP、GIF、AVIF、MP4、WebM，按内容识别格式）。`, `The HTTP API follows the same rules as the website: no account needed, up to ${maxMb} MB per file, images and short videos only (PNG, JPEG, WebP, GIF, AVIF, MP4, WebM, detected from the content).`)}${videoRule(ctx) ? `${ctx.lang === "zh" ? "" : " "}${videoRule(ctx)}${ctx.flags.video === "account" ? t("API 和命令行带上账号页创建的令牌（Authorization: Bearer sugi_…）就行，没有令牌的视频上传会得到 403。", " For the API and the CLI, send a token from the account page (Authorization: Bearer sugi_…); video uploads without one get 403.") : ""}` : ""}</p>
 ${ctx.gated ? `<p class="lead">${t('这个网站的上传接口需要请求头 <code class="chip">Authorization: Bearer &lt;token&gt;</code>，匿名请求会得到 401。', 'Uploads on this site need <code class="chip">Authorization: Bearer &lt;token&gt;</code>; anonymous requests get 401.')}</p>` : ""}
 </section>
-${ctx.flags.cli ? `<div class="seg big" data-tabs="dev" role="tablist"><button type="button" class="on" data-tab="api" role="tab">HTTP API</button><button type="button" data-tab="cli" role="tab">${t("命令行 CLI", "CLI")}</button><button type="button" data-tab="mcp" role="tab">MCP</button></div>` : ""}
+<div class="seg big" data-tabs="dev" role="tablist"><button type="button" class="on" data-tab="api" role="tab">HTTP API</button>${ctx.flags.cli ? `<button type="button" data-tab="cli" role="tab">${t("命令行 CLI", "CLI")}</button><button type="button" data-tab="mcp" role="tab">MCP</button>` : ""}<button type="button" data-tab="tools" role="tab">${t("工具", "Tools")}</button></div>
 
 <section class="stack" data-panel="dev:api">
 <h2 class="h2">${t("上传", "Upload")}</h2>
@@ -189,7 +190,7 @@ ${quotaLine(ctx)}
     `The original <code class="chip">POST /upload</code> keeps working: PNG, JPEG, WebP and GIF only, up to 20 MB, links look like ${main}/&lt;content hash&gt;.png, the same content always gets the same link, and there is no delete token.`,
   )}</p>
 </section>
-${ctx.flags.cli ? cliPanel(ctx) + mcpPanel(ctx) : ""}`;
+${ctx.flags.cli ? cliPanel(ctx) + mcpPanel(ctx) : ""}${toolsPanel(ctx)}`;
   return {
     id: "dev",
     title: pageTitle(ctx, "开发者", "Developers"),
@@ -289,5 +290,96 @@ ${tool("delete_file", t("用上传时拿到的 delete_token 删除文件", "Dele
 </div>
 <h2 class="h2 gap">${t("试着这样说", "Try saying")}</h2>
 <div class="chat"><div class="me">${t("把这几张截图传到 sugi，打包成一个链接，标题叫「周报配图」", "Upload these screenshots to sugi and bundle them into one link titled “Weekly report”")}</div><div class="bot">${t("传好啦，一共 4 张～", "Done, 4 pictures~")}<br><span class="link">${ctx.env.MAIN_ORIGIN}/a/w8k2ru5d</span></div></div>
+</section>`;
+}
+
+// Upload tools that speak to the HTTP API (ShareX, PicGo/PicList, uPic), or to the CLI (Typora), and Obsidian through PicGo.
+function toolsPanel(ctx: Ctx): string {
+  const t = tr(ctx);
+  const api = uploadEndpoint(ctx.env);
+  const tokens = ctx.flags.account.includes("tokens");
+  const json = (obj: Record<string, unknown>): Line[] => {
+    const keys = Object.keys(obj);
+    return [
+      { kind: "json", text: "{" },
+      ...keys.map((k, i) => {
+        const v = obj[k];
+        const value =
+          typeof v === "object" && v !== null
+            ? `{ ${Object.entries(v)
+                .map(([a, b]) => `<span class="k">"${esc(a)}"</span>: ${str(String(b))}`)
+                .join(", ")} }`
+            : str(String(v));
+        return jsonLine(k, value, 2, i === keys.length - 1);
+      }),
+      { kind: "json", text: "}" },
+    ];
+  };
+  const field = (label: string, value: string) => `<div class="apirow"><span>${label}</span><code>${esc(value)}</code></div>`;
+  const picgo = picgoConfig(ctx.env);
+  return `<section class="stack" data-panel="dev:tools" hidden>
+<p class="lead">${t(
+    `这些工具都用同一个接口：向 <code class="chip">${esc(api)}</code> 用 multipart 发送字段 <code class="chip">file</code>，带上请求头 <code class="chip">Accept: application/json</code>，从返回的 JSON 里取 <code class="chip">url</code>。`,
+    `All of these use the same request: a multipart POST of the field <code class="chip">file</code> to <code class="chip">${esc(api)}</code> with <code class="chip">Accept: application/json</code>, reading the link from <code class="chip">url</code> in the JSON answer.`,
+  )}${
+    ctx.flags.video !== "anyone"
+      ? ctx.flags.video === "account" && tokens
+        ? t(
+            '要传视频，或者让上传记在账号下，再加一个请求头 <code class="chip">Authorization: Bearer sugi_…</code>（在 <a href="/account" data-nav>账号页</a> 创建令牌）。',
+            ' To upload videos, or to record uploads under your account, add the header <code class="chip">Authorization: Bearer sugi_…</code> (create a token on the <a href="/account" data-nav>account page</a>).',
+          )
+        : t("不带令牌时只能传图片。", " Without a token they upload images only.")
+      : ""
+  }</p>
+
+<h2 class="h2 gap">ShareX</h2>
+<p class="lead">${t(
+    '下载 <a href="/integrations/sharex.sxcu" download>sharex.sxcu</a>，双击就会导入 ShareX，再在「目标 → 图片上传目标」里选「自定义图片上传器」。内容如下：',
+    'Download <a href="/integrations/sharex.sxcu" download>sharex.sxcu</a> and double-click it to import it into ShareX, then pick “Custom image uploader” under Destinations → Image uploader. It contains:',
+  )}</p>
+${codeBlock(ctx, json(sharexConfig(ctx.env)))}
+
+<h2 class="h2 gap">PicGo / PicList</h2>
+<p class="lead">${t(
+    "在「插件设置」里搜索安装 <b>web-uploader</b>（自定义 Web 图床），然后在图床设置里填：",
+    "Install the plugin <b>web-uploader</b> (custom web uploader) under Plugins, then set:",
+  )}</p>
+<div class="card apitable">
+${field(t("API 地址", "API URL"), picgo.url)}
+${field(t("POST 参数名", "POST field name"), picgo.paramName)}
+${field(t("JSON 路径", "JSON path"), picgo.jsonPath)}
+${field(t("自定义请求头", "Custom headers"), picgo.customHeader)}
+</div>
+
+${
+  ctx.flags.cli
+    ? `<h2 class="h2 gap">Typora</h2>
+<p class="lead">${t(
+        '先装好 <a href="#cli">命令行 sugi</a>，然后在 Typora 的「偏好设置 → 图像 → 上传服务」里选 Custom Command，命令填：',
+        'Install the <a href="#cli">sugi CLI</a>, then in Typora pick Custom Command under Preferences → Image → Image Uploader and enter:',
+      )}</p>
+${codeBlock(ctx, [{ kind: "cmd", text: "~/.local/bin/sugi up --plain --no-copy" }])}
+<p class="small">${t(
+        "--plain 让 sugi 每行只输出一个链接，Typora 就是从输出里读链接的。点「验证图片上传选项」可以先试一下。也可以选 PicGo.app，按上面的 PicGo 设置来。",
+        "--plain makes sugi print one bare link per line, which is what Typora reads. “Test Uploader” tries it out. Picking PicGo.app with the PicGo settings above works too.",
+      )}</p>`
+    : ""
+}
+
+<h2 class="h2 gap">uPic</h2>
+<p class="lead">${t("在「偏好设置 → 图床」里点 + 添加「自定义」，填：", "Under Preferences → Hosts, add a Custom host with:")}</p>
+<div class="card apitable">
+${field(t("API 地址", "API URL"), api)}
+${field(t("请求方式", "Request method"), "POST")}
+${field(t("文件字段名", "File field name"), "file")}
+${field(t("请求头", "Headers"), "Accept: application/json")}
+${field(t("URL 路径", "URL path"), '["url"]')}
+</div>
+
+<h2 class="h2 gap">Obsidian</h2>
+<p class="lead">${t(
+    "装社区插件 <b>Image auto upload</b>，上传器选 PicGo（或 PicList），先按上面设置好 PicGo。之后粘贴或拖进笔记的图片会自动传到这里，换成链接。",
+    "Install the community plugin <b>Image auto upload</b> and pick PicGo (or PicList) as the uploader, with PicGo set up as above. Images you paste or drop into a note are then uploaded here and replaced by their links.",
+  )}</p>
 </section>`;
 }

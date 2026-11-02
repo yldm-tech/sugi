@@ -1447,6 +1447,12 @@ function initTabs() {
   }
 }
 
+// In-page links to a tab (e.g. href="#cli" on the developer page) switch to it.
+window.addEventListener("hashchange", () => {
+  const want = location.hash.slice(1);
+  for (const seg of $$("[data-tabs]")) if (want && $(`button[data-tab="${CSS.escape(want)}"]`, seg)) selectTab(seg, want);
+});
+
 function initPage() {
   CFG.page = $("#main")?.dataset.page || CFG.page;
   pageTitle = document.title;

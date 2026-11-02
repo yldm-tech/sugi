@@ -42,6 +42,9 @@ printf '%s' "$out" | grep -q 'piped.png' && pass "upload from stdin with --name"
 json="$("$sugi" up --json "$work/a.png")"
 printf '%s' "$json" | grep -q '"delete_token":"d_' && pass "--json prints the full response" || fail "--json: $json"
 
+plain="$("$sugi" up --plain --no-copy "$work/a.png" 2>/dev/null)"
+printf '%s\n' "$plain" | grep -Eqx 'https?://[^ ]+\.png' && [ "$(printf '%s\n' "$plain" | wc -l | tr -d ' ')" = 1 ] && pass "--plain prints only the link (Typora)" || fail "--plain: $plain"
+
 printf '<svg xmlns="http://www.w3.org/2000/svg"/>' >"$work/x.svg"
 if "$sugi" up --no-copy "$work/x.svg" 2>"$work/err"; then fail "svg accepted"; else grep -q '415' "$work/err" && pass "svg refused with a non-zero exit" || fail "svg error: $(cat "$work/err")"; fi
 if "$sugi" up --no-copy "$work/a.png" "$work/missing.png" >/dev/null 2>&1; then fail "missing file did not fail"; else pass "a missing file makes the exit code non-zero"; fi

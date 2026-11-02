@@ -147,6 +147,16 @@ sugi ls ; sugi rm <id>
 
 The CLI needs only bash and curl and talks to the instance it was installed from. The MCP server at `https://<host>/mcp` (Streamable HTTP, stateless) offers `upload_file`, `upload_url`, `create_album`, `get_file` and `delete_file`; for example `claude mcp add --transport http sugi https://<host>/mcp`.
 
+
+### Upload tools
+
+Every instance documents these on `/dev#tools`, filled in with its own address. They all send the same request: a multipart POST of the field `file` to `https://<host>/api/upload` with `Accept: application/json`, reading the link from `url`. Add `Authorization: Bearer sugi_…` (a personal API token) to upload videos or to record uploads under your account.
+
+- **ShareX**: import `https://<host>/integrations/sharex.sxcu` (double-click the downloaded file).
+- **PicGo / PicList**: plugin `web-uploader` with API URL `https://<host>/api/upload`, field name `file`, JSON path `url` and custom header `{"Accept":"application/json"}`.
+- **Typora**: Preferences → Image → Image Uploader → Custom Command `~/.local/bin/sugi up --plain --no-copy` (`--plain` prints one bare link per line), or PicGo.app.
+- **uPic**: a Custom host with that API URL, POST, file field `file`, header `Accept: application/json` and URL path `["url"]`.
+- **Obsidian**: the community plugin Image auto upload, with PicGo or PicList set up as above.
 ## Development
 
 ```sh
