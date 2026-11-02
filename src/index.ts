@@ -4,6 +4,8 @@ import { handleFileDelete, handleFileInfo, handleFileServe, handleUploadPost, ha
 import { errorResponse, HttpError, methodNotAllowed } from "./http";
 import { handleInfo, handleLegacyDelete, handleLegacyServe, handleLegacyUpload, handlePurgeBySource, LEGACY_KEY_RE } from "./legacy";
 import { handleSite } from "./site";
+import { ICONS } from "./site/og-images";
+import { fileHostRobotsTxt, robotsTxt, sitemapXml, webManifest } from "./site/seo";
 
 // Only the default handler may be exported from this module: workerd treats every named export of the main module as an entrypoint.
 
@@ -35,8 +37,15 @@ function matchFileOrigin(env: Env, url: URL): { temporary: boolean; name: string
 async function routeFileHost(request: Request, env: Env, m: { temporary: boolean; name: string; dedicatedHost: boolean }): Promise<Response> {
   if (request.method !== "GET" && request.method !== "HEAD") throw methodNotAllowed("GET, HEAD");
   if (m.dedicatedHost && m.name === "") return Response.redirect(env.MAIN_ORIGIN + "/", 302);
-  if (m.dedicatedHost && m.name === "robots.txt") return new Response("User-agent: *\nAllow: /\n", { headers: { "content-type": "text/plain; charset=utf-8" } });
-  return handleFileServe(request, env, m.temporary, m.name);
+  if (m.dedicatedHost && m.name === "robots.txt") return fileHostRobotsTxt();
+  // Uploads are never meant to be found through search engines.
+  const res = await handleFileServe(request, env, m.temporary, m.name).catch((err) => {
+    if (err instanceof HttpError) return errorResponse(request, err);
+    throw err;
+  });
+  const out = new Response(res.body, res);
+  out.headers.set("x-robots-tag", "noindex");
+  return out;
 }
 
 async function serveStatic(request: Request, env: Env, pathname: string): Promise<Response> {
@@ -46,7 +55,9 @@ async function serveStatic(request: Request, env: Env, pathname: string): Promis
   const out = new Response(res.body, res);
   out.headers.set("x-content-type-options", "nosniff");
   // Build output carries a content hash in its file name; everything else may change in place.
-  out.headers.set("cache-control", pathname.startsWith("/static/build/") ? "public, max-age=31536000, immutable" : "public, max-age=86400");
+  // Build output, OG images and icons carry a content hash in their file names.
+  const hashed = pathname.startsWith("/static/build/") || pathname.startsWith("/static/og/") || pathname.startsWith("/static/icons/");
+  out.headers.set("cache-control", hashed ? "public, max-age=31536000, immutable" : "public, max-age=86400");
   return out;
 }
 
@@ -98,8 +109,11 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (fileMatch) return routeFileHost(request, env, fileMatch);
 
   if (pathname.startsWith("/static/")) return serveStatic(request, env, pathname);
-  if (pathname === "/favicon.ico") return Response.redirect(new URL("/static/favicon.svg", url).toString(), 301);
-  if (pathname === "/robots.txt") return new Response("User-agent: *\nDisallow: /api/\nDisallow: /admin/\n", { headers: { "content-type": "text/plain; charset=utf-8" } });
+  if (pathname === "/favicon.ico") return serveStatic(new Request(new URL(ICONS.png32, url), request), env, ICONS.png32);
+  if (pathname === "/apple-touch-icon.png" || pathname === "/apple-touch-icon-precomposed.png") return serveStatic(new Request(new URL(ICONS.apple, url), request), env, ICONS.apple);
+  if (pathname === "/robots.txt") return robotsTxt(env);
+  if (pathname === "/sitemap.xml") return sitemapXml(env);
+  if (pathname === "/manifest.webmanifest") return webManifest();
   if (pathname.startsWith("/api/")) return routeApi(request, env, pathname);
   if (pathname === "/upload") {
     if (method === "POST" || method === "PUT") return handleLegacyUpload(request, env);
@@ -117,7 +131,12 @@ async function route(request: Request, env: Env): Promise<Response> {
   }
   const key = pathname.slice(1);
   if (LEGACY_KEY_RE.test(key)) {
-    if (method === "GET" || method === "HEAD") return handleLegacyServe(request, env, key);
+    if (method === "GET" || method === "HEAD") {
+      const res = await handleLegacyServe(request, env, key);
+      const out = new Response(res.body, res);
+      out.headers.set("x-robots-tag", "noindex");
+      return out;
+    }
     if (method === "DELETE") return handleLegacyDelete(request, env, key);
     throw methodNotAllowed("GET, HEAD, DELETE");
   }

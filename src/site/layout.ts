@@ -3,6 +3,7 @@ import { MAX_FILE_BYTES, RATE_LIMIT, RATE_LIMIT_PERIOD_SECONDS, SINGLE_REQUEST_M
 import { esc, jsonForScript, Lang } from "./i18n";
 import { clientStrings } from "./strings";
 import { HEART, LOGO, MOON, SUN } from "./svg";
+import { ICONS, OG_IMAGES } from "./og-images";
 
 export interface Flags {
   accounts: boolean;
@@ -26,6 +27,16 @@ export interface Page {
   title: string;
   main: string;
   status?: number;
+  /** Meta description; falls back to the site description. */
+  description?: string;
+  /** Keep out of search engines (user content, personal pages, errors). */
+  noindex?: boolean;
+  /** og:image override (absolute URL); defaults to the page's rendered OG image. */
+  ogImage?: string;
+  /** og:title override; user content pages use the site title instead of the file name. */
+  ogTitle?: string;
+  /** schema.org objects emitted as JSON-LD. */
+  jsonLd?: object[];
 }
 
 export function tr(ctx: Ctx): (zh: string, en: string) => string {
@@ -105,6 +116,50 @@ export function clientConfig(ctx: Ctx, page: PageId) {
   };
 }
 
+export function siteDescription(ctx: Ctx): string {
+  return tr(ctx)("匿名、免费、不用注册的图床：拖进来就能拿到图片和短视频的直链，可以永久保存，也可以 1 小时到 3 天后自动消失。", "Anonymous, free image host with no sign-up: drop in a picture or short video and get a direct link, kept forever or deleted after 1 hour to 3 days.");
+}
+
+/** Pages that search engines may index, with the OG image family they use. */
+export const INDEXABLE: Partial<Record<PageId, string>> = { home: "home", dev: "dev", faq: "faq", terms: "terms", privacy: "privacy", login: "home", donate: "home" };
+
+function langUrl(ctx: Ctx, lang: Lang | null): string {
+  const base = `${ctx.env.MAIN_ORIGIN}${ctx.path}`;
+  return lang ? `${base}?lang=${lang}` : base;
+}
+
+// <title>, description, canonical and hreflang alternates (?lang=zh / ?lang=en, x-default = Accept-Language), robots, Open Graph, Twitter card and JSON-LD.
+export function seoHead(ctx: Ctx, page: Page): string {
+  const t = tr(ctx);
+  const description = page.description ?? siteDescription(ctx);
+  const canonical = langUrl(ctx, ctx.lang);
+  const family = INDEXABLE[page.id] ?? "home";
+  const image = page.ogImage ?? `${ctx.env.MAIN_ORIGIN}${OG_IMAGES[`${family}-${ctx.lang}`] ?? OG_IMAGES[`home-${ctx.lang}`]}`;
+  const ogTitle = page.ogTitle ?? page.title;
+  const custom = Boolean(page.ogImage);
+  const tags = [
+    `<title>${esc(page.title)}</title>`,
+    `<meta name="description" content="${esc(description)}">`,
+    page.noindex ? `<meta name="robots" content="noindex, nofollow">` : `<link rel="canonical" href="${esc(canonical)}">`,
+    ...(page.noindex ? [] : [`<link rel="alternate" hreflang="zh" href="${esc(langUrl(ctx, "zh"))}">`, `<link rel="alternate" hreflang="en" href="${esc(langUrl(ctx, "en"))}">`, `<link rel="alternate" hreflang="x-default" href="${esc(langUrl(ctx, null))}">`]),
+    `<meta property="og:site_name" content="sugi.moe">`,
+    `<meta property="og:type" content="website">`,
+    `<meta property="og:title" content="${esc(ogTitle)}">`,
+    `<meta property="og:description" content="${esc(description)}">`,
+    `<meta property="og:url" content="${esc(canonical)}">`,
+    `<meta property="og:image" content="${esc(image)}">`,
+    ...(custom ? [] : [`<meta property="og:image:width" content="1200">`, `<meta property="og:image:height" content="630">`, `<meta property="og:image:alt" content="${esc(t("仓仓趴在纸箱里", "The sugi hamster peeking out of its box"))}">`]),
+    `<meta property="og:locale" content="${ctx.lang === "zh" ? "zh_CN" : "en_US"}">`,
+    `<meta property="og:locale:alternate" content="${ctx.lang === "zh" ? "en_US" : "zh_CN"}">`,
+    `<meta name="twitter:card" content="summary_large_image">`,
+    `<meta name="twitter:title" content="${esc(ogTitle)}">`,
+    `<meta name="twitter:description" content="${esc(description)}">`,
+    `<meta name="twitter:image" content="${esc(image)}">`,
+    ...(page.jsonLd ?? []).map((o) => `<script type="application/ld+json">${jsonForScript(o)}</script>`),
+  ];
+  return tags.join("\n");
+}
+
 export function documentHtml(ctx: Ctx, page: Page): string {
   const t = tr(ctx);
   const nonce = esc(ctx.nonce);
@@ -114,10 +169,12 @@ export function documentHtml(ctx: Ctx, page: Page): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="strict-origin-when-cross-origin">
-<meta name="description" content="${esc(t("匿名、免费、不用注册的可爱图床：图片和短视频直链。", "A cute anonymous host for images and short videos. No account needed."))}">
+${seoHead(ctx, page)}
 <meta name="theme-color" content="#F6F4EA">
-<title>${esc(page.title)}</title>
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="${ICONS.png32}">
+<link rel="apple-touch-icon" href="${ICONS.apple}">
+<link rel="manifest" href="/manifest.webmanifest">
 <link rel="preload" as="font" type="font/woff2" href="/static/fonts/zcool-kuaile-subset.woff2" crossorigin>
 <link rel="stylesheet" href="${ASSETS.css}" nonce="${nonce}">
 <script nonce="${nonce}">${THEME_BOOT}</script>

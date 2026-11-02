@@ -22,7 +22,8 @@ describe("page CSP", () => {
     expect(res.headers.get("cache-control")).toBe("private, no-cache");
     expect(res.headers.get("x-frame-options")).toBe("DENY");
     const html = await res.text();
-    const scripts = [...html.matchAll(/<script\b([^>]*)>/g)].map((m) => m[1]);
+    // JSON-LD blocks are data, not code; everything else must be ours and carry the nonce.
+    const scripts = [...html.matchAll(/<script\b([^>]*)>/g)].map((m) => m[1]).filter((a) => a !== ' type="application/ld+json"');
     expect(scripts).toEqual([` nonce="${nonce}"`, ' type="application/json" id="sugi-config"', ` type="module" src="${ASSETS.js}" nonce="${nonce}"`]);
     expect(html).toContain(`<link rel="stylesheet" href="${ASSETS.css}" nonce="${nonce}">`);
     expect(html).not.toMatch(/<style\b/);
@@ -178,7 +179,8 @@ describe("static files", () => {
     expect(font.headers.get("cache-control")).toBe("public, max-age=86400");
     expect((await page("/static/nope.js")).status).toBe(404);
     const fav = await page("/favicon.ico");
-    expect(fav.status).toBe(301);
+    expect(fav.status).toBe(200);
+    expect(fav.headers.get("content-type")).toBe("image/png");
   });
 });
 

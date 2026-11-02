@@ -103,12 +103,14 @@ ${rows.map(([path, desc]) => `<div class="apirow"><code>${esc(path)}</code><span
     `The original <code class="chip">POST /upload</code> keeps working: PNG, JPEG, WebP and GIF only, up to 20 MB, links look like ${main}/&lt;content hash&gt;.png, the same content always gets the same link, and there is no delete token.`,
   )}</p>
 </section>`;
-  return { id: "dev", title: t("开发者 · sugi.moe", "Developers · sugi.moe"), main: html };
+  return { id: "dev", title: t("开发者 · sugi.moe", "Developers · sugi.moe"), main: html, description: t("sugi.moe 的 HTTP API：curl 一行上传图片和视频，返回直链和删除凭证；支持临时文件、链接搬运、打包链接和分片上传。", "The sugi.moe HTTP API: upload images and videos with one curl command and get a direct link and a delete token; temporary files, link import, albums and chunked uploads.") };
 }
 
-function faqItem(q: string, a: string): string {
-  return `<details class="card"><summary>${q}</summary><p>${a}</p></details>`;
+function faqItem(q: string, a: string): { q: string; a: string } {
+  return { q, a };
 }
+
+const stripTags = (html: string) => html.replace(/<[^>]+>/g, "").replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)));
 
 export function faqPage(ctx: Ctx): Page {
   const t = tr(ctx);
@@ -133,9 +135,17 @@ export function faqPage(ctx: Ctx): Page {
 <p class="lead">${t('没找到答案的话，写信到 <a href="mailto:hi@sugi.moe">hi@sugi.moe</a>。', 'Didn\'t find your answer? Write to <a href="mailto:hi@sugi.moe">hi@sugi.moe</a>.')}</p>
 </section>
 <section class="faq">
-${items.join("\n")}
+${items.map((i) => `<details class="card"><summary>${i.q}</summary><p>${i.a}</p></details>`).join("\n")}
 </section>`;
-  return { id: "faq", title: t("问问题 · sugi.moe", "FAQ · sugi.moe"), main: html };
+  const jsonLd = [
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      inLanguage: ctx.lang === "zh" ? "zh-CN" : "en",
+      mainEntity: items.map((i) => ({ "@type": "Question", name: stripTags(i.q), acceptedAnswer: { "@type": "Answer", text: stripTags(i.a) } })),
+    },
+  ];
+  return { id: "faq", title: t("问问题 · sugi.moe", "FAQ · sugi.moe"), main: html, jsonLd, description: t("关于 sugi.moe 的常见问题：文件保存多久、能传什么格式、怎么删除、我们记录什么。", "Common questions about sugi.moe: how long files are kept, what you can upload, how to delete, and what we record.") };
 }
 
 export function termsPage(ctx: Ctx): Page {
@@ -159,7 +169,7 @@ export function termsPage(ctx: Ctx): Page {
 <ol class="card terms">
 ${items.map((i) => `<li>${i}</li>`).join("\n")}
 </ol>`;
-  return { id: "terms", title: t("使用条款 · sugi.moe", "Terms · sugi.moe"), main: html };
+  return { id: "terms", title: t("使用条款 · sugi.moe", "Terms · sugi.moe"), main: html, description: t("使用 sugi.moe 的规则：能传什么、不能传什么、文件会保存多久。", "The rules for using sugi.moe: what you may upload, what you may not, and how long files are kept.") };
 }
 
 export function notFoundPage(ctx: Ctx): Page {
@@ -171,7 +181,7 @@ export function notFoundPage(ctx: Ctx): Page {
 <p>${t("这个文件可能已经过期，被主人删掉了，或者链接抄错了一个字母。", "It may have expired, been deleted by its owner, or the link has a typo.")}</p>
 <div class="acts"><a class="btn big" href="/" data-nav>${t("回首页", "Home")}</a><a class="btn big ghost" href="/mine" data-nav>${t("看看我的文件", "My files")}</a></div>
 </section>`;
-  return { id: "notfound", title: t("找不到啦 · sugi.moe", "Not found · sugi.moe"), main: html, status: 404 };
+  return { id: "notfound", title: t("找不到啦 · sugi.moe", "Not found · sugi.moe"), main: html, status: 404, noindex: true };
 }
 
 // Visual only until accounts ship (FEATURE_ACCOUNTS); the buttons are not wired to anything yet.
