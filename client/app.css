@@ -2559,3 +2559,17 @@ html.night .theme-night {
   color: var(--danger);
   border-color: var(--danger-bg);
 }
+.danger-zone summary {
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--muted);
+}
+.danger-zone[open] {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.danger-zone .check {
+  font-size: 14px;
+  font-weight: 400;
+}

@@ -406,3 +406,54 @@ describe("passkeys", () => {
     expect(await env.DB.prepare("SELECT 1 FROM passkeys WHERE id = 'cred-1'").first()).toBeNull();
   });
 });
+
+describe("deleting the account", () => {
+  it("removes logins, passkeys and sessions, and optionally the uploads", async () => {
+    const keep = await logIn("leaver@example.com");
+    const keepCookie = `sugi_session=${keep}`;
+    const up = await (
+      await call(
+        new Request(`${MAIN}/api/upload`, {
+          method: "PUT",
+          body: png(),
+          headers: { cookie: keepCookie, ...ORIGIN, ...UPLOAD_AUTH, accept: "application/json", "cf-connecting-ip": freshIp() },
+        }),
+        ON,
+      )
+    ).json<{ id: string; url: string }>();
+    expect((await call(new Request(`${MAIN}/api/me`, { method: "DELETE", headers: { cookie: keepCookie } }), ON)).status).toBe(401);
+    const res = await call(
+      new Request(`${MAIN}/api/me`, { method: "DELETE", headers: { cookie: keepCookie, ...ORIGIN, "content-type": "application/json" }, body: "{}" }),
+      ON,
+    );
+    expect(await res.json()).toMatchObject({ deleted: true, deleted_files: 0 });
+    expect(res.headers.get("set-cookie")).toContain("Max-Age=0");
+    expect((await call(new Request(up.url))).status).toBe(200);
+    expect(await env.DB.prepare("SELECT 1 FROM users WHERE email = 'leaver@example.com'").first()).toBeNull();
+    expect((await call(new Request(`${MAIN}/api/me`, { headers: { cookie: keepCookie } }), ON)).status).toBe(401);
+
+    const all = await logIn("leaver2@example.com");
+    const allCookie = `sugi_session=${all}`;
+    const up2 = await (
+      await call(
+        new Request(`${MAIN}/api/upload`, {
+          method: "PUT",
+          body: png(),
+          headers: { cookie: allCookie, ...ORIGIN, ...UPLOAD_AUTH, accept: "application/json", "cf-connecting-ip": freshIp() },
+        }),
+        ON,
+      )
+    ).json<{ url: string }>();
+    const res2 = await call(
+      new Request(`${MAIN}/api/me`, {
+        method: "DELETE",
+        headers: { cookie: allCookie, ...ORIGIN, "content-type": "application/json" },
+        body: JSON.stringify({ delete_files: true }),
+      }),
+      ON,
+    );
+    expect(await res2.json()).toMatchObject({ deleted: true, deleted_files: 1 });
+    expect((await call(new Request(up2.url))).status).toBe(404);
+    expect(await (await call(new Request(`${MAIN}/account?lang=en`, { headers: { cookie: allCookie } }), ON)).text()).toContain('action="/auth/email"');
+  });
+});

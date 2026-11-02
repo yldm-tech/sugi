@@ -1521,4 +1521,4 @@ window.addEventListener("keydown", (e) => {
 
 initPage();
 
-if (CFG.flags.account?.includes("passkey")) initPasskeys(toast);
+if (CFG.flags.accounts) initPasskeys(toast);
