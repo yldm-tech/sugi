@@ -23,7 +23,7 @@
     "run_worker_first": true
   },
   "triggers": {
-    "crons": ["*/10 * * * *"]
+    "crons": ["*/10 * * * *", "5 0 * * *"]
   },
   "vars": {
     "SITE_NAME": "sugi.moe",
@@ -46,6 +46,8 @@
     "QUOTA_ANON_BYTES_PER_DAY": "1073741824",
     "QUOTA_ACCOUNT_BYTES_PER_DAY": "5368709120",
     "QUOTA_GLOBAL_BYTES_PER_DAY": "53687091200",
+    "ALERT_5XX_PER_HOUR": "20",
+    "ALERT_DAILY_UPLOAD_BYTES": "21474836480",
     "FEATURE_ACCOUNTS": "1",
     "ACCOUNT_FEATURES": "email,github,google,passkey,sync,tokens",
     "FEATURE_CLI": "1",

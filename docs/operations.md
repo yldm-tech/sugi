@@ -26,6 +26,8 @@
   | sugi trusted uploads skip rate limit（自定义规则，Skip） | `http_request_firewall_custom` | `27e91a99f7b8408fabc6039282a8087e` | `d16fcfbd3bc34e69a2bcbc3a5549a5fc` |
   | sugi upload rate limit per IP（速率规则，Block）         | `http_ratelimit`               | `ad7a86bc252e4cd08ddc0c1ca0e7678d` | `268641d130ef4e5d96184b7f1f57aa4d` |
 
+- **监控**：日报和告警发到 secret `OPS_EMAIL`（在 `secrets.env` 里），由 cron `5 0 * * *` 发前一天的日报，每 10 分钟检查一次告警。`/healthz` 可以接 UptimeRobot 一类的外部监控。日报和告警都走 Resend，与登录邮件共用每天 100 封的免费额度。
+- **Cloudflare 通知**（要在控制台里开，API 令牌没有 Notifications 权限）：Manage Account → Notifications → Add → Billing → Usage Based Billing，分别给 Workers、R2、D1 设阈值；以及 Workers Weekly Summary。
 
 ## Secrets
 

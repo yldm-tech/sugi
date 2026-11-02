@@ -13,6 +13,7 @@ export function robotsTxt(env: Env): Response {
     "Disallow: /mcp",
     "Disallow: /admin/",
     "Disallow: /auth/",
+    "Disallow: /healthz",
     "",
     `Sitemap: ${env.MAIN_ORIGIN}/sitemap.xml`,
     "",

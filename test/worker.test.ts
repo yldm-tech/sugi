@@ -2,7 +2,7 @@ import { env } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
 import { LEGACY_MAX_BYTES as MAX_BYTES } from "../src/limits";
-import { expectRateLimited } from "./helpers";
+import { expectRateLimited, testCtx } from "./helpers";
 
 const ORIGIN = "https://sugi.test";
 const UPLOAD_AUTH = { authorization: "Bearer test-upload-token" };
@@ -28,7 +28,7 @@ function pngBytes(size = 64): Uint8Array {
 }
 
 function call(request: Request, overrides: Partial<Env> = {}): Promise<Response> {
-  return worker.fetch(request as Parameters<typeof worker.fetch>[0], { ...env, ...overrides } as Env) as Promise<Response>;
+  return worker.fetch(request as Parameters<typeof worker.fetch>[0], { ...env, ...overrides } as Env, testCtx()) as Promise<Response>;
 }
 
 function putUpload(body: BodyInit, opts: { ip?: string; headers?: Record<string, string> } = {}): Request {
