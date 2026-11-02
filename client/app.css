@@ -2731,7 +2731,7 @@ html.night .theme-night {
   white-space: nowrap;
 }
 /* The "Open in Alipay" button is for phones; on a computer the QR code is the way. */
-@media (hover: hover) and (pointer: fine) {
+@media (min-width: 761px) and (hover: hover) and (pointer: fine) {
   .phone-only {
     display: none;
   }

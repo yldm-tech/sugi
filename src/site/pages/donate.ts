@@ -59,7 +59,8 @@ export function donatePage(ctx: Ctx, storage: StorageSnapshot): Page {
   const b = brand(ctx.env);
   const c = donateConfig(ctx.env);
   const site = esc(b.siteName);
-  const who = b.operator ? esc(b.operator) : t("维护者", "its maintainers");
+  // Latin names get spaces around them in Chinese text; 维护者 does not.
+  const who = b.operator ? t(` ${esc(b.operator)} `, esc(b.operator)) : t("维护者", "its maintainers");
   const rows: [string, string, string][] = [
     [
       t("R2 文件存储", "R2 file storage"),
@@ -106,7 +107,7 @@ ${c.alipayLink ? `<a class="btn${c.alipayQr ? " phone-only" : ""}" href="${esc(c
   const html = `<section class="center stack8">
 <h1 class="h1">${t("投喂仓仓", "Feed the hamster")}</h1>
 <p class="lead">${t(
-    `${site} 是 ${who} 业余运营的小服务：没有广告，不卖数据，也不靠它赚钱。现在的花费不多，大部分还在免费额度里。投喂全凭心意，会用来付域名，以及以后越存越多的文件。`,
+    `${site} 是${who}业余运营的小服务：没有广告，不卖数据，也不靠它赚钱。现在的花费不多，大部分还在免费额度里。投喂全凭心意，会用来付域名，以及以后越存越多的文件。`,
     `${site} is a hobby service run by ${who}: no ads, no selling data, no profit. It costs little for now, mostly within free tiers. Chipping in is entirely optional; it pays for the domain and for storage as it grows.`,
   )}</p>
 </section>
