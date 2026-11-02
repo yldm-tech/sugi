@@ -1,4 +1,5 @@
 import { MAX_FILE_BYTES } from "../../limits";
+import { ICON_FLOWER, ICON_HEART, ICON_LINK, ICON_SPARKLE } from "../icons";
 import { brand } from "../../config";
 import { esc } from "../i18n";
 import { type Ctx, homeTitle, type Page, siteDescription, tr } from "../layout";
@@ -21,7 +22,7 @@ export function homePage(ctx: Ctx): Page {
         ? t('视频要先 <a href="/login" data-nav>登录</a> 才能上传。', 'Videos need you to <a href="/login" data-nav>log in</a> first. ')
         : t("这里只能匿名上传图片。", "Anonymous uploads are images only. ");
   const main = `<section class="hero">
-<span class="deco d1" aria-hidden="true">✦</span><span class="deco d2" aria-hidden="true">♡</span><span class="deco d3" aria-hidden="true">✿</span><span class="deco d4" aria-hidden="true">✦</span>
+<span class="deco d1" aria-hidden="true">${ICON_SPARKLE(26)}</span><span class="deco d2" aria-hidden="true">${ICON_HEART(24)}</span><span class="deco d3" aria-hidden="true">${ICON_FLOWER(22)}</span><span class="deco d4" aria-hidden="true">${ICON_SPARKLE(20)}</span>
 <h1>${t("把图图交给仓仓吧～", "Hand your pics to the hamster~")}</h1>
 <div class="tagrow"><span class="tag">kawaii-sugi file host</span><span class="tagnote">${t("可爱过头的图床", "the cutest image host")}</span></div>
 <p class="facts">${(ctx.lang === "zh" ? ["匿名", "免费", "不用注册也能传", `单个文件最大 ${maxMb} MB`] : ["Anonymous", "free", "no sign-up", `up to ${maxMb} MB per file`]).map((x) => `<span class="nw">${x}</span>`).join(" · ")}</p>
@@ -34,7 +35,7 @@ ${mascotStage(t("今天屯点什么呢？", "What shall we stash today?"), t("�
 <div class="inner">
 <div class="dz-title" id="dz-title">${t("把图片和视频拖到这里", "Drop images and videos here")}</div>
 <div class="dz-hint"><span class="nw">${t("也可以", "or press")} <span class="kbd" id="paste-key">Ctrl + V</span></span><span class="nw">${t("直接粘贴截图哦", "to paste a screenshot")}</span></div>
-<div class="dz-btn">✿ ${t("选择文件", "Choose files")} ✿</div>
+<div class="dz-btn">${ICON_FLOWER(18)} ${t("选择文件", "Choose files")} ${ICON_FLOWER(18)}</div>
 </div>
 </div>
 <input type="file" id="file" multiple accept="image/png,image/jpeg,image/webp,image/gif,image/avif,video/mp4,video/webm" hidden>
@@ -59,7 +60,7 @@ ${ctx.gated ? `<p class="gate" id="gate">${t("这个网站目前只接受带令�
 </div>
 </div>
 <form class="urlform" id="urlform">
-<span class="ico" aria-hidden="true">🔗</span>
+<span class="ico">${ICON_LINK(18)}</span>
 <input name="url" type="url" inputmode="url" autocomplete="off" placeholder="${t("或者贴一个图片链接，仓仓帮你搬过来", "Or paste an image link and the hamster will fetch it")}" aria-label="${t("图片或视频链接", "Image or video link")}">
 <button type="submit">${t("搬过来", "Fetch")}</button>
 </form>
@@ -68,7 +69,7 @@ ${ctx.gated ? `<p class="gate" id="gate">${t("这个网站目前只接受带令�
 
 <section class="stack" id="results" hidden>
 <div class="results-head">
-<h2><span>${t("仓仓收到啦", "Stashed")} <span class="heart">♡</span></span><span class="progress-text" id="progress-text"></span></h2>
+<h2><span>${t("仓仓收到啦", "Stashed")} ${ICON_HEART(18)}</span><span class="progress-text" id="progress-text"></span></h2>
 <div class="row-actions">
 <button type="button" class="mini" id="album-session" hidden>${t("打包成一个链接", "Make one link for all")}</button>
 <button type="button" class="mini" id="copy-all">${t("复制全部", "Copy all")}</button>
@@ -80,9 +81,9 @@ ${ctx.gated ? `<p class="gate" id="gate">${t("这个网站目前只接受带令�
 </section>
 
 <section class="features">
-<div class="card feature"><div class="ic" aria-hidden="true">✿</div><div class="t">${ctx.flags.accounts ? t("登不登录都行", "Account optional") : t("不用注册", "No sign-up")}</div><div class="d">${ctx.flags.account.includes("sync") ? t("打开就能传。想换设备也不丢，再登录就好。", "Just open and upload. Log in later to keep your files across devices.") : ctx.flags.accounts ? t("打开就能传。登录后，新上传的文件会记在你的账号下。", "Just open and upload. Once you log in, new uploads are recorded under your account.") : t("打开就能传。记录存在这个浏览器里，可以导出备份。", "Just open and upload. Your history stays in this browser and can be exported.")}</div></div>
-<div class="card feature"><div class="ic" aria-hidden="true">✦</div><div class="t">${t("永久或临时", "Forever or for a while")}</div><div class="d">${t("默认永久保存，也能选 1 小时到 3 天，到期自动消失。", "Kept forever by default, or pick 1 hour to 3 days and it disappears on its own.")}</div></div>
-<div class="card feature"><div class="ic" aria-hidden="true">♡</div><div class="t">${t("要乖乖的哦", "Be nice")}</div><div class="d">${t(`禁止违法内容，详见 <a href="/terms" data-nav>使用条款</a>。`, `No illegal content. See the <a href="/terms" data-nav>terms</a>.`)}</div></div>
+<div class="card feature"><div class="ic">${ICON_FLOWER(20)}</div><div class="t">${ctx.flags.accounts ? t("登不登录都行", "Account optional") : t("不用注册", "No sign-up")}</div><div class="d">${ctx.flags.account.includes("sync") ? t("打开就能传。想换设备也不丢，再登录就好。", "Just open and upload. Log in later to keep your files across devices.") : ctx.flags.accounts ? t("打开就能传。登录后，新上传的文件会记在你的账号下。", "Just open and upload. Once you log in, new uploads are recorded under your account.") : t("打开就能传。记录存在这个浏览器里，可以导出备份。", "Just open and upload. Your history stays in this browser and can be exported.")}</div></div>
+<div class="card feature"><div class="ic">${ICON_SPARKLE(20)}</div><div class="t">${t("永久或临时", "Forever or for a while")}</div><div class="d">${t("默认永久保存，也能选 1 小时到 3 天，到期自动消失。", "Kept forever by default, or pick 1 hour to 3 days and it disappears on its own.")}</div></div>
+<div class="card feature"><div class="ic">${ICON_HEART(20)}</div><div class="t">${t("要乖乖的哦", "Be nice")}</div><div class="d">${t(`禁止违法内容，详见 <a href="/terms" data-nav>使用条款</a>。`, `No illegal content. See the <a href="/terms" data-nav>terms</a>.`)}</div></div>
 </section>
 
 <section class="terminal-card">
@@ -103,13 +104,13 @@ ${ctx.gated ? `<p class="gate" id="gate">${t("这个网站目前只接受带令�
 ${
   ctx.flags.cli
     ? `<div class="cmdl"><span class="ps">$ </span>sugi up cat.png</div>
-<div class="out">✿ ${filesHost}/k3x9qa2m.png${t("（已复制）", " (copied)")}</div>
+<div class="out">${filesHost}/k3x9qa2m.png${t("（已复制）", " (copied)")}</div>
 <div class="cmdl mt6"><span class="ps">$ </span>sugi up -e 1h secret.jpg</div>
-<div class="out">✿ ${tmpHost}/8fj2mz7q.jpg · ${t("1 小时后消失", "gone in 1 hour")}</div>`
+<div class="out">${tmpHost}/8fj2mz7q.jpg · ${t("1 小时后消失", "gone in 1 hour")}</div>`
     : `<div class="cmdl"><span class="ps">$ </span>curl -F file=@cat.png ${esc(ctx.env.MAIN_ORIGIN)}/api/upload</div>
-<div class="out">✿ ${esc(ctx.env.FILES_ORIGIN)}/k3x9qa2m.png</div>
+<div class="out">${esc(ctx.env.FILES_ORIGIN)}/k3x9qa2m.png</div>
 <div class="cmdl mt6"><span class="ps">$ </span>curl -F file=@secret.jpg -F expire=1h ${esc(ctx.env.MAIN_ORIGIN)}/api/upload</div>
-<div class="out">✿ ${esc(ctx.env.TMP_ORIGIN)}/8fj2mz7q.jpg · ${t("1 小时后消失", "gone in 1 hour")}</div>`
+<div class="out">${esc(ctx.env.TMP_ORIGIN)}/8fj2mz7q.jpg · ${t("1 小时后消失", "gone in 1 hour")}</div>`
 }
 </div>
 </section>`;

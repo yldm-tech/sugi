@@ -1,5 +1,6 @@
 // The donate page ("Feed the hamster"). It appears only when a payment method is configured (DONATE_ALIPAY_QR or DONATE_ALIPAY_LINK). A warm, simple page: what chipping in is for, a few playful amounts that only change the hint next to the QR code (no claims about what each buys, no progress bars), the QR code itself, and a thank-you list only when the operator configures one. Running costs and provider prices live in docs/operations.md, not here.
 import { brand } from "../../config";
+import { ICON_APPLE, ICON_CAKE, ICON_HEART, ICON_NEST, ICON_SEEDS } from "../icons";
 import { esc } from "../i18n";
 import { type Ctx, type Page, pageTitle, tr } from "../layout";
 import { hamsterFace } from "../svg";
@@ -35,11 +36,11 @@ export function donateOn(env: Env): boolean {
 }
 
 /** Suggested amounts (yuan): only a hint for what to type after scanning. */
-export const DONATE_AMOUNTS: { icon: string; zh: string; en: string; yuan: number }[] = [
-  { icon: "🌰", zh: "一把瓜子", en: "A handful of seeds", yuan: 6 },
-  { icon: "🍎", zh: "一个苹果", en: "An apple", yuan: 18 },
-  { icon: "🍰", zh: "一块蛋糕", en: "A slice of cake", yuan: 50 },
-  { icon: "🏠", zh: "一个小窝", en: "A little nest", yuan: 200 },
+export const DONATE_AMOUNTS: { icon: () => string; zh: string; en: string; yuan: number }[] = [
+  { icon: () => ICON_SEEDS(), zh: "一把瓜子", en: "A handful of seeds", yuan: 6 },
+  { icon: () => ICON_APPLE(), zh: "一个苹果", en: "An apple", yuan: 18 },
+  { icon: () => ICON_CAKE(), zh: "一块蛋糕", en: "A slice of cake", yuan: 50 },
+  { icon: () => ICON_NEST(), zh: "一个小窝", en: "A little nest", yuan: 200 },
 ];
 const DEFAULT_AMOUNT = 18;
 
@@ -52,7 +53,7 @@ export function donatePage(ctx: Ctx): Page {
   const amounts = `<div class="donate-amounts" role="radiogroup" aria-label="${t("选一份口粮", "Pick a snack")}" data-hint-zh="扫码后输入 ¥{n}" data-hint-en="Scan, then enter ¥{n}">
 ${DONATE_AMOUNTS.map(
   (a) =>
-    `<button type="button" class="card donate-amount${a.yuan === DEFAULT_AMOUNT ? " on" : ""}" role="radio" aria-checked="${a.yuan === DEFAULT_AMOUNT}" data-yuan="${a.yuan}"><span class="ic" aria-hidden="true">${a.icon}</span><span class="nm">${t(a.zh, a.en)}</span><span class="yuan">¥${a.yuan}</span></button>`,
+    `<button type="button" class="card donate-amount${a.yuan === DEFAULT_AMOUNT ? " on" : ""}" role="radio" aria-checked="${a.yuan === DEFAULT_AMOUNT}" data-yuan="${a.yuan}"><span class="ic">${a.icon()}</span><span class="nm">${t(a.zh, a.en)}</span><span class="yuan">¥${a.yuan}</span></button>`,
 ).join("\n")}
 </div>`;
   // 仓仓 with a little bowl of seeds.
@@ -78,7 +79,7 @@ ${c.alipayLink ? `<a class="btn${c.alipayQr ? " phone-only" : ""}" href="${esc(c
 <p class="small">${t("不投喂也完全没关系，常来玩就好。", "Not chipping in is completely fine; just come and play.")}</p>
 </div>
 </section>
-${c.thanks.length ? `<section class="stack8"><h2 class="h2">${t("谢谢这些好心人", "Thank you")} <span class="heart">♡</span></h2><div class="badges">${c.thanks.map((s) => `<span class="badge">${esc(s)}</span>`).join("")}</div></section>` : ""}`;
+${c.thanks.length ? `<section class="stack8"><h2 class="h2">${t("谢谢这些好心人", "Thank you")} ${ICON_HEART(18)}</h2><div class="badges">${c.thanks.map((s) => `<span class="badge">${esc(s)}</span>`).join("")}</div></section>` : ""}`;
   return {
     id: "donate",
     title: pageTitle(ctx, "投喂仓仓", "Feed the hamster"),
