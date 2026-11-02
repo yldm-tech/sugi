@@ -47,7 +47,9 @@ describe("/mcp", () => {
     expect(init.status).toBe(200);
     expect(init.body.result.serverInfo).toMatchObject({ name: "sugi" });
     const list = await rpc("tools/list", {});
-    expect(list.body.result.tools.map((t: { name: string }) => t.name).sort()).toEqual(["create_album", "delete_file", "get_file", "upload_file", "upload_url"]);
+    expect(list.body.result.tools.map((t: { name: string }) => t.name).sort()).toEqual(["create_album", "create_upload", "delete_file", "get_file", "upload_file", "upload_url"]);
+    const how = init.body.result.instructions as string;
+    for (const needle of ["sugi up", "/install.sh", "create_upload", "upload_url", "no SVG", "fonts"]) expect(how, needle).toContain(needle);
   });
 
   it("upload_file stores base64 data and delete_file removes it with the returned token", async () => {
@@ -103,6 +105,62 @@ describe("/mcp", () => {
     expect(anon.text).toContain("401");
     const ok = await tool("upload_file", { data: b64(png()) }, UPLOAD_AUTH);
     expect(ok.isError).toBeFalsy();
+  });
+
+  it("create_upload hands out one-time links that curl can upload local files to", async () => {
+    const made = await tool("create_upload", { count: 3, expire: "1h" });
+    expect(made.isError).toBeFalsy();
+    const links = made.data.links as { id: string; upload_url: string }[];
+    expect(links).toHaveLength(3);
+    expect(new Set(links.map((l) => l.id)).size).toBe(3);
+    expect(made.data.commands[0]).toBe(`curl -sS -T <path> '${links[0].upload_url}'`);
+    for (const l of links) expect(l.upload_url).toMatch(/^https:\/\/sugi\.moe\/api\/upload\/[A-Za-z0-9_-]+\.[0-9a-f]{64}$/);
+    const local = (u: string) => u.replace("https://sugi.moe", MAIN);
+
+    // Raw PUT, like curl -T.
+    const bytes = png(500);
+    const put = await call(new Request(local(links[0].upload_url) + "?name=shot.png", { method: "PUT", body: bytes }));
+    expect(put.status).toBe(201);
+    const up = await put.json<{ id: string; url: string; name: string; delete_token: string; expires_at: string }>();
+    expect(up).toMatchObject({ id: links[0].id, name: "shot.png" });
+    expect(up.url).toBe(`https://tmp.sugi.moe/${links[0].id}.png`);
+    expect(up.expires_at).not.toBeNull();
+    expect(new Uint8Array(await (await call(new Request(up.url))).arrayBuffer())).toEqual(bytes);
+    // Each link works once.
+    expect((await call(new Request(local(links[0].upload_url), { method: "PUT", body: png() }))).status).toBe(409);
+
+    // Multipart, like curl -F file=@path, keeps the file name.
+    const form = new FormData();
+    form.append("file", new File([png(300)], "from-disk.png", { type: "image/png" }));
+    const post = await call(new Request(local(links[1].upload_url), { method: "POST", body: form }));
+    expect(post.status).toBe(201);
+    expect(await post.json()).toMatchObject({ id: links[1].id, name: "from-disk.png", size: 300 });
+
+    // The same type checks as every upload.
+    expect((await call(new Request(local(links[2].upload_url), { method: "PUT", body: new TextEncoder().encode("<svg xmlns='http://www.w3.org/2000/svg'/>") }))).status).toBe(415);
+    const tampered = links[2].upload_url.replace(/\.([0-9a-f])/, (_, c: string) => `.${c === "0" ? "1" : "0"}`);
+    expect((await call(new Request(local(tampered), { method: "PUT", body: png() }))).status).toBe(404);
+
+    const del = await tool("delete_file", { id: up.id, delete_token: up.delete_token });
+    expect(del.data).toMatchObject({ deleted: up.id });
+  });
+
+  it("upload links expire and anonymous callers cannot reserve more than the rate limit", async () => {
+    const made = await tool("create_upload", { filename: "named.png" });
+    const link = (made.data.links[0].upload_url as string).replace("https://sugi.moe", MAIN);
+    const now = Date.now();
+    vi.spyOn(Date, "now").mockReturnValue(now + 11 * 60 * 1000);
+    expect((await call(new Request(link, { method: "PUT", body: png() }))).status).toBe(410);
+    vi.restoreAllMocks();
+    const ok = await call(new Request(link, { method: "PUT", body: png() }));
+    expect(await ok.json()).toMatchObject({ name: "named.png", expires_at: null });
+
+    const tooMany = await tool("create_upload", { count: 11 }, UPLOAD_AUTH);
+    expect(tooMany.isError).toBe(true);
+    expect(tooMany.text).toContain("429");
+    const trusted = await tool("create_upload", { count: 50 });
+    expect(trusted.data.links).toHaveLength(50);
+    expect((await tool("create_upload", { count: 51 })).isError).toBe(true);
   });
 
   it("answers GET with 405 since it is stateless", async () => {

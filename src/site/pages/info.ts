@@ -1,5 +1,5 @@
 import { MCP_MAX_BYTES } from "../../mcp";
-import { ALBUM_MAX_FILES, MAX_FILE_BYTES, RATE_LIMIT, RATE_LIMIT_PERIOD_SECONDS, SINGLE_REQUEST_MAX_BYTES, WAF_LIMIT, WAF_PERIOD_SECONDS } from "../../limits";
+import { ALBUM_MAX_FILES, MAX_FILE_BYTES, RATE_LIMIT, RATE_LIMIT_PERIOD_SECONDS, SINGLE_REQUEST_MAX_BYTES, UPLOAD_LINK_MAX, UPLOAD_LINK_TTL_SECONDS, WAF_LIMIT, WAF_PERIOD_SECONDS } from "../../limits";
 import { esc } from "../i18n";
 import { Ctx, Page, tr } from "../layout";
 import { LOST_HAMSTER, peekHamster } from "../svg";
@@ -47,6 +47,7 @@ export function devPage(ctx: Ctx): Page {
     ["POST /api/uploads?size=…", t(`分片上传（${singleMb} MB 以上、最多 ${maxMb} MB）：请求体是第一片（5 到 ${singleMb} MB），返回 upload 会话、片大小和片数`, `Chunked upload for files over ${singleMb} MB (up to ${maxMb} MB): the body is part 1 (5 to ${singleMb} MB); returns an upload session, the part size and the part count`)],
     ["PUT /api/uploads/:n", t("上传第 n 片，请求头 Sugi-Upload: 会话；返回这一片的 etag", "Upload part n with the header Sugi-Upload: <session>; returns the part's etag")],
     ["POST /api/uploads/complete", t('结束分片上传，请求头带会话，JSON {"etags": [...]}；返回和 /api/upload 一样的结果。DELETE /api/uploads 放弃', 'Finish a chunked upload with the session header and JSON {"etags": [...]}; returns the same as /api/upload. DELETE /api/uploads aborts')],
+    ["PUT /api/upload/<link>", t(`上传到 MCP 工具 create_upload 给的一次性链接：请求体就是文件（也可以用 multipart 的 file 字段），${UPLOAD_LINK_TTL_SECONDS / 60} 分钟内有效，只能用一次，返回和 /api/upload 一样的 JSON`, `Upload to a one-time link from the MCP tool create_upload: the body is the file (or a multipart "file" field), valid for ${UPLOAD_LINK_TTL_SECONDS / 60} minutes and only once; returns the same JSON as /api/upload`)],
     ["GET /api/files/:id", t("读取文件信息（链接、大小、类型、过期时间）", "File info (link, size, type, expiry)")],
     ["DELETE /api/files/:id", t("删除文件，需要请求头 Sugi-Token: delete_token", "Delete a file; needs the header Sugi-Token: <delete_token>")],
     ["POST /api/albums", t(`用 files=id1,id2（最多 ${ALBUM_MAX_FILES} 个）和可选 title 打包成一个分享链接，返回链接和删除凭证`, `Make one share link from files=id1,id2 (up to ${ALBUM_MAX_FILES}) and an optional title; returns the link and a delete token`)],
@@ -144,7 +145,7 @@ function mcpPanel(ctx: Ctx): string {
   const mcp = `${ctx.env.MAIN_ORIGIN}/mcp`;
   const tool = (name: string, desc: string) => `<div class="card feature"><code class="toolname">${name}</code><span class="d">${desc}</span></div>`;
   return `<section class="stack" data-panel="dev:mcp" hidden>
-<p class="lead">${t(`接上 sugi 的 MCP 服务后，AI 助手可以直接上传文件、搬运链接、建打包链接，然后把链接交给你。服务地址是 <code class="chip">${mcp}</code>（Streamable HTTP）。MCP 一次最多传 ${MCP_MAX_BYTES / MiB} MB；要传本地的大文件，让 AI 直接用命令行 sugi up。`, `Connect the sugi MCP server and your AI assistant can upload files, fetch links and make albums, then hand you the links. The server lives at <code class="chip">${mcp}</code> (Streamable HTTP). It takes up to ${MCP_MAX_BYTES / MiB} MB per file; for bigger local files, have the AI run the sugi CLI.`)}</p>
+<p class="lead">${t(`接上 sugi 的 MCP 服务后，AI 助手可以直接上传文件、搬运链接、建打包链接，然后把链接交给你。服务地址是 <code class="chip">${mcp}</code>（Streamable HTTP）。AI 能跑命令时，传本地文件最快的是命令行 <code class="chip">sugi up</code>；没装命令行就用 <code class="chip">create_upload</code> 拿一次性上传链接，再用 curl 把文件传上去，几十个文件也只要一次工具调用。<code class="chip">upload_file</code>（base64，最大 ${MCP_MAX_BYTES / MiB} MB）只适合 AI 自己生成的小内容。`, `Connect the sugi MCP server and your AI assistant can upload files, fetch links and make albums, then hand you the links. The server lives at <code class="chip">${mcp}</code> (Streamable HTTP). If the AI can run commands, the fastest way to upload local files is the <code class="chip">sugi up</code> CLI; without it, <code class="chip">create_upload</code> hands out one-time upload links that curl can send files to, dozens of files in one tool call. <code class="chip">upload_file</code> (base64, up to ${MCP_MAX_BYTES / MiB} MB) is only for small content the AI generated itself.`)}</p>
 <div class="results-head"><h2 class="h2">${t("接入", "Connect")}</h2><div class="seg" data-tabs="mcp" role="tablist"><button type="button" class="on" data-tab="code" role="tab">Claude Code</button><button type="button" data-tab="desktop" role="tab">Claude Desktop</button><button type="button" data-tab="cursor" role="tab">Cursor</button></div></div>
 <div data-panel="mcp:code">${codeBlock(ctx, [
   { kind: "cmd", text: `claude mcp add --transport http sugi ${mcp}` },
@@ -171,7 +172,8 @@ ${codeBlock(ctx, [
 ])}</div>
 <h2 class="h2 gap">${t("仓仓会的工具", "Tools")}</h2>
 <div class="features">
-${tool("upload_file", t(`上传 base64 内容（最大 ${MCP_MAX_BYTES / MiB} MB），可选 expire`, `Upload base64 content (up to ${MCP_MAX_BYTES / MiB} MB), optional expire`))}
+${tool("create_upload", t(`给本地文件要一次性上传链接（一次最多 ${UPLOAD_LINK_MAX} 个，${UPLOAD_LINK_TTL_SECONDS / 60} 分钟内有效），用 curl -T 上传`, `One-time upload links for local files (up to ${UPLOAD_LINK_MAX} per call, valid ${UPLOAD_LINK_TTL_SECONDS / 60} minutes), uploaded with curl -T`))}
+${tool("upload_file", t(`上传 base64 内容（最大 ${MCP_MAX_BYTES / MiB} MB），只适合 AI 生成的小文件`, `Upload base64 content (up to ${MCP_MAX_BYTES / MiB} MB), for small generated content`))}
 ${tool("upload_url", t("把网上的图片或视频搬到 sugi", "Copy an image or video from the web to sugi"))}
 ${tool("create_album", t("把几个文件打包成一个分享链接", "Bundle files into one share link"))}
 ${tool("get_file", t("查文件的链接、大小和过期时间", "Look up a file's link, size and expiry"))}
