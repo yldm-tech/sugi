@@ -110,11 +110,16 @@ ${paid.length > 1 ? `<p class="small">${t(`合计约 ${usd(Math.round(total * 10
 </div>`
       : "";
 
+  // Only bars with some usage: a bar at zero says nothing (the same rule as for costs).
   const usage = [
-    bar(t("R2 文件存储", "R2 file storage"), size(n.storage.bytes), `${R2_FREE_GB_MONTH} GB`, n.storage.bytes / (R2_FREE_GB_MONTH * 1024 ** 3)),
-    ...(n.mail
+    ...(n.storage.bytes > 0
+      ? [bar(t("R2 文件存储", "R2 file storage"), size(n.storage.bytes), `${R2_FREE_GB_MONTH} GB`, n.storage.bytes / (R2_FREE_GB_MONTH * 1024 ** 3))]
+      : []),
+    ...(n.mail && n.mail.today > 0
+      ? [bar(t("今天发出的邮件", "Emails sent today"), String(n.mail.today), String(RESEND_FREE_PER_DAY), n.mail.today / RESEND_FREE_PER_DAY)]
+      : []),
+    ...(n.mail && n.mail.month > 0
       ? [
-          bar(t("今天发出的邮件", "Emails sent today"), String(n.mail.today), String(RESEND_FREE_PER_DAY), n.mail.today / RESEND_FREE_PER_DAY),
           bar(
             t(
               `本月发出的邮件${n.mail.countedSince.endsWith("-01") ? "" : `（${n.mail.countedSince.slice(5).replace("-", " 月 ")} 日起统计）`}`,
@@ -127,11 +132,17 @@ ${paid.length > 1 ? `<p class="small">${t(`合计约 ${usd(Math.round(total * 10
         ]
       : []),
   ];
-  const usageBlock = `<div class="card donate-costs">
+  const emailBars = Boolean(n.mail && (n.mail.today > 0 || n.mail.month > 0));
+  const usageBlock = usage.length
+    ? `<div class="card donate-costs">
 <div class="t">${t("免费额度用了多少", "How much of the free tiers is used")}</div>
 <ul class="usage">${usage.join("")}</ul>
-<p class="small">${t(`存储量 ${new Date(n.storage.at).toISOString().slice(0, 10)} 统计，每隔几个小时更新；邮件按 UTC 日和月计。`, `Storage measured ${new Date(n.storage.at).toISOString().slice(0, 10)} and refreshed every few hours; emails count by UTC day and month.`)}</p>
-</div>`;
+<p class="small">${t(
+        `存储量 ${new Date(n.storage.at).toISOString().slice(0, 10)} 统计，每隔几个小时更新${emailBars ? "；邮件按 UTC 日和月计" : ""}。`,
+        `Storage measured ${new Date(n.storage.at).toISOString().slice(0, 10)} and refreshed every few hours${emailBars ? "; emails count by UTC day and month" : ""}.`,
+      )}</p>
+</div>`
+    : "";
 
   const next: [string, string, string, string][] = [
     [

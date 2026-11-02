@@ -153,6 +153,9 @@ describe("pages", () => {
   });
 
   it("the donate page shows the payment method and only costs it can compute", async () => {
+    // Something stored (and measured afresh), so the storage bar has something to show.
+    await upload();
+    await env.DB.prepare("DELETE FROM ops_state WHERE name = 'storage'").run();
     const cfg = {
       DONATE_ALIPAY_QR: "https://files.sugi.moe/qrcode.webp",
       DONATE_ALIPAY_LINK: "https://qr.alipay.com/test",
@@ -169,6 +172,9 @@ describe("pages", () => {
     expect(html).not.toContain("现在每月实际花费");
     expect(html).toContain("免费额度用了多少");
     expect(html).toMatch(/<progress max="1000" value="\d+">/);
+    // Bars only where something is used: no email went out in this test, so no email bars.
+    expect(html).not.toContain("今天发出的邮件");
+    expect(html).not.toContain("本月发出的邮件");
     expect(html).toContain("超过免费额度后要付的钱");
     expect(html).toContain("Workers Paid");
     expect(html).not.toContain("谢谢这些好心人");
