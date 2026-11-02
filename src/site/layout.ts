@@ -19,7 +19,7 @@ export interface Ctx {
   path: string;
 }
 
-export type PageId = "home" | "mine" | "dev" | "faq" | "terms" | "file" | "album" | "login" | "donate" | "notfound";
+export type PageId = "home" | "mine" | "dev" | "faq" | "terms" | "privacy" | "file" | "album" | "login" | "donate" | "notfound";
 
 export interface Page {
   id: PageId;
@@ -70,7 +70,7 @@ export function header(ctx: Ctx, current: PageId): string {
 ${navLink(ctx, "/", ["home"], current, t("上传", "Upload"))}
 ${navLink(ctx, "/mine", ["mine", "album"], current, t("我的文件", "My files"))}
 ${navLink(ctx, "/dev", ["dev"], current, t("开发者", "Developers"))}
-${navLink(ctx, "/faq", ["faq", "terms"], current, t("问问题", "FAQ"))}
+${navLink(ctx, "/faq", ["faq", "terms", "privacy"], current, t("问问题", "FAQ"))}
 ${ctx.flags.donate ? navLink(ctx, "/donate", ["donate"], current, t("投喂 ♡", "Feed ♡")) : ""}
 ${ctx.flags.accounts ? navLink(ctx, "/login", ["login"], current, t("登录", "Log in"), " login") : ""}
 <a class="lang" href="?lang=${other}" hreflang="${other}" id="lang-switch" title="${t("Switch to English", "切换到中文")}">${other === "en" ? "EN" : "中"}</a>
@@ -86,6 +86,7 @@ export function footer(ctx: Ctx): string {
 <nav>
 <a href="/faq" data-nav>${t("问问题", "FAQ")}</a>
 <a href="/terms" data-nav>${t("使用条款", "Terms")}</a>
+<a href="/privacy" data-nav>${t("隐私政策", "Privacy")}</a>
 <a href="/dev" data-nav>${t("开发者", "Developers")}</a>
 ${ctx.flags.donate ? `<a href="/donate" data-nav>${t("投喂仓仓", "Feed the hamster")}</a>` : ""}
 </nav>

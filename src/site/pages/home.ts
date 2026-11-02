@@ -49,6 +49,7 @@ ${ctx.gated ? `<p class="gate" id="gate">${t("暂未开放匿名上传：服务�
 <input name="url" type="url" inputmode="url" autocomplete="off" placeholder="${t("或者贴一个图片链接，仓仓帮你搬过来", "Or paste an image link and the hamster will fetch it")}" aria-label="${t("图片或视频链接", "Image or video link")}">
 <button type="submit">${t("搬过来", "Fetch")}</button>
 </form>
+<p class="small agree">${t('上传的文件都是公开的。上传即表示同意 <a href="/terms" data-nav>使用条款</a> 和 <a href="/privacy" data-nav>隐私政策</a>。', 'Uploads are public. By uploading you agree to the <a href="/terms" data-nav>terms</a> and the <a href="/privacy" data-nav>privacy policy</a>.')}</p>
 </section>
 
 <section class="stack" id="results" hidden>

@@ -181,3 +181,26 @@ describe("static files", () => {
     expect(fav.status).toBe(301);
   });
 });
+
+describe("privacy policy", () => {
+  it("renders in both languages, is linked everywhere and never shows the review notes", async () => {
+    const { PRIVACY } = await import("../src/site/pages/privacy");
+    for (const lang of ["zh", "en"] as const) {
+      const html = await (await page("/privacy", lang === "zh" ? zh : {})).text();
+      expect(html).toContain(lang === "zh" ? "隐私政策" : "Privacy policy");
+      expect(html).toContain("HMAC");
+      expect(html).toContain("abuse@sugi.moe");
+      expect(html).toContain("sugi_lang");
+      expect(html).not.toContain("sugi_session");
+      for (const s of PRIVACY) for (const p of s.paras) if (p.review) expect(html).not.toContain(p.review);
+    }
+    for (const path of ["/", "/faq", "/terms"]) expect(await (await page(path, zh)).text(), path).toContain('href="/privacy"');
+    expect(await (await page("/login", zh, { FEATURE_ACCOUNTS: "1" })).text()).toContain('href="/privacy"');
+  });
+
+  it("describes accounts only when accounts are on", async () => {
+    const on = await (await page("/privacy", zh, { FEATURE_ACCOUNTS: "1" })).text();
+    expect(on).toContain("sugi_session");
+    expect(on).toContain("通行密钥的公钥");
+  });
+});

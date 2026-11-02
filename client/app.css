@@ -441,3 +441,8 @@ html.night .theme-night { display: none; }
 .code .i6 { padding-left: 6ch; }
 .qrcard > div:last-child { flex: 1; min-width: 160px; display: flex; flex-direction: column; gap: 6px; }
 #album-delete, #file-delete { align-self: flex-start; padding-left: 20px; padding-right: 20px; }
+.agree { text-align: center; margin-top: -6px; }
+.agree a, .small a { font-weight: 700; }
+.policy { padding: 18px 22px; border-radius: 24px; }
+.policy h2 { font-size: 21px; margin-bottom: 6px; }
+.policy p { margin: 8px 0 0; font-size: 14px; line-height: 1.8; color: var(--ink2); overflow-wrap: anywhere; }

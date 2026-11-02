@@ -5,6 +5,7 @@ import { pickLang, readCookie } from "./i18n";
 import { Ctx, documentHtml, flagsOf, Page, pageCsp } from "./layout";
 import { albumPage, filePage, minePage } from "./pages/files";
 import { homePage } from "./pages/home";
+import { privacyPage } from "./pages/privacy";
 import { devPage, donatePage, faqPage, loginPage, notFoundPage, termsPage } from "./pages/info";
 
 export const LANG_COOKIE = "sugi_lang";
@@ -29,6 +30,8 @@ async function resolvePage(ctx: Ctx, pathname: string): Promise<Page> {
       return faqPage(ctx);
     case "/terms":
       return termsPage(ctx);
+    case "/privacy":
+      return privacyPage(ctx);
     case "/login":
       return ctx.flags.accounts ? loginPage(ctx) : notFoundPage(ctx);
     case "/donate":
