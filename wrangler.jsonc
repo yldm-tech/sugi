@@ -48,7 +48,7 @@
     "TMP_ORIGIN": "https://tmp.sugi.moe",
     // Feature flags for parts of the design that ship in later phases. "1" turns a feature on.
     "FEATURE_ACCOUNTS": "0",
-    "FEATURE_CLI": "0",
+    "FEATURE_CLI": "1",
     "FEATURE_DONATE": "0"
   },
   "d1_databases": [

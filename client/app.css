@@ -446,3 +446,8 @@ html.night .theme-night { display: none; }
 .policy { padding: 18px 22px; border-radius: 24px; }
 .policy h2 { font-size: 21px; margin-bottom: 6px; }
 .policy p { margin: 8px 0 0; font-size: 14px; line-height: 1.8; color: var(--ink2); overflow-wrap: anywhere; }
+.toolname { font-size: 14px; font-weight: 600; color: var(--link-dk); }
+.chat { display: flex; flex-direction: column; gap: 10px; }
+.chat .me { align-self: flex-end; max-width: 80%; background: var(--green); color: #fff; border-radius: 22px 22px 6px 22px; padding: 12px 18px; font-size: 15px; line-height: 1.6; }
+.chat .bot { align-self: flex-start; max-width: 80%; background: #fff; border: 2.5px solid var(--line); border-radius: 22px 22px 22px 6px; padding: 12px 18px; font-size: 15px; line-height: 1.7; }
+.chat .link { font-family: var(--f-brand); font-weight: 600; color: var(--link); }

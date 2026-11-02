@@ -49,7 +49,23 @@ JSON 返回 `{"id", "url", "page", "size", "type", "name", "expires_at", "delete
 
 生产环境不需要令牌。`UPLOAD_TOKEN` 是可选的上传闸门：设置后所有上传都要带 `Authorization: Bearer <UPLOAD_TOKEN>`（现在只在本地 `.dev.vars` 里用来测闸门）。维护者和代为上传的 agent 用 `TRUSTED_TOKEN`，它能过闸门且不受任何频率限制。
 
-### 客户端脚本
+### 命令行 sugi 和 MCP（`FEATURE_CLI=1` 时开放）
+
+```sh
+curl -fsSL https://sugi.moe/install.sh | sh     # 装到 ~/.local/bin/sugi，校验 SHA-256
+sugi up cat.png dog.gif                         # 每个文件一行链接，自动复制到剪贴板
+sugi up -e 1h --cute secret.jpg                 # 临时、可爱链接名
+sugi up --clipboard                             # 剪贴板里的截图（macOS osascript，Linux wl-paste/xclip）
+cat cat.png | sugi up - --name cat.png          # 从管道读
+sugi album "猫猫合集" *.png                     # 上传并打包；参数也可以是已有的 id 或链接
+sugi ls / sugi rm <id>                          # 删除凭证在 ~/.config/sugi/history.jsonl
+```
+
+`sugi` 是一个只依赖 bash 和 curl 的脚本（`public/static/cli/sugi`，macOS 自带的 bash 3.2 也能跑），超过 90 MB 自动分片。令牌依次取 `SUGI_TOKEN`、`sugi login` 保存的令牌、`~/.config/sugi/secrets.env` 里的 `TRUSTED_TOKEN`（维护者用）；令牌通过权限 600 的临时 curl 配置文件传给 curl，不出现在进程列表里。`/install.sh` 由 Worker 生成，里面写死了构建时算出的 CLI SHA-256。
+
+MCP 服务在 `https://sugi.moe/mcp`（Streamable HTTP，无状态，用官方 `@modelcontextprotocol/sdk`），工具有 `upload_file`（base64，最大 20 MB）、`upload_url`、`create_album`、`get_file`、`delete_file`（需要上传时返回的 `delete_token`）。上传类工具和 HTTP API 走同一套闸门和限流，用请求自己的 `Authorization` 头。接入：`claude mcp add --transport http sugi https://sugi.moe/mcp`；Claude Desktop 通过 `npx -y mcp-remote https://sugi.moe/mcp`；Cursor 在 `~/.cursor/mcp.json` 里写 `{"mcpServers":{"sugi":{"url":"https://sugi.moe/mcp"}}}`。WAF 规则不覆盖 `/mcp`，因为一次会话里有很多非上传的请求；上传次数由 Worker 限流控制。
+
+### 客户端脚本 bin/sugi-upload
 
 `bin/sugi-upload` 用旧接口 `/upload`，一次上传一个或多个图片，每个文件输出一行链接（顺序与参数一致），任何一个失败都以非零退出码结束。curl 带 10 秒连接超时和 120 秒总超时，令牌通过 stdin 交给 curl，不会出现在进程列表里。
 
@@ -142,6 +158,8 @@ TMP_ORIGIN=http://localhost:8787/_tmp
 ```
 
 `wrangler dev` 和 `wrangler deploy` 都会先执行 `scripts/build-client.mjs`（`client/` → `public/static/build/`，并生成 `src/generated/assets.ts`）。改了 `wrangler.jsonc` 后跑 `npm run types`。
+
+命令行的端到端检查（临时安装目录和配置目录，只传合成文件，最后全部删除）：`SUGI_TOKEN=<令牌> scripts/cli-e2e.sh http://localhost:8787`（本地 `.dev.vars` 里要有 `FEATURE_CLI=1`）。
 
 端到端检查（每次现场生成随机内容的合成文件，只删除自己创建的对象；新 API 的文件用各自的删除凭证删除）：
 

@@ -1,0 +1,355 @@
+#!/usr/bin/env bash
+# sugi: upload images and short videos to sugi.moe from the terminal.
+#
+#   sugi up [-e 1h|12h|72h] [--cute] [--name NAME] [--clipboard] [--json] [--no-copy] FILE...|-
+#   sugi album [--json] TITLE FILE|ID|LINK...
+#   sugi ls [--json]
+#   sugi rm ID|LINK...
+#   sugi login [TOKEN]   sugi logout   sugi version
+#
+# Needs bash and curl. Delete tokens are kept in ~/.config/sugi/history.jsonl, so `sugi rm` can only delete what this machine uploaded (or what your account owns once you `sugi login`).
+#
+# Environment: SUGI_URL (default https://sugi.moe), SUGI_TOKEN (sent as Authorization: Bearer), SUGI_CONFIG_DIR (default ~/.config/sugi).
+
+set -uo pipefail
+
+SUGI_CLI_VERSION="1.0.0"
+BASE="${SUGI_URL:-https://sugi.moe}"
+BASE="${BASE%/}"
+CONF_DIR="${SUGI_CONFIG_DIR:-$HOME/.config/sugi}"
+HISTORY="$CONF_DIR/history.jsonl"
+ALBUMS="$CONF_DIR/albums.jsonl"
+SINGLE_MAX=$((90 * 1024 * 1024))
+PART_MB=50
+MAX_FILE=$((200 * 1024 * 1024))
+
+case "${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}" in zh*) ZH=1 ;; *) ZH=0 ;; esac
+say() { if [ "$ZH" = 1 ]; then printf '%s\n' "$1"; else printf '%s\n' "$2"; fi; }
+err() { if [ "$ZH" = 1 ]; then printf 'sugi: %s\n' "$1" >&2; else printf 'sugi: %s\n' "$2" >&2; fi; }
+
+usage() {
+  cat <<'EOF'
+sugi: upload images and short videos to sugi.moe
+
+  sugi up [options] FILE...      upload; prints one link per file and copies them
+      -e, --expire 1h|12h|72h    delete after this long (default: keep forever)
+      --cute                     cute link names (word-word-NN, easier to guess)
+      --name NAME                display name (useful with "-" for stdin)
+      --clipboard                upload the image on the clipboard
+      --json                     print the full JSON responses
+      --no-copy                  do not copy links to the clipboard
+      -                          read the file from stdin
+  sugi album TITLE FILE|ID|LINK...   upload files (or reuse links) and make one share link
+  sugi ls [--json]               uploads made from this machine
+  sugi rm ID|LINK...             delete uploads made from this machine
+  sugi login [TOKEN]             save an API token (create one at https://sugi.moe/dev)
+  sugi logout                    forget the saved token
+  sugi version
+
+Environment: SUGI_URL, SUGI_TOKEN, SUGI_CONFIG_DIR
+EOF
+}
+
+command -v curl >/dev/null 2>&1 || { err "需要 curl" "curl is required"; exit 2; }
+mkdir -p "$CONF_DIR" && chmod 700 "$CONF_DIR" 2>/dev/null
+
+TMPDIR_SUGI="$(mktemp -d "${TMPDIR:-/tmp}/sugi.XXXXXX")"
+trap 'rm -rf "$TMPDIR_SUGI"' EXIT
+
+# Token: SUGI_TOKEN, then the saved login, then (for maintainers) TRUSTED_TOKEN from secrets.env.
+token="${SUGI_TOKEN:-}"
+if [ -z "$token" ] && [ -r "$CONF_DIR/config" ]; then token="$(sed -n 's/^token=//p' "$CONF_DIR/config" | head -n1)"; fi
+if [ -z "$token" ] && [ -r "$CONF_DIR/secrets.env" ]; then token="$(sed -n 's/^TRUSTED_TOKEN=//p' "$CONF_DIR/secrets.env" | head -n1)"; fi
+
+# The token goes to curl through a config file (mode 600), never on the command line.
+CURLCFG="$TMPDIR_SUGI/curl.cfg"
+: >"$CURLCFG"
+chmod 600 "$CURLCFG"
+[ -n "$token" ] && printf 'header = "Authorization: Bearer %s"\n' "$token" >>"$CURLCFG"
+IPV4=""
+
+# api METHOD PATH OUTFILE [curl args...]: prints the HTTP status; retries once over IPv4 when the connection itself fails.
+api() {
+  local method="$1" path="$2" out="$3" code rc
+  shift 3
+  code="$(curl -sS -K "$CURLCFG" $IPV4 --connect-timeout 10 --max-time 900 -X "$method" -H 'Accept: application/json' -o "$out" -w '%{http_code}' "$@" "$BASE$path")"
+  rc=$?
+  if [ "$rc" -eq 7 ] && [ -z "$IPV4" ]; then
+    IPV4="--ipv4"
+    code="$(curl -sS -K "$CURLCFG" $IPV4 --connect-timeout 10 --max-time 900 -X "$method" -H 'Accept: application/json' -o "$out" -w '%{http_code}' "$@" "$BASE$path")"
+    rc=$?
+  fi
+  [ "$rc" -ne 0 ] && code="000"
+  printf '%s' "$code"
+}
+
+json_field() { sed -nE "s/.*\"$1\":\"([^\"]*)\".*/\\1/p" "$2" | head -n1; }
+json_num() { sed -nE "s/.*\"$1\":([0-9]+).*/\\1/p" "$2" | head -n1; }
+json_escape() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' | tr -d '\000-\037'; }
+
+urlencode() {
+  local s="$1" out="" c i
+  local LC_ALL=C
+  for ((i = 0; i < ${#s}; i++)); do
+    c="${s:i:1}"
+    case "$c" in [a-zA-Z0-9._~-]) out="$out$c" ;; *) out="$out$(printf '%%%02X' "'$c")" ;; esac
+  done
+  printf '%s' "$out"
+}
+
+server_error() {
+  local code="$1" body="$2" msg
+  msg="$(json_field error "$body")"
+  [ -z "$msg" ] && msg="$(head -c 200 "$body" 2>/dev/null)"
+  case "$code" in
+    000) err "连不上 $BASE" "could not reach $BASE" ;;
+    401) err "需要令牌（sugi login，或设置 SUGI_TOKEN）：$msg" "a token is needed (sugi login, or set SUGI_TOKEN): $msg" ;;
+    429) err "传得太快啦，歇一会儿再来" "too many uploads, wait a moment" ;;
+    *) err "HTTP ${code}：$msg" "HTTP $code: $msg" ;;
+  esac
+}
+
+copy_clip() {
+  if command -v pbcopy >/dev/null 2>&1; then pbcopy
+  elif [ -n "${WAYLAND_DISPLAY:-}" ] && command -v wl-copy >/dev/null 2>&1; then wl-copy
+  elif command -v xclip >/dev/null 2>&1; then xclip -selection clipboard
+  elif command -v xsel >/dev/null 2>&1; then xsel --clipboard --input
+  elif command -v clip.exe >/dev/null 2>&1; then clip.exe
+  else cat >/dev/null; return 1
+  fi
+}
+
+# Writes the clipboard image to $1 as PNG; returns non-zero when there is none.
+paste_clip() {
+  local dest="$1"
+  if command -v osascript >/dev/null 2>&1; then
+    osascript -e "set f to open for access (POSIX file \"$dest\") with write permission" -e 'try' -e 'write (the clipboard as «class PNGf») to f' -e 'end try' -e 'close access f' >/dev/null 2>&1
+  elif [ -n "${WAYLAND_DISPLAY:-}" ] && command -v wl-paste >/dev/null 2>&1; then wl-paste --type image/png >"$dest" 2>/dev/null
+  elif command -v xclip >/dev/null 2>&1; then xclip -selection clipboard -t image/png -o >"$dest" 2>/dev/null
+  else return 1
+  fi
+  [ -s "$dest" ]
+}
+
+filesize() { wc -c <"$1" | tr -d ' '; }
+
+# upload FILE NAME -> prints the response JSON path on success; returns non-zero on failure.
+upload_one() {
+  local file="$1" name="$2" size q out code
+  size="$(filesize "$file")"
+  if [ "$size" -gt "$MAX_FILE" ]; then err "$name 太大了，最大 200 MB" "$name is too big (max 200 MB)"; return 1; fi
+  q="style=$STYLE"
+  [ -n "$EXPIRE" ] && q="$q&expire=$EXPIRE"
+  [ -n "$name" ] && q="$q&name=$(urlencode "$name")"
+  out="$TMPDIR_SUGI/resp.$$.$RANDOM.json"
+  if [ "$size" -le "$SINGLE_MAX" ]; then
+    code="$(api PUT "/api/upload?$q" "$out" --upload-file "$file")"
+    if [ "$code" != 201 ]; then server_error "$code" "$out"; return 1; fi
+    printf '%s' "$out"
+    return 0
+  fi
+  # Chunked upload for files over 90 MB: Cloudflare caps request bodies at 100 MB.
+  local parts=$(((size + PART_MB * 1048576 - 1) / (PART_MB * 1048576))) part="$TMPDIR_SUGI/part" session etags n
+  dd if="$file" of="$part" bs=1048576 count="$PART_MB" 2>/dev/null
+  code="$(api POST "/api/uploads?size=$size&$q" "$out" --upload-file "$part")"
+  if [ "$code" != 201 ]; then server_error "$code" "$out"; return 1; fi
+  session="$(json_field upload "$out")"
+  etags="\"$(json_field etag "$out")\""
+  printf 'header = "Sugi-Upload: %s"\n' "$session" >>"$CURLCFG"
+  for ((n = 2; n <= parts; n++)); do
+    dd if="$file" of="$part" bs=1048576 skip=$(((n - 1) * PART_MB)) count="$PART_MB" 2>/dev/null
+    code="$(api PUT "/api/uploads/$n" "$out" --upload-file "$part")"
+    if [ "$code" != 200 ]; then
+      server_error "$code" "$out"
+      api DELETE /api/uploads /dev/null >/dev/null
+      sed -i.bak '/^header = "Sugi-Upload/d' "$CURLCFG"
+      return 1
+    fi
+    etags="$etags,\"$(json_field etag "$out")\""
+  done
+  code="$(api POST /api/uploads/complete "$out" -H 'Content-Type: application/json' --data-binary "{\"etags\":[$etags]}")"
+  sed -i.bak '/^header = "Sugi-Upload/d' "$CURLCFG"
+  if [ "$code" != 201 ]; then server_error "$code" "$out"; return 1; fi
+  printf '%s' "$out"
+}
+
+record() { tr -d '\n' <"$1" >>"$HISTORY"; printf '\n' >>"$HISTORY"; chmod 600 "$HISTORY" 2>/dev/null; }
+
+expiry_note() {
+  case "$EXPIRE" in
+    1h) say " · 1 小时后消失" " · gone in 1 hour" ;;
+    12h) say " · 12 小时后消失" " · gone in 12 hours" ;;
+    72h) say " · 3 天后消失" " · gone in 3 days" ;;
+    *) printf '\n' ;;
+  esac
+}
+
+EXPIRE=""
+STYLE="random"
+NAME=""
+JSON=0
+COPY=1
+CLIP=0
+
+parse_up_flags() {
+  ARGS=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -e | --expire) EXPIRE="${2:-}"; shift ;;
+      --expire=*) EXPIRE="${1#*=}" ;;
+      --cute) STYLE="cute" ;;
+      --name) NAME="${2:-}"; shift ;;
+      --name=*) NAME="${1#*=}" ;;
+      --json) JSON=1 ;;
+      --no-copy) COPY=0 ;;
+      --clipboard) CLIP=1 ;;
+      --) shift; while [ $# -gt 0 ]; do ARGS+=("$1"); shift; done; break ;;
+      -) ARGS+=("-") ;;
+      -*) err "不认识的参数 $1" "unknown option $1"; exit 2 ;;
+      *) ARGS+=("$1") ;;
+    esac
+    shift
+  done
+  case "$EXPIRE" in "" | 1h | 12h | 72h) ;; 3d) EXPIRE=72h ;; *) err "保存时间只能是 1h、12h 或 72h" "expire must be 1h, 12h or 72h"; exit 2 ;; esac
+}
+
+# Uploads every argument; fills UPLOADED_IDS and UPLOADED_URLS. Returns the number of failures.
+upload_all() {
+  local f name resp url fails=0 i=0
+  UPLOADED_IDS=()
+  UPLOADED_URLS=()
+  if [ "$CLIP" = 1 ]; then
+    f="$TMPDIR_SUGI/clipboard.png"
+    if paste_clip "$f"; then ARGS+=("$f"); [ -z "$NAME" ] && NAME="clipboard.png"
+    else err "剪贴板里没有图片" "there is no image on the clipboard"; fails=$((fails + 1)); fi
+  fi
+  for f in "${ARGS[@]+"${ARGS[@]}"}"; do
+    i=$((i + 1))
+    if [ "$f" = "-" ]; then
+      cat >"$TMPDIR_SUGI/stdin.bin"
+      name="${NAME:-stdin}"
+      f="$TMPDIR_SUGI/stdin.bin"
+    else
+      if [ ! -f "$f" ] || [ ! -r "$f" ]; then err "$f 读不了" "$f: not a readable file"; fails=$((fails + 1)); continue; fi
+      name="$(basename "$f")"
+      [ "$f" = "$TMPDIR_SUGI/clipboard.png" ] && name="$NAME"
+      [ -n "$NAME" ] && [ "${#ARGS[@]}" -eq 1 ] && name="$NAME"
+    fi
+    if ! resp="$(upload_one "$f" "$name")"; then fails=$((fails + 1)); continue; fi
+    record "$resp"
+    url="$(json_field url "$resp")"
+    UPLOADED_IDS+=("$(json_field id "$resp")")
+    UPLOADED_URLS+=("$url")
+    if [ "$JSON" = 1 ]; then cat "$resp"; printf '\n'
+    else printf '✿ %s  →  %s' "$name" "$url"; expiry_note; fi
+  done
+  return "$fails"
+}
+
+cmd_up() {
+  parse_up_flags "$@"
+  if [ "${#ARGS[@]}" -eq 0 ] && [ "$CLIP" = 0 ]; then usage >&2; exit 2; fi
+  upload_all
+  local fails=$?
+  if [ "$COPY" = 1 ] && [ "${#UPLOADED_URLS[@]}" -gt 0 ] && [ "$JSON" = 0 ]; then
+    if (IFS=$'\n'; printf '%s' "${UPLOADED_URLS[*]}") | copy_clip 2>/dev/null; then say "（链接已复制）" "(links copied)" >&2; fi
+  fi
+  [ "$fails" -eq 0 ]
+}
+
+id_of() { local v="${1##*/}"; printf '%s' "${v%%.*}"; }
+
+cmd_album() {
+  parse_up_flags "$@"
+  if [ "${#ARGS[@]}" -lt 2 ]; then usage >&2; exit 2; fi
+  local title="${ARGS[0]}" a ids=() files=() fails=0
+  for a in "${ARGS[@]:1}"; do
+    if [ -f "$a" ] || [ "$a" = "-" ]; then files+=("$a"); else ids+=("$(id_of "$a")"); fi
+  done
+  if [ "${#files[@]}" -gt 0 ]; then
+    ARGS=("${files[@]}")
+    local keepjson="$JSON"
+    JSON=0
+    upload_all >&2 || fails=$?
+    JSON="$keepjson"
+    ids+=("${UPLOADED_IDS[@]+"${UPLOADED_IDS[@]}"}")
+  fi
+  if [ "${#ids[@]}" -eq 0 ]; then err "没有可以打包的文件" "nothing to put in the album"; exit 1; fi
+  local list="" i out="$TMPDIR_SUGI/album.json" code
+  for i in "${ids[@]}"; do list="$list${list:+,}\"$(json_escape "$i")\""; done
+  code="$(api POST /api/albums "$out" -H 'Content-Type: application/json' --data-binary "{\"files\":[$list],\"title\":\"$(json_escape "$title")\"}")"
+  if [ "$code" != 201 ]; then server_error "$code" "$out"; exit 1; fi
+  tr -d '\n' <"$out" >>"$ALBUMS"; printf '\n' >>"$ALBUMS"; chmod 600 "$ALBUMS" 2>/dev/null
+  local url
+  url="$(json_field url "$out")"
+  if [ "$JSON" = 1 ]; then cat "$out"; printf '\n'; else say "✿ 打包好啦  →  $url" "✿ album  →  $url"; fi
+  [ "$COPY" = 1 ] && [ "$JSON" = 0 ] && printf '%s' "$url" | copy_clip 2>/dev/null && say "（链接已复制）" "(link copied)" >&2
+  [ "$fails" -eq 0 ]
+}
+
+cmd_ls() {
+  [ -s "$HISTORY" ] || { say "这台电脑还没传过东西" "nothing uploaded from this machine yet"; return 0; }
+  if [ "${1:-}" = "--json" ]; then cat "$HISTORY"; return 0; fi
+  local now line id url name exp mark
+  now="$(date -u +%Y-%m-%dT%H:%M:%S)"
+  while IFS= read -r line; do
+    [ -z "$line" ] && continue
+    id="$(printf '%s' "$line" | sed -nE 's/.*"id":"([^"]*)".*/\1/p')"
+    url="$(printf '%s' "$line" | sed -nE 's/.*"url":"([^"]*)".*/\1/p')"
+    name="$(printf '%s' "$line" | sed -nE 's/.*"name":"([^"]*)".*/\1/p')"
+    exp="$(printf '%s' "$line" | sed -nE 's/.*"expires_at":"([^"]*)".*/\1/p')"
+    if [ -z "$exp" ]; then mark="$(say "永久" "forever")"
+    elif [[ "$exp" < "$now" ]]; then mark="$(say "已过期" "expired")"
+    else mark="$(say "临时" "temp")"; fi
+    printf '%-18s %-8s %s  %s\n' "$id" "$mark" "$url" "$name"
+  done <"$HISTORY"
+}
+
+cmd_rm() {
+  [ $# -gt 0 ] || { usage >&2; exit 2; }
+  local a id line tok out="$TMPDIR_SUGI/rm.json" code fails=0
+  for a in "$@"; do
+    id="$(id_of "$a")"
+    line="$(grep -F "\"id\":\"$id\"" "$HISTORY" 2>/dev/null | tail -n1)"
+    tok="$(printf '%s' "$line" | sed -nE 's/.*"delete_token":"([^"]*)".*/\1/p')"
+    if [ -z "$tok" ] && [ -z "$token" ]; then err "$id 不是这台电脑传的，没有删除凭证" "$id was not uploaded from this machine; no delete token"; fails=$((fails + 1)); continue; fi
+    if [ -n "$tok" ]; then code="$(api DELETE "/api/files/$id" "$out" -H "Sugi-Token: $tok")"
+    else code="$(api DELETE "/api/files/$id" "$out")"; fi
+    if [ "$code" = 200 ] || [ "$code" = 404 ]; then
+      grep -vF "\"id\":\"$id\"" "$HISTORY" >"$TMPDIR_SUGI/h" 2>/dev/null
+      cat "$TMPDIR_SUGI/h" >"$HISTORY"
+      say "✿ 删掉了 $id" "✿ deleted $id"
+    else
+      server_error "$code" "$out"
+      fails=$((fails + 1))
+    fi
+  done
+  [ "$fails" -eq 0 ]
+}
+
+cmd_login() {
+  local t="${1:-}"
+  if [ -z "$t" ]; then
+    say "在 $BASE/dev 生成一个 API 令牌，粘贴到这里：" "Create an API token at $BASE/dev and paste it here:"
+    IFS= read -r -s t
+    printf '\n'
+  fi
+  case "$t" in sugi_*) ;; *) err "这不像 sugi 的 API 令牌（应该以 sugi_ 开头）" "that does not look like a sugi API token (sugi_...)"; exit 1 ;; esac
+  umask 077
+  printf 'token=%s\n' "$t" >"$CONF_DIR/config"
+  say "✿ 好啦，之后传的文件会进到你的账号" "✿ saved; uploads from now on go to your account"
+}
+
+cmd="${1:-help}"
+[ $# -gt 0 ] && shift
+case "$cmd" in
+  up | upload) cmd_up "$@" ;;
+  album) cmd_album "$@" ;;
+  ls | list) cmd_ls "$@" ;;
+  rm | delete) cmd_rm "$@" ;;
+  login) cmd_login "$@" ;;
+  logout) rm -f "$CONF_DIR/config"; say "已退出" "logged out" ;;
+  version | --version | -v) printf 'sugi %s\n' "$SUGI_CLI_VERSION" ;;
+  help | --help | -h) usage ;;
+  *) err "不认识的命令 $cmd" "unknown command $cmd"; usage >&2; exit 2 ;;
+esac

@@ -6,6 +6,8 @@ import { handleInfo, handleLegacyDelete, handleLegacyServe, handleLegacyUpload, 
 import { handleSite } from "./site";
 import { ICONS } from "./site/og-images";
 import { fileHostRobotsTxt, robotsTxt, sitemapXml, webManifest } from "./site/seo";
+import { installScript } from "./site/install";
+import { handleMcp } from "./mcp";
 
 // Only the default handler may be exported from this module: workerd treats every named export of the main module as an entrypoint.
 
@@ -54,10 +56,10 @@ async function serveStatic(request: Request, env: Env, pathname: string): Promis
   if (res.status === 404) throw new HttpError(404, "not found");
   const out = new Response(res.body, res);
   out.headers.set("x-content-type-options", "nosniff");
-  // Build output carries a content hash in its file name; everything else may change in place.
-  // Build output, OG images and icons carry a content hash in their file names.
+  // Build output, OG images and icons carry a content hash in their file names. The CLI must match the hash in install.sh, so it is never cached.
   const hashed = pathname.startsWith("/static/build/") || pathname.startsWith("/static/og/") || pathname.startsWith("/static/icons/");
-  out.headers.set("cache-control", hashed ? "public, max-age=31536000, immutable" : "public, max-age=86400");
+  out.headers.set("cache-control", hashed ? "public, max-age=31536000, immutable" : pathname.startsWith("/static/cli/") ? "no-cache" : "public, max-age=86400");
+  if (pathname.startsWith("/static/cli/")) out.headers.set("content-type", "text/plain; charset=utf-8");
   return out;
 }
 
@@ -115,6 +117,13 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (pathname === "/sitemap.xml") return sitemapXml(env);
   if (pathname === "/manifest.webmanifest") return webManifest();
   if (pathname.startsWith("/api/")) return routeApi(request, env, pathname);
+  if (env.FEATURE_CLI === "1") {
+    if (pathname === "/mcp") return handleMcp(request, env);
+    if (pathname === "/install.sh") {
+      if (method !== "GET" && method !== "HEAD") throw methodNotAllowed("GET, HEAD");
+      return new Response(method === "HEAD" ? null : installScript(env), { headers: { "content-type": "text/plain; charset=utf-8", "x-content-type-options": "nosniff", "cache-control": "no-cache" } });
+    }
+  }
   if (pathname === "/upload") {
     if (method === "POST" || method === "PUT") return handleLegacyUpload(request, env);
     throw methodNotAllowed("POST, PUT");

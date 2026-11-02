@@ -1195,6 +1195,28 @@ function initAlbum() {
   }
 }
 
+// Tab strips: <div data-tabs="group"> with <button data-tab="x">, panels marked data-panel="group:x". A matching URL hash (e.g. /dev#cli) selects a tab on load.
+function selectTab(seg: HTMLElement, tab: string) {
+  const group = seg.dataset.tabs!;
+  for (const b of $$<HTMLButtonElement>("button[data-tab]", seg)) {
+    const on = b.dataset.tab === tab;
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-selected", String(on));
+  }
+  for (const p of $$(`[data-panel^="${group}:"]`)) p.hidden = p.dataset.panel !== `${group}:${tab}`;
+}
+
+function initTabs() {
+  for (const seg of $$("[data-tabs]")) {
+    seg.addEventListener("click", (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-tab]");
+      if (b) selectTab(seg, b.dataset.tab!);
+    });
+    const want = location.hash.slice(1);
+    if (want && $(`button[data-tab="${CSS.escape(want)}"]`, seg)) selectTab(seg, want);
+  }
+}
+
 function initPage() {
   CFG.page = $("#main")?.dataset.page || CFG.page;
   pageTitle = document.title;
@@ -1204,6 +1226,7 @@ function initPage() {
   if (CFG.page === "mine") initMine();
   if (CFG.page === "file") initFile();
   if (CFG.page === "album") initAlbum();
+  initTabs();
   updateTab();
 }
 
