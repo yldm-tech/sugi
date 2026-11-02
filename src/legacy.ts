@@ -2,6 +2,7 @@
 import { deletionResponse, fetchViaCache, purgeCache } from "./cache";
 import { sha256Hex } from "./crypto";
 import { authorizeUpload, etagMatches, hasBody, HttpError, jsonResponse, RemovedError, requireAdmin, textResponse, wantsJson } from "./http";
+import { checkQuota, recordUsage } from "./quota";
 import { assertHashAllowed, isTombstone, takedown, takedownBySource } from "./moderation";
 import { LEGACY_MAX_BYTES } from "./limits";
 import { sniffImageType, TYPES_BY_EXT } from "./sniff";
@@ -65,13 +66,15 @@ async function extractUpload(request: Request): Promise<Uint8Array> {
 }
 
 export async function handleLegacyUpload(request: Request, env: Env): Promise<Response> {
-  const { source } = await authorizeUpload(request, env);
+  const uploader = await authorizeUpload(request, env);
+  const { source } = uploader;
 
   const bytes = await extractUpload(request);
   if (bytes.byteLength === 0) throw new HttpError(400, "empty upload");
   const type = sniffImageType(bytes);
   if (type === null) throw new HttpError(415, "unsupported file type (only PNG, JPEG, WebP and GIF)");
 
+  await checkQuota(env, uploader, bytes.byteLength);
   const sha256 = await sha256Hex(bytes);
   await assertHashAllowed(env, sha256);
   const key = `${sha256.slice(0, 16)}.${type.ext}`;
@@ -88,6 +91,7 @@ export async function handleLegacyUpload(request: Request, env: Env): Promise<Re
       onlyIf: { etagDoesNotMatch: "*" },
     });
     created = stored !== null;
+    if (created) await recordUsage(env, uploader, bytes.byteLength);
   } else if (existing.customMetadata?.sha256 && existing.customMetadata.sha256 !== sha256) {
     // A 64-bit prefix collision with different content; never overwrite, never pretend the old URL serves this file.
     throw new HttpError(409, "key collision with different content");

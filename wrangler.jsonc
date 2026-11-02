@@ -51,6 +51,10 @@
     "CACHE_ORIGIN": "",
     "ZONE_ID": "",
     // Features: the CLI and MCP server are on; accounts and the donation page are off.
+    // Daily upload quotas in bytes (0 = unlimited): per source without an account, per account, and for the whole site (after which only trusted and admin uploads are taken).
+    "QUOTA_ANON_BYTES_PER_DAY": "1073741824",
+    "QUOTA_ACCOUNT_BYTES_PER_DAY": "5368709120",
+    "QUOTA_GLOBAL_BYTES_PER_DAY": "53687091200",
     "FEATURE_ACCOUNTS": "0",
     // With accounts on: which parts are live, comma-separated, from email, github, google, passkey, sync, tokens.
     "ACCOUNT_FEATURES": "email",

@@ -9,6 +9,7 @@ import {
 import { sha256Hex, toHex } from "./crypto";
 import { authorizeUpload, HttpError, type Uploader } from "./http";
 import { assertHashAllowed } from "./moderation";
+import { checkQuota, recordUsage } from "./quota";
 import { ownFile } from "./auth/core";
 import { HASH_MAX_BYTES, IMPORT_MAX_REDIRECTS, IMPORT_TIMEOUT_MS, IMPORT_UNKNOWN_LENGTH_MAX_BYTES, MAX_FILE_BYTES, SINGLE_REQUEST_MAX_BYTES } from "./limits";
 import { SNIFF_BYTES, sniffMedia } from "./sniff";
@@ -82,6 +83,12 @@ export async function storeStream(
   fixedId?: string,
 ): Promise<UploadResult> {
   if (length <= 0) throw new HttpError(400, "empty upload");
+  try {
+    await checkQuota(env, uploader, length);
+  } catch (err) {
+    await body.cancel();
+    throw err;
+  }
   const { head, stream } = await peekStream(body, SNIFF_BYTES);
   const type = sniffMedia(head);
   if (!type) {
@@ -143,11 +150,13 @@ export async function storeStream(
     throw err;
   }
   await ownFile(env, uploader.userId, p.key);
+  await recordUsage(env, uploader, length);
   return result(env, p, length, opts.name);
 }
 
 export async function storeBytes(env: Env, uploader: Uploader, opts: UploadOptions, bytes: Uint8Array, fixedId?: string): Promise<UploadResult> {
   if (bytes.byteLength === 0) throw new HttpError(400, "empty upload");
+  await checkQuota(env, uploader, bytes.byteLength);
   const type = sniffMedia(bytes.subarray(0, SNIFF_BYTES));
   if (!type) throw unsupportedType();
   if (bytes.byteLength <= HASH_MAX_BYTES) await assertHashAllowed(env, await sha256Hex(bytes));
@@ -155,6 +164,7 @@ export async function storeBytes(env: Env, uploader: Uploader, opts: UploadOptio
   const stored = await env.BUCKET.put(p.key, bytes, await reservedPutOptions(env, p, fixedId));
   if (stored === null) throw linkUsed();
   await ownFile(env, uploader.userId, p.key);
+  await recordUsage(env, uploader, bytes.byteLength);
   return result(env, p, bytes.byteLength, opts.name);
 }
 

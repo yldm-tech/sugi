@@ -43,6 +43,9 @@
     // The bucket's R2 custom domain; files are served through the zone cache so the CSAM Scanning Tool sees them.
     "CACHE_ORIGIN": "https://r2.sugi.moe",
     "ZONE_ID": "0ec67ba827776b3d9e3452483205b04c",
+    "QUOTA_ANON_BYTES_PER_DAY": "1073741824",
+    "QUOTA_ACCOUNT_BYTES_PER_DAY": "5368709120",
+    "QUOTA_GLOBAL_BYTES_PER_DAY": "53687091200",
     "FEATURE_ACCOUNTS": "1",
     "ACCOUNT_FEATURES": "email,github,google,passkey,sync,tokens",
     "FEATURE_CLI": "1",
