@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report abusive content on sugi.moe
+    url: mailto:abuse@sugi.moe
+    about: Send the link to abuse@sugi.moe. Please do not post links to abusive content in public issues.
+  - name: Report a security vulnerability
+    url: https://github.com/yldm-tech/sugi/security/advisories/new
+    about: Report privately; see SECURITY.md.

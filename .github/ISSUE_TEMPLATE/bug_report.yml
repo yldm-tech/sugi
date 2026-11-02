@@ -1,0 +1,26 @@
+name: Bug report
+description: Something does not work as described.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected and what happened instead. Include error messages and screenshots if you have them.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: Steps, a curl command or a small file type description. Do not attach private files.
+  - type: input
+    id: where
+    attributes:
+      label: Where
+      description: sugi.moe, your own deployment (which version or commit), or local development.
+  - type: input
+    id: client
+    attributes:
+      label: Browser, CLI or OS
+      description: e.g. Safari 19 on iOS, sugi CLI 1.0.0 on macOS.
