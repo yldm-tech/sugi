@@ -127,6 +127,7 @@ export function clientConfig(ctx: Ctx, page: PageId) {
     page,
     gated: ctx.gated,
     flags: ctx.flags,
+    user: Boolean(ctx.user),
     origins: { main: ctx.env.MAIN_ORIGIN, files: ctx.env.FILES_ORIGIN, tmp: ctx.env.TMP_ORIGIN },
     limits: { maxFile: MAX_FILE_BYTES, single: SINGLE_REQUEST_MAX_BYTES, rate: RATE_LIMIT, ratePeriod: RATE_LIMIT_PERIOD_SECONDS },
     t: clientStrings(ctx.lang, brand(ctx.env).siteName),

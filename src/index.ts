@@ -16,7 +16,7 @@ import { installScript } from "./site/install";
 import { handleMcp } from "./mcp";
 import { handleInboxRead, receiveEmail, sweepInbox } from "./inbox";
 import { handleMagicRequest, handleMagicVerify } from "./auth/email";
-import { handleDeleteAccount, handleDeletePasskey, handleLogout, handleMe } from "./auth/me";
+import { handleClaim, handleDeleteAccount, handleDeletePasskey, handleLogout, handleMe, handleMyAlbums, handleMyFiles } from "./auth/me";
 import { handlePasskeyLoginOptions, handlePasskeyLoginVerify, handlePasskeyRegisterOptions, handlePasskeyRegisterVerify } from "./auth/passkey";
 import { handleOAuthCallback, handleOAuthStart, type Provider } from "./auth/oauth";
 
@@ -105,6 +105,14 @@ async function routeApi(request: Request, env: Env, pathname: string): Promise<R
     if (method === "GET") return handleFileInfo(env, file[1]);
     if (method === "DELETE") return handleFileDelete(request, env, file[1]);
     throw methodNotAllowed("GET, DELETE");
+  }
+  if (pathname === "/api/me/files" || pathname === "/api/me/albums") {
+    if (method === "GET") return pathname.endsWith("files") ? handleMyFiles(request, env) : handleMyAlbums(request, env);
+    throw methodNotAllowed("GET");
+  }
+  if (pathname === "/api/me/claim") {
+    if (method === "POST") return handleClaim(request, env);
+    throw methodNotAllowed("POST");
   }
   const myPasskey = /^\/api\/me\/passkeys\/([A-Za-z0-9_-]{1,512})$/.exec(pathname);
   if (myPasskey) {

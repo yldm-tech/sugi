@@ -99,8 +99,13 @@ export function minePage(ctx: Ctx): Page {
   const t = tr(ctx);
   const html = `<section class="stack8">
 <h1 class="h1">${t("我的文件", "My files")}</h1>
-<p class="lead">${t("没登录时，记录和删除凭证只存在当前浏览器里，换设备或清理浏览器就看不到了。", "Without an account, your history and delete tokens live only in this browser. Switch devices or clear the browser and they are gone.")}</p>
+${
+  ctx.user && ctx.flags.account.includes("sync")
+    ? `<p class="lead">${t("这里有你账号里的文件（换设备也能看到），以及这个浏览器里的记录。", "Here are the files in your account (on every device) and the history kept in this browser.")}</p>`
+    : `<p class="lead">${t("没登录时，记录和删除凭证只存在当前浏览器里，换设备或清理浏览器就看不到了。", "Without an account, your history and delete tokens live only in this browser. Switch devices or clear the browser and they are gone.")}</p>`
+}
 </section>
+<div class="notice" id="claim-bar" hidden><span id="claim-text"></span><button type="button" class="mini" id="claim-btn">${t("归到账号下", "Add to my account")}</button></div>
 <div class="mine-bar">
 <div class="seg mid" id="mine-tabs"><button type="button" data-tab="files" class="on">${t("文件", "Files")} <span id="file-count">0</span></button><button type="button" data-tab="albums">${t("打包链接", "Albums")} <span id="album-count">0</span></button></div>
 <div class="row-actions"><button type="button" class="mini" id="import-history">${t("导入记录", "Import")}</button><button type="button" class="mini" id="export-history" hidden>${t("导出记录", "Export")}</button></div>
