@@ -4,7 +4,7 @@
 
 - 线上地址：<https://sugi.moe>；直链在 <https://files.sugi.moe>（永久）和 <https://tmp.sugi.moe>（临时），旧链接 `https://sugi.moe/<16 位十六进制>.<ext>` 永久有效
 - Cloudflare 账户：Evan@yldm.tech's Account（`e2b27aea5f599efdbe0a7016a2580d05`）；Worker `sugi`；R2 bucket `sugi`（自定义域 `r2.sugi.moe`，作为走缓存的回源地址）；D1 数据库 `sugi`（`61f7d685-83be-4cad-9a56-b6ce9887affb`）；zone `sugi.moe`
-- 当前状态：**上传闸门开启**，上传需要 `UPLOAD_TOKEN` 或 `TRUSTED_TOKEN`，匿名上传尚未开放（见文末“上线步骤”）
+- 当前状态：生产环境已开放匿名上传（2026-11-02 起没有设置 `UPLOAD_TOKEN`，workers.dev 入口已关闭）。本 README 描述的新版网站和接口还没部署，见文末“上线步骤”
 
 ## 用法
 
@@ -47,7 +47,7 @@ JSON 返回 `{"id", "url", "page", "size", "type", "name", "expires_at", "delete
 
 错误默认是纯文本，`Accept: application/json` 时是 `{"error": "..."}`。常见状态码：400 参数不对，401 缺令牌或闸门未开放，403 删除凭证不对，404 不存在（过期的临时文件也算），405 方法不对，411 缺 Content-Length，413 太大（单请求超过 90 MB 会提示改用分片），415 类型不支持，429 超过频率限制，502 搬运的远端出错或缓存清除失败，503 未配置 `IP_HASH_SECRET`。
 
-闸门开启期间要带 `Authorization: Bearer <UPLOAD_TOKEN>`；维护者和代为上传的 agent 用 `TRUSTED_TOKEN`，它能过闸门且不受任何频率限制。
+生产环境不需要令牌。`UPLOAD_TOKEN` 是可选的上传闸门：设置后所有上传都要带 `Authorization: Bearer <UPLOAD_TOKEN>`（现在只在本地 `.dev.vars` 里用来测闸门）。维护者和代为上传的 agent 用 `TRUSTED_TOKEN`，它能过闸门且不受任何频率限制。
 
 ### 客户端脚本
 
@@ -105,7 +105,7 @@ bin/sugi-upload before.png after.png
 | --- | --- | --- |
 | `IP_HASH_SECRET` | 来源 HMAC 的密钥，也用来签分片上传会话 | 上传返回 503 |
 | `ADMIN_TOKEN` | 管理接口令牌 | 管理接口返回 403 |
-| `UPLOAD_TOKEN` | 上传闸门令牌 | 匿名上传 |
+| `UPLOAD_TOKEN` | 上传闸门令牌（生产环境不设置） | 匿名上传 |
 | `TRUSTED_TOKEN` | 维护者令牌：过闸门、免限流 | 无可信令牌 |
 | `CF_PURGE_TOKEN` | Cloudflare API token，只有 sugi.moe 的 Zone → Cache Purge 权限 | 开了 `CACHE_ORIGIN` 时删除返回 502 |
 
@@ -199,8 +199,8 @@ admin -H 'content-type: application/json' -d "{\"source\":\"$SRC\"}" https://sug
 3. `npx wrangler deploy --secrets-file ~/.config/sugi/secrets.env`：会同时挂上 `files.sugi.moe` 和 `tmp.sugi.moe` 两个自定义域，并启用 Cron Trigger。
 4. `scripts/e2e.sh https://sugi.moe`。
 
-开放匿名上传之前：
+部署之前请确认：
 
-1. **开启 CSAM Scanning Tool**（FAQ 里已经写了“会由 Cloudflare 的 CSAM 扫描工具检测”，所以必须在开放前开好）：Dashboard → sugi.moe → Caching → Configuration → CSAM Scanning Tool，通知邮箱 `suzukaze.haduki@gmail.com`。
-2. 发测试邮件到 `abuse@sugi.moe`，确认能收到。
-3. `npx wrangler secret delete UPLOAD_TOKEN`，并从 `~/.config/sugi/secrets.env` 删掉 `UPLOAD_TOKEN` 那一行（否则下次 `--secrets-file` 部署会把闸门重新打开）。
+1. **CSAM Scanning Tool 已开启**（FAQ 和隐私政策里写了“会由 Cloudflare 的 CSAM 扫描工具检测”）：Dashboard → sugi.moe → Caching → Configuration → CSAM Scanning Tool，通知邮箱 `suzukaze.haduki@gmail.com`。
+2. `~/.config/sugi/secrets.env` 里**没有** `UPLOAD_TOKEN`：`--secrets-file` 部署会把文件里的每一项都设成 Worker secret，有这一行就会把闸门重新打开。
+3. 隐私政策和使用条款已经由维护者审阅（`src/site/pages/privacy.ts` 里带 `review` 备注的段落）。

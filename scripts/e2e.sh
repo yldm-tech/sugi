@@ -69,8 +69,11 @@ check "GET / status" "$code" 200
 c "" -o "$work/terms.html" "$base/terms"
 grep -q 'abuse@sugi.moe' "$work/terms.html" && pass "terms page names the abuse contact" || fail "terms page lacks the abuse contact"
 
-code="$(c "" -o "$work/anon.txt" -w '%{http_code}' -T "$image" "$base/upload")"
-check "anonymous upload rejected while gate is on" "$code" 401
+# The gate is optional: production runs without UPLOAD_TOKEN. With a token in the secrets file, anonymous uploads must be refused; without one, they must work (checked on the current API further down, where the object can be deleted with its own token).
+if [ -n "$upload_token" ]; then
+  code="$(c "" -o "$work/anon.txt" -w '%{http_code}' -T "$image" "$base/upload")"
+  check "anonymous upload rejected while the gate is on" "$code" 401
+fi
 
 expected_key="$(shasum -a 256 "$image" | cut -c1-16).png"
 code="$(c "$trusted_token" -o "$work/first.json" -w '%{http_code}' -H 'Accept: application/json' -T "$image" "$base/upload")"
@@ -151,8 +154,13 @@ fi
 if [ "${SUGI_E2E_NEW_API:-1}" = 1 ]; then
   api_png="$work/api.png"
   make_png "$api_png" "$run_id-api"
-  code="$(c "$trusted_token" -o "$work/api.json" -w '%{http_code}' -H 'Accept: application/json' -T "$api_png" "$base/api/upload?style=cute&name=e2e.png")"
-  check "PUT /api/upload" "$code" 201
+  # Anonymous when the gate is off, so this also proves anonymous uploads work.
+  api_auth="$trusted_token"
+  [ -z "$upload_token" ] && api_auth=""
+  code="$(c "$api_auth" -o "$work/api.json" -w '%{http_code}' -H 'Accept: application/json' -T "$api_png" "$base/api/upload?style=cute&name=e2e.png")"
+  api_label="anonymous"
+  [ -n "$api_auth" ] && api_label="trusted"
+  check "PUT /api/upload ($api_label)" "$code" 201
   api_url="$(sed -nE 's/.*"url":"([^"]+)".*/\1/p' "$work/api.json")"
   api_id="$(sed -nE 's/.*"id":"([^"]+)".*/\1/p' "$work/api.json")"
   api_tok="$(sed -nE 's/.*"delete_token":"([^"]+)".*/\1/p' "$work/api.json")"
