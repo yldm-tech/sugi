@@ -139,6 +139,8 @@ const findOverflow = () => {
   return { scroll: document.documentElement.scrollWidth - vw, out: out.slice(0, 5) };
 };
 
+// The logged-in header check runs with a throwaway passkey account; its cookie, if one could be made.
+let session = null;
 const browser = await chromium.launch(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {});
 const problems = [];
 try {
@@ -170,6 +172,92 @@ try {
       }
     }
   }
+  // Header: at every width from phone to wide desktop, logged out and logged in (the links differ), no link or the wordmark may wrap onto a second line, and the single-row header must really fit; otherwise the page has to use the compact header.
+  const headerWidths = [360, 390, 430, 600, 768, 900, 1024, 1100, 1200, 1280, 1300, 1366, 1400, 1440, 1536, 1600, 1920];
+  const headerCheck = () => {
+    const out = [];
+    const els = [
+      document.querySelector(".brand-word"),
+      document.querySelector(".brand"),
+      ...document.querySelectorAll("#nav .pill"),
+      ...document.querySelectorAll(".tools > *"),
+    ];
+    for (const el of els) {
+      if (!el) continue;
+      const h1 = el.getBoundingClientRect().height;
+      const old = el.style.whiteSpace;
+      el.style.whiteSpace = "nowrap";
+      for (const c of el.querySelectorAll("*")) c.style.whiteSpace = "nowrap";
+      const h2 = el.getBoundingClientRect().height;
+      el.style.whiteSpace = old;
+      for (const c of el.querySelectorAll("*")) c.style.whiteSpace = "";
+      if (h1 > h2 + 2) out.push(`${el.className || el.tagName} wraps (${Math.round(h1)}px tall, ${Math.round(h2)}px on one line)`);
+    }
+    const top = document.querySelector(".top");
+    const nav = document.querySelector("#nav");
+    if (!top.classList.contains("compact")) {
+      const parts = [".brand", "#nav", ".tools"].map((q) => document.querySelector(q).getBoundingClientRect());
+      if (Math.max(...parts.map((r) => r.top)) - Math.min(...parts.map((r) => r.top)) > 4) out.push("single-row header items are not on one row");
+      if (nav.scrollWidth > nav.clientWidth + 1) out.push(`single-row nav overflows by ${nav.scrollWidth - nav.clientWidth}px`);
+    }
+    return out;
+  };
+  const loggedIn = [false];
+  // Logging in takes a passkey account (Chromium's virtual authenticator); instances without passkeys only get the logged-out check.
+  {
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    const cdp = await ctx.newCDPSession(page);
+    await cdp.send("WebAuthn.enable");
+    await cdp.send("WebAuthn.addVirtualAuthenticator", {
+      options: {
+        protocol: "ctap2",
+        transport: "internal",
+        hasResidentKey: true,
+        hasUserVerification: true,
+        isUserVerified: true,
+        automaticPresenceSimulation: true,
+      },
+    });
+    await page.goto(`${base}/login?lang=en`);
+    if ((await page.locator("[data-passkey-register]").count()) > 0) {
+      await Promise.all([page.waitForURL(/\/account\?welcome=1$/, { timeout: 15000 }), page.locator("[data-passkey-register]").first().click()]).catch(
+        () => undefined,
+      );
+      session = (await ctx.cookies()).find((c) => c.name === "sugi_session") ?? null;
+      if (session) loggedIn.push(true);
+    }
+    await ctx.close();
+  }
+  for (const user of loggedIn) {
+    for (const lang of ["zh", "en"]) {
+      const ctx = await browser.newContext({ locale: lang === "zh" ? "zh-CN" : "en-US" });
+      if (user) await ctx.addCookies([session]);
+      const page = await ctx.newPage();
+      page.on("pageerror", (e) => problems.push(`header ${lang}: script error ${e}`));
+      for (const width of headerWidths) {
+        await page.setViewportSize({ width, height: 800 });
+        await page.goto(`${base}/?lang=${lang}`);
+        await page.evaluate(() => document.fonts.ready);
+        await page.waitForTimeout(100);
+        for (const p of await page.evaluate(headerCheck)) problems.push(`header ${lang}/${user ? "logged in" : "logged out"}/${width}px: ${p}`);
+        if (shots && (width === 1300 || width === 1440) && lang === "zh")
+          await page.screenshot({ path: `${shots}/zh-header-${user ? "user" : "anon"}-${width}.png`, clip: { x: 0, y: 0, width, height: 140 } });
+      }
+      await ctx.close();
+    }
+  }
+  if (session) {
+    // Leave nothing behind: delete the test account.
+    const ctx = await browser.newContext();
+    await ctx.addCookies([session]);
+    const page = await ctx.newPage();
+    await page.goto(`${base}/`);
+    await page.evaluate(async () =>
+      fetch("/api/me", { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ delete_files: true }) }),
+    );
+    await ctx.close();
+  }
 } finally {
   await browser.close();
 }
@@ -180,4 +268,6 @@ if (problems.length) {
   console.log(`${problems.length} layout problem(s)`);
   process.exit(1);
 }
-console.log(`no layout problems (${pages.length} pages x ${widths.length} widths x 2 languages x 2 themes)`);
+console.log(
+  `no layout problems (${pages.length} pages x ${widths.length} widths x 2 languages x 2 themes; header at 17 widths, logged out${session ? " and in" : ""})`,
+);

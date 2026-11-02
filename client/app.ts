@@ -1713,6 +1713,31 @@ function initPage() {
   updateTab();
 }
 
+// ---------------------------------------------------------------- header fit
+
+// One row (logo, links, tools) while it fits; otherwise the compact header with the links in a scrolling row of their own. Measured, not guessed from the window width, because the set of links changes (logged in or not, donate on or off) and so do their widths (language, fonts).
+function fitHeader() {
+  const top = $(".top");
+  const nav = $("#nav");
+  if (!top || !nav) return;
+  if (window.innerWidth <= 900) {
+    top.classList.add("compact");
+    return;
+  }
+  top.classList.remove("compact");
+  const parts = [$(".brand", top), nav, $(".tools", top)].filter(Boolean) as HTMLElement[];
+  const tops = parts.map((e) => e.getBoundingClientRect().top);
+  const overflow = nav.scrollWidth > nav.clientWidth + 1 || top.scrollWidth > top.clientWidth + 1 || Math.max(...tops) - Math.min(...tops) > 4;
+  top.classList.toggle("compact", overflow);
+}
+let fitFrame = 0;
+window.addEventListener("resize", () => {
+  cancelAnimationFrame(fitFrame);
+  fitFrame = requestAnimationFrame(fitHeader);
+});
+fitHeader();
+void document.fonts?.ready.then(fitHeader);
+
 // ---------------------------------------------------------------- navigation
 
 function markNav(page: string) {

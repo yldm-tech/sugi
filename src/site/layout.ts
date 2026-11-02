@@ -96,7 +96,7 @@ export function pageCsp(env: Env, nonce: string): string {
 }
 
 // Applied before first paint so the night theme never flashes: an explicit choice wins, otherwise night between 22:00 and 06:00 local time, as in the design.
-const THEME_BOOT = `try{var p=JSON.parse(localStorage.getItem("sugi.prefs.v1")||"null"),h=new Date().getHours(),n=p&&typeof p.night==="boolean"?p.night:(h>=22||h<6);if(n)document.documentElement.classList.add("night")}catch(e){}`;
+const THEME_BOOT = `document.documentElement.classList.add("js");try{var p=JSON.parse(localStorage.getItem("sugi.prefs.v1")||"null"),h=new Date().getHours(),n=p&&typeof p.night==="boolean"?p.night:(h>=22||h<6);if(n)document.documentElement.classList.add("night")}catch(e){}`;
 
 function navLink(_ctx: Ctx, href: string, ids: PageId[], current: PageId, label: string, extraClass = ""): string {
   const on = ids.includes(current) ? " on" : "";
