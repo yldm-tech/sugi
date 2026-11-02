@@ -6,6 +6,7 @@ import { brand } from "./config";
 import { createAlbum } from "./albums";
 import { deleteFile, findFile, importUrl, parseOptions, publicInfo, storeBytes, UploadResult } from "./files";
 import { authorizeUpload, HttpError, isAdmin, isTrusted } from "./http";
+import { latestMessage } from "./inbox";
 import { assertFileNotRemoved, blockSource, inspect, listBlocks, listBySource, readLog, takedown, takedownBySource, unblockContent, unblockSource } from "./moderation";
 import { createUploadLinks } from "./links";
 import { ALBUM_MAX_FILES, ALBUM_TITLE_MAX, MAX_FILE_BYTES, RATE_LIMIT, RATE_LIMIT_PERIOD_SECONDS, SINGLE_REQUEST_MAX_BYTES, UPLOAD_LINK_MAX, UPLOAD_LINK_TTL_SECONDS } from "./limits";
@@ -128,6 +129,11 @@ function registerAdminTools(server: McpServer, env: Env): void {
     "list_blocks",
     { title: "List blocks (admin)", description: "Blocked sources (with expiry) and blocked content hashes, newest first.", inputSchema: { limit: z.number().int().min(1).max(500).optional() }, annotations: { readOnlyHint: true } },
     async (args) => run(() => listBlocks(env, args.limit ?? 100)),
+  );
+  server.registerTool(
+    "read_test_inbox",
+    { title: "Read the end-to-end test inbox (admin)", description: "The newest message received at the E2E_INBOX test address (kept for an hour), with the links found in it. For automated tests of email login.", inputSchema: {}, annotations: { readOnlyHint: true } },
+    async () => run(async () => (await latestMessage(env)) ?? { empty: true }),
   );
   server.registerTool(
     "takedown_log",

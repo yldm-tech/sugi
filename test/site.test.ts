@@ -205,7 +205,7 @@ describe("privacy policy", () => {
   });
 
   it("describes accounts only when accounts are on", async () => {
-    const on = await (await page("/privacy", zh, { FEATURE_ACCOUNTS: "1" })).text();
+    const on = await (await page("/privacy", zh, { FEATURE_ACCOUNTS: "1", ACCOUNT_FEATURES: "email,github,google,passkey,sync,tokens" })).text();
     expect(on).toContain("sugi_session");
     expect(on).toContain("通行密钥的公钥");
   });

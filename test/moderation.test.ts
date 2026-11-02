@@ -37,7 +37,7 @@ const html = { accept: "text/html" };
 describe("admin MCP tools", () => {
   it("are listed only for the admin token, and refused for everyone else", async () => {
     const names = async (headers: Record<string, string>) => ((await rpc("tools/list", {}, headers)).tools as { name: string }[]).map((t) => t.name);
-    const adminTools = ["block_source", "inspect", "list_blocks", "list_by_source", "takedown", "takedown_by_source", "takedown_log", "unblock_content", "unblock_source"];
+    const adminTools = ["block_source", "inspect", "list_blocks", "list_by_source", "read_test_inbox", "takedown", "takedown_by_source", "takedown_log", "unblock_content", "unblock_source"];
     for (const t of adminTools) expect(await names(ADMIN)).toContain(t);
     for (const headers of [{}, TRUSTED]) for (const t of adminTools) expect(await names(headers)).not.toContain(t);
     const refused = await rpc("tools/call", { name: "takedown", arguments: { target: "abcdefgh" } }, TRUSTED);

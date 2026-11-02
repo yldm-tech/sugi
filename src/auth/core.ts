@@ -27,6 +27,11 @@ export function accountsOn(env: Env): boolean {
   return env.FEATURE_ACCOUNTS === "1";
 }
 
+/** A live account feature (ACCOUNT_FEATURES): email, github, google, passkey, sync, tokens. */
+export function accountFeature(env: Env, name: string): boolean {
+  return accountsOn(env) && (env.ACCOUNT_FEATURES ?? "").split(",").some((s) => s.trim() === name);
+}
+
 export function secret(bytes = 32): string {
   return base64url(crypto.getRandomValues(new Uint8Array(bytes)));
 }

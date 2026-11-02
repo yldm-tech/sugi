@@ -7,7 +7,9 @@ import { Ctx, documentHtml, flagsOf, Page, pageCsp } from "./layout";
 import { albumPage, filePage, minePage } from "./pages/files";
 import { homePage } from "./pages/home";
 import { privacyPage } from "./pages/privacy";
-import { devPage, donatePage, faqPage, loginPage, notFoundPage, termsPage } from "./pages/info";
+import { accountPage, devPage, donatePage, faqPage, loginPage, notFoundPage, termsPage, verifyPage } from "./pages/info";
+import { displayName, resolvePrincipal } from "../auth/core";
+import { magicLinkValid } from "../auth/email";
 
 export const LANG_COOKIE = "sugi_lang";
 
@@ -16,7 +18,7 @@ export function makeCtx(request: Request, env: Env): { ctx: Ctx; setCookie: stri
   const q = url.searchParams.get("lang");
   const lang = pickLang(q, readCookie(request.headers.get("cookie"), LANG_COOKIE), request.headers.get("accept-language"));
   const setCookie = q === "en" || q === "zh" ? `${LANG_COOKIE}=${q}; Path=/; Max-Age=31536000; SameSite=Lax; Secure` : null;
-  return { ctx: { env, lang, nonce: randomNonce(), gated: Boolean(env.UPLOAD_TOKEN), flags: flagsOf(env), path: url.pathname }, setCookie };
+  return { ctx: { env, lang, nonce: randomNonce(), gated: Boolean(env.UPLOAD_TOKEN), flags: flagsOf(env), path: url.pathname, query: url.searchParams }, setCookie };
 }
 
 async function resolvePage(ctx: Ctx, pathname: string): Promise<Page> {
@@ -34,7 +36,16 @@ async function resolvePage(ctx: Ctx, pathname: string): Promise<Page> {
     case "/privacy":
       return privacyPage(ctx);
     case "/login":
-      return ctx.flags.accounts ? loginPage(ctx) : notFoundPage(ctx);
+      if (!ctx.flags.accounts) return notFoundPage(ctx);
+      return ctx.user ? accountPage(ctx) : loginPage(ctx);
+    case "/account":
+      if (!ctx.flags.accounts) return notFoundPage(ctx);
+      return ctx.user ? accountPage(ctx) : loginPage(ctx);
+    case "/auth/email/verify": {
+      if (!ctx.flags.accounts) return notFoundPage(ctx);
+      const token = ctx.query?.get("token") ?? "";
+      return verifyPage(ctx, token, token !== "" && (await magicLinkValid(ctx.env, token)));
+    }
     case "/donate":
       return ctx.flags.donate ? donatePage(ctx) : notFoundPage(ctx);
   }
@@ -56,6 +67,10 @@ async function resolvePage(ctx: Ctx, pathname: string): Promise<Page> {
 /** Renders a site page. With `X-Sugi-Partial: 1` it returns only the page's main content as JSON, which the browser script swaps in without a full reload so running uploads keep going. */
 export async function handleSite(request: Request, env: Env, pathname: string): Promise<Response> {
   const { ctx, setCookie } = makeCtx(request, env);
+  if (ctx.flags.accounts) {
+    const p = await resolvePrincipal(request, env).catch(() => null);
+    ctx.user = p ? { email: p.user.email, name: displayName(p.user) } : null;
+  }
   const page = await resolvePage(ctx, pathname);
   const headers: Record<string, string> = {
     ...(page.noindex ? { "x-robots-tag": "noindex" } : {}),

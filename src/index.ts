@@ -12,6 +12,9 @@ import { eraseOldFingerprints } from "./moderation";
 import { handleLinkUpload } from "./links";
 import { installScript } from "./site/install";
 import { handleMcp } from "./mcp";
+import { handleInboxRead, receiveEmail, sweepInbox } from "./inbox";
+import { handleMagicRequest, handleMagicVerify } from "./auth/email";
+import { handleLogout, handleMe } from "./auth/me";
 
 // Only the default handler may be exported from this module: workerd treats every named export of the main module as an entrypoint.
 
@@ -99,6 +102,10 @@ async function routeApi(request: Request, env: Env, pathname: string): Promise<R
     if (method === "DELETE") return handleFileDelete(request, env, file[1]);
     throw methodNotAllowed("GET, DELETE");
   }
+  if (pathname === "/api/me") {
+    if (method === "GET") return handleMe(request, env);
+    throw methodNotAllowed("GET");
+  }
   if (pathname === "/api/albums") {
     if (method === "POST") return handleAlbumCreate(request, env);
     throw methodNotAllowed("POST");
@@ -139,6 +146,14 @@ async function route(request: Request, env: Env): Promise<Response> {
     if (method === "POST" || method === "PUT") return handleLegacyUpload(request, env);
     throw methodNotAllowed("POST, PUT");
   }
+  if (pathname === "/auth/email" || pathname === "/auth/email/verify" || pathname === "/auth/logout") {
+    if (method === "POST") return pathname === "/auth/email" ? handleMagicRequest(request, env) : pathname === "/auth/logout" ? handleLogout(request, env) : handleMagicVerify(request, env);
+    if (pathname !== "/auth/email/verify" || (method !== "GET" && method !== "HEAD")) throw methodNotAllowed("POST");
+  }
+  if (pathname === "/admin/e2e-inbox") {
+    if (method === "GET") return handleInboxRead(request, env);
+    throw methodNotAllowed("GET");
+  }
   if (pathname === "/admin/purge-by-source") {
     if (method === "POST") return handlePurgeBySource(request, env);
     throw methodNotAllowed("POST");
@@ -175,6 +190,11 @@ export default {
       throw err;
     }
   },
+  async email(message, rawEnv): Promise<void> {
+    const env = rawEnv as Env;
+    await ensureSchema(env.DB);
+    await receiveEmail(message, env);
+  },
   async scheduled(_controller, env, ctx): Promise<void> {
     ctx.waitUntil(
       (async () => {
@@ -182,6 +202,7 @@ export default {
         // The cron may fire before the first request on a fresh deployment.
         await ensureSchema(env.DB);
         await eraseOldFingerprints(env);
+        await sweepInbox(env);
       })(),
     );
   },

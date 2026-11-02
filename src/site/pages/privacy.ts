@@ -41,7 +41,28 @@ const RESEND_REGIONS: Record<string, [string, string, string, string]> = {
 
 const when = <T>(cond: unknown, ...items: T[]): T[] => (cond ? items : []);
 
-export function privacySections(b: Brand): Section[] {
+/** `features` are the live account features (ACCOUNT_FEATURES); the account section only describes those. */
+export function privacySections(b: Brand, features: string[] = ["email", "github", "google", "passkey", "sync", "tokens"]): Section[] {
+  const has = (f: string) => features.includes(f);
+  const providers = ["github", "google"].filter(has).map((p) => (p === "github" ? "GitHub" : "Google"));
+  const via = [...(has("email") ? ["邮箱"] : []), ...providers];
+  const viaEn = [...(has("email") ? ["email"] : []), ...providers];
+  const orJoin = (xs: string[], word: string) => (xs.length > 1 ? `${xs.slice(0, -1).join("、")}${word}${xs[xs.length - 1]}` : xs.join(""));
+  const orJoinEn = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(", ")} or ${xs[xs.length - 1]}` : xs.join(""));
+  const storedZh = [
+    ...(via.length ? [`你的邮箱（用${orJoin(via, "或")}登录时）`] : []),
+    ...(providers.length ? [`${orJoin(providers, " 或 ")} 的用户 id 和它们提供的邮箱`] : []),
+    ...(has("passkey") ? ["通行密钥的公钥（不包含指纹、面容等生物特征，它们从不离开你的设备）"] : []),
+    "哪些文件和打包链接属于你的账号",
+    has("tokens") ? "以及登录会话和 API 令牌的哈希（令牌本身只在生成时显示给你一次）" : "以及登录会话的哈希",
+  ];
+  const storedEn = [
+    ...(viaEn.length ? [`your email (when you log in with ${orJoinEn(viaEn)})`] : []),
+    ...(providers.length ? [`your ${orJoinEn(providers)} user id and the email they provide`] : []),
+    ...(has("passkey") ? ["the public keys of your passkeys (no fingerprints or face data; those never leave your device)"] : []),
+    "which files and albums belong to your account",
+    has("tokens") ? "and hashes of your login sessions and API tokens (a token itself is shown to you once, when it is created)" : "and hashes of your login sessions",
+  ];
   const site = esc(b.siteName);
   const contact = b.contactEmail ? esc(b.contactEmail) : null;
   const abuse = b.abuseEmail ? esc(b.abuseEmail) : null;
@@ -145,14 +166,16 @@ export function privacySections(b: Brand): Section[] {
       accountsOnly: true,
       paras: [
         {
-          zh: "账号是可选的。登录后我们会保存：你的邮箱（用邮箱、GitHub 或 Google 登录时）、GitHub 或 Google 的用户 id 和它们提供的邮箱、通行密钥的公钥（不包含指纹、面容等生物特征，它们从不离开你的设备）、哪些文件和打包链接属于你的账号，以及登录会话和 API 令牌的哈希（令牌本身只在生成时显示给你一次）。",
-          en: "Accounts are optional. If you log in we store: your email (when you log in with email, GitHub or Google), your GitHub or Google user id and the email they provide, the public keys of your passkeys (no fingerprints or face data; those never leave your device), which files and albums belong to your account, and hashes of your login sessions and API tokens (a token itself is shown to you once, when it is created).",
+          zh: `账号是可选的。登录后我们会保存：${storedZh.slice(0, -1).join("、")}，${storedZh[storedZh.length - 1]}。`,
+          en: `Accounts are optional. If you log in we store: ${storedEn.join(", ")}.`,
         },
         {
-          zh: "登录后浏览器里会有一个名为 sugi_session 的 cookie（HttpOnly，30 天有效），只用来让你保持登录。邮件里的登录链接 15 分钟内有效，只能用一次。",
-          en: "While you are logged in your browser holds a cookie named sugi_session (HttpOnly, valid for 30 days) that only keeps you logged in. Login links sent by email are valid for 15 minutes and work once.",
+          zh: `登录后浏览器里会有一个名为 sugi_session 的 cookie（HttpOnly，30 天有效），只用来让你保持登录。${has("email") ? "邮件里的登录链接 15 分钟内有效，只能用一次。" : ""}`,
+          en: `While you are logged in your browser holds a cookie named sugi_session (HttpOnly, valid for 30 days) that only keeps you logged in.${has("email") ? " Login links sent by email are valid for 15 minutes and work once." : ""}`,
         },
-        resend
+        ...when<Para>(
+          has("email"),
+          resend
           ? {
               zh: `登录邮件通过 Resend（Resend, Inc.）发送，使用它的${resend[0]}区域（${region}）。Resend 作为我们的数据处理方，会处理收件邮箱地址和邮件内容（其中包含一次性登录链接）。`,
               en: `Login emails are sent through Resend (Resend, Inc.), using its ${resend[1]} region (${region}). As our processor, Resend handles the recipient address and the message content, which includes the one-time login link.`,
@@ -162,6 +185,7 @@ export function privacySections(b: Brand): Section[] {
               zh: "登录邮件由我们使用的邮件服务商发送，它作为我们的数据处理方，会处理收件邮箱地址和邮件内容（其中包含一次性登录链接）。",
               en: "Login emails are sent through our email provider, which as our processor handles the recipient address and the message content, which includes the one-time login link.",
             },
+        ),
       ],
     },
     {
@@ -270,7 +294,7 @@ function paragraphs(ctx: Ctx, s: Section): string {
 
 export function privacyPage(ctx: Ctx): Page {
   const t = tr(ctx);
-  const sections = privacySections(brand(ctx.env)).filter((s) => ctx.flags.accounts || !s.accountsOnly);
+  const sections = privacySections(brand(ctx.env), ctx.flags.account).filter((s) => ctx.flags.accounts || !s.accountsOnly);
   const html = `<section class="stack8">
 <h1 class="h1">${t("隐私政策", "Privacy policy")}</h1>
 <p class="lead">${t(`最后更新：${LAST_UPDATED}`, `Last updated: ${LAST_UPDATED}`)}</p>

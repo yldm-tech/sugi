@@ -32,6 +32,8 @@ export default defineConfig(async () => {
             RESEND_REGION: "ap-northeast-1",
             MAIL_FROM: "sugi.moe <login@sugi.moe>",
             FEATURE_ACCOUNTS: "0",
+            ACCOUNT_FEATURES: "email",
+            E2E_INBOX: "e2e-testinbox@sugi.moe",
             FEATURE_CLI: "0",
             FEATURE_DONATE: "0",
             TEST_MIGRATIONS: migrations,
