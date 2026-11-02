@@ -26,7 +26,7 @@ sugi 是一个匿名图床，图片和短视频都能传，整个跑在 Cloudfla
 
 ### 一键部署
 
-点上面的 **Deploy to Cloudflare**。Cloudflare 会把这个仓库复制到你的 GitHub 或 GitLab 账号，创建 R2 bucket 和 D1 数据库，让你填下面两个 secret，然后部署 Worker。部署完就能在 `*.workers.dev` 地址上用，数据库表在第一次请求时由 Worker 自己建好。
+点上面的 **Deploy to Cloudflare**。Cloudflare 会把这个仓库复制到你的 GitHub 或 GitLab 账号（之后往里推送会通过 Workers Builds 自动部署），创建 R2 bucket 和 D1 数据库（名字可以改），让你填下面两个 secret，然后部署 Worker。部署完就能在 `*.workers.dev` 地址上用，数据库表在第一次请求时由 Worker 自己建好。
 
 | Secret           | 填什么                                                                                                                               |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------ |

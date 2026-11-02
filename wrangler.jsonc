@@ -67,7 +67,9 @@
   ],
   "r2_buckets": [
     {
-      "binding": "BUCKET"
+      "binding": "BUCKET",
+      // Created on the first deploy; the Deploy to Cloudflare button lets you rename it.
+      "bucket_name": "my-sugi"
     }
   ],
   // Per-client upload limit: 10 per 60 seconds (the binding only supports 10- or 60-second periods). namespace_id only needs to be unique within your account.
