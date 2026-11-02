@@ -1,4 +1,5 @@
 // The original content-addressed API, kept unchanged because its links are embedded in pull requests and bin/sugi-upload and other scripts post to /upload: images only, at most 20 MB, key = first 16 hex of SHA-256 + extension, served from the main origin at /<key>.
+import { accountsOn, forgetFiles } from "./auth/core";
 import { deletionResponse, fetchViaCache, purgeCache } from "./cache";
 import { sha256Hex } from "./crypto";
 import { authorizeUpload, etagMatches, hasBody, HttpError, jsonResponse, RemovedError, requireBearer, textResponse, wantsJson } from "./http";

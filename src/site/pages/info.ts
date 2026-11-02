@@ -136,7 +136,7 @@ ${codeBlock(ctx, [
   { kind: "comment", text: t("# 查看和删除自己传过的", "# list and delete what you uploaded"), gap: true },
   { kind: "cmd", text: "sugi ls" },
   { kind: "cmd", text: "sugi rm k3x9qa2m" },
-  ...(ctx.flags.accounts ? [{ kind: "comment" as const, text: t("# 登录账号，之后传的都会同步（可选）", "# log in so uploads go to your account (optional)"), gap: true }, { kind: "cmd" as const, text: "sugi login" }] : []),
+  ...(ctx.flags.account.includes("tokens") ? [{ kind: "comment" as const, text: t("# 登录账号，之后传的都会同步（可选）", "# log in so uploads go to your account (optional)"), gap: true }, { kind: "cmd" as const, text: "sugi login" }] : []),
 ])}
 <p class="small">${t('CLI 会把删除凭证存在 <code class="chip">~/.config/sugi/history.jsonl</code>，所以 sugi rm 只能删这台电脑传过的文件。超过 90 MB 的文件会自动分片上传。加 --json 可以拿到完整返回；SUGI_TOKEN 环境变量里的令牌会作为 Authorization: Bearer 发出去。', 'The CLI keeps delete tokens in <code class="chip">~/.config/sugi/history.jsonl</code>, so sugi rm can only delete files uploaded from this machine. Files over 90 MB are uploaded in chunks automatically. Add --json for the full responses; a token in SUGI_TOKEN is sent as Authorization: Bearer.')}</p>
 </section>`;
@@ -202,7 +202,7 @@ export function faqPage(ctx: Ctx): Page {
   const singleMb = SINGLE_REQUEST_MAX_BYTES / MiB;
   const items = [
     faqItem(t("sugi 是什么意思？", "What does “sugi” mean?"), t("日语里有两个意思：「杉」是柳杉，所以仓仓头上顶着一棵杉树苗；「〜すぎ」是“太……了”，かわいすぎ 就是太可爱了。仓仓是一只什么都往腮帮子里屯的仓鼠，屯太多的时候会说「屯すぎ！」。", "Two things in Japanese: 杉 (sugi) is the Japanese cedar, which is why the hamster has a cedar sprout on its head, and 〜すぎ (-sugi) means “too much”, as in かわいすぎ, “way too cute”. The hamster stuffs everything into its cheeks, and when it has stuffed too much it says “too much!”.")),
-    faqItem(t("一定要注册吗？", "Do I need an account?"), ctx.flags.accounts ? t("不用。不登录也能传，记录只保存在当前浏览器里。想换设备也不丢，可以登录，之前传的文件能一键认领。", "No. You can upload without logging in; your history stays in this browser. Log in if you want it on every device, and claim your earlier uploads in one click.") : t("不用，sugi 现在没有账号，打开就能传。上传记录和删除凭证保存在你当前用的浏览器里（「我的文件」），可以随时导出一份备份。", "No. sugi has no accounts right now; just open it and upload. Your history and delete tokens are kept in this browser (“My files”), and you can export them at any time.")),
+    faqItem(t("一定要注册吗？", "Do I need an account?"), ctx.flags.account.includes("sync") ? t("不用。不登录也能传，记录只保存在当前浏览器里。想换设备也不丢，可以登录，之前传的文件能一键认领。", "No. You can upload without logging in; your history stays in this browser. Log in if you want it on every device, and claim your earlier uploads in one click.") : ctx.flags.accounts ? t("不用。不登录也能传，记录只保存在当前浏览器里（「我的文件」）。登录后，新上传的文件会记在你的账号下。", "No. You can upload without logging in; your history stays in this browser (“My files”). Once you log in, new uploads are recorded under your account.") : t("不用，sugi 现在没有账号，打开就能传。上传记录和删除凭证保存在你当前用的浏览器里（「我的文件」），可以随时导出一份备份。", "No. sugi has no accounts right now; just open it and upload. Your history and delete tokens are kept in this browser (“My files”), and you can export them at any time.")),
     faqItem(t("文件会保存多久？", "How long are files kept?"), t(`选「永久」的文件会一直保存，除非违反使用条款被删除，或者你用删除凭证自己删掉。选 1 小时、12 小时或 3 天的，链接放在 ${host(ctx.env.TMP_ORIGIN)} 下，到期后链接立刻失效，文件会在之后十分钟左右内被清理。`, `Files kept “forever” stay until they break the terms or you delete them with their delete token. Files kept for 1 hour, 12 hours or 3 days get a ${host(ctx.env.TMP_ORIGIN)} link that stops working the moment it expires; the file itself is cleaned up within about ten minutes after that.`)),
     faqItem(t("能传什么格式？", "What can I upload?"), t(`图片和短视频：PNG、JPEG、WebP、GIF、AVIF、MP4、WebM。格式按文件内容判断，不看扩展名。单个文件最大 ${maxMb} MB，超过 ${singleMb} MB 的网页会自动分片上传。其他格式（SVG、HTML、PDF、压缩包、可执行文件等）一律不收。`, `Images and short videos: PNG, JPEG, WebP, GIF, AVIF, MP4 and WebM, recognised by their content rather than the file name. Up to ${maxMb} MB per file; the website splits anything over ${singleMb} MB into chunks for you. Everything else (SVG, HTML, PDF, archives, executables…) is refused.`)),
     faqItem(t("上传的文件谁能看到？", "Who can see my uploads?"), t("所有上传都是公开的，任何拿到链接的人都能打开。链接是随机生成的，不会被列出来，但「可爱链接名」组合少，更容易被猜到。不要上传含个人信息、证件、密码或密钥的图片。", "Every upload is public: anyone with the link can open it. Links are random and never listed anywhere, but cute link names come from a much smaller pool and are easier to guess. Do not upload pictures that show personal details, IDs, passwords or keys.")),
@@ -271,16 +271,69 @@ export function notFoundPage(ctx: Ctx): Page {
 }
 
 // Visual only until accounts ship (FEATURE_ACCOUNTS); the buttons are not wired to anything yet.
-export function loginPage(ctx: Ctx): Page {
-  const t = tr(ctx);
-  const html = `<section class="login"><div class="holder">
+function loginFrame(ctx: Ctx, inner: string): string {
+  return `<section class="login"><div class="holder">
 ${peekHamster(110, 100, false)}<div class="paw l"></div><div class="paw r"></div>
 <div class="frame">
-<div class="center"><h1 class="h2">${t("登录 sugi", "Log in to sugi")}</h1><p class="lead">${t("不登录也能传。登录后记录跟着你走，换设备也不会丢。", "You can upload without an account. Logging in keeps your history on every device.")}</p></div>
-<p class="small">${t("登录功能还在路上。", "Logging in is on its way.")}</p>
-<p class="small">${t('登录即表示同意 <a href="/terms" data-nav>使用条款</a> 和 <a href="/privacy" data-nav>隐私政策</a>。', 'By logging in you agree to the <a href="/terms" data-nav>terms</a> and the <a href="/privacy" data-nav>privacy policy</a>.')}</p>
+${inner}
 </div></div></section>`;
+}
+
+const LOGIN_ERRORS: Record<string, [string, string]> = {
+  invalid: ["这个邮箱地址好像不对，再检查一下？", "That email address does not look right."],
+  rate: ["登录邮件发得太频繁了，过一会儿再试。", "Too many login emails; wait a while and try again."],
+  quota: ["今天的登录邮件额度用完了，明天再试。", "Today's login email quota is used up; try again tomorrow."],
+  failed: ["邮件没能发出去，过一会儿再试。", "The email could not be sent; try again in a while."],
+  link: ["这个登录链接已经用过或过期了，重新发一封吧。", "That login link was already used or has expired; ask for a new one."],
+};
+
+export function loginPage(ctx: Ctx): Page {
+  const t = tr(ctx);
+  const q = ctx.query;
+  const sent = q?.get("sent") === "1";
+  const error = LOGIN_ERRORS[q?.get("error") ?? ""];
+  const email = ctx.flags.account.includes("email");
+  const form = email
+    ? `<form class="stack8" method="post" action="/auth/email">
+<input type="hidden" name="lang" value="${ctx.lang}">
+<label class="optlabel" for="login-email">${t("用邮箱登录，我们会发一封带登录链接的邮件给你", "Log in with your email: we send you a login link")}</label>
+<div class="urlform"><input id="login-email" type="email" name="email" required autocomplete="email" placeholder="you@example.com"><button type="submit">${t("发送登录链接", "Send link")}</button></div>
+</form>`
+    : `<p class="small">${t("登录功能还在路上。", "Logging in is on its way.")}</p>`;
+  const notice = sent
+    ? `<p class="gate">${t("登录链接已经发到你的邮箱了，15 分钟内有效。没收到的话看看垃圾邮件。", "We sent a login link to your inbox; it is valid for 15 minutes. Check your spam folder if it does not arrive.")}</p>`
+    : error
+      ? `<p class="gate">${t(error[0], error[1])}</p>`
+      : "";
+  const html = loginFrame(
+    ctx,
+    `<div class="center"><h1 class="h2">${t(`登录 ${esc(brand(ctx.env).siteName)}`, `Log in to ${esc(brand(ctx.env).siteName)}`)}</h1><p class="lead">${t("不登录也能传。登录后，新上传的文件会记在你的账号下。", "You can upload without an account. Once you log in, new uploads are recorded under your account.")}</p></div>
+${notice}
+${form}
+<p class="small">${t('登录即表示同意 <a href="/terms" data-nav>使用条款</a> 和 <a href="/privacy" data-nav>隐私政策</a>。', 'By logging in you agree to the <a href="/terms" data-nav>terms</a> and the <a href="/privacy" data-nav>privacy policy</a>.')}</p>`,
+  );
   return { id: "login", title: pageTitle(ctx, "登录", "Log in"), main: html };
+}
+
+/** The page a login email links to. Only its button logs in, so mail scanners that open links cannot use up the token. */
+export function verifyPage(ctx: Ctx, token: string, valid: boolean): Page {
+  const t = tr(ctx);
+  const inner = valid
+    ? `<div class="center"><h1 class="h2">${t("确认登录", "Confirm login")}</h1><p class="lead">${t("点下面的按钮就登录好了。", "Press the button to finish logging in.")}</p></div>
+<form class="center" method="post" action="/auth/email/verify"><input type="hidden" name="token" value="${esc(token)}"><button class="btn" type="submit">${t("登录", "Log in")}</button></form>`
+    : `<div class="center"><h1 class="h2">${t("链接失效了", "This link has expired")}</h1><p class="lead">${t(LOGIN_ERRORS.link[0], LOGIN_ERRORS.link[1])}</p><a class="btn" href="/login" data-nav>${t("重新登录", "Log in again")}</a></div>`;
+  return { id: "login", title: pageTitle(ctx, "确认登录", "Confirm login"), main: loginFrame(ctx, inner), noindex: true };
+}
+
+export function accountPage(ctx: Ctx): Page {
+  const t = tr(ctx);
+  const u = ctx.user!;
+  const welcome = ctx.query?.get("welcome") === "1";
+  const inner = `<div class="center"><h1 class="h2">${t("我的账号", "Your account")}</h1>${welcome ? `<p class="lead">${t("登录好啦～", "You're logged in~")}</p>` : ""}</div>
+<p class="lead">${t("登录邮箱", "Email")}：<strong>${esc(u.email ?? u.name)}</strong></p>
+<p class="small">${t("登录状态下新上传的文件会记在这个账号下。在多台设备上查看和管理它们的功能还在路上。", "New uploads made while logged in are recorded under this account. Seeing and managing them across devices is on its way.")}</p>
+<form method="post" action="/auth/logout"><button class="mini" type="submit">${t("退出登录", "Log out")}</button></form>`;
+  return { id: "account", title: pageTitle(ctx, "我的账号", "Account"), main: loginFrame(ctx, inner), noindex: true };
 }
 
 // Hidden behind FEATURE_DONATE. Amounts, payment methods and the thank-you wall come from real data supplied by the maintainers; nothing is invented here.

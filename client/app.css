@@ -107,10 +107,11 @@ main { display: flex; flex-direction: column; gap: 36px; }
 .brand-word { font-family: var(--f-brand); font-weight: 700; font-size: 24px; letter-spacing: -0.3px; }
 .brand-word svg { margin: 0 2px; vertical-align: 1px; }
 .nav { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; font-family: var(--f-body); font-weight: 600; font-size: 17px; }
-.pill { padding: 7px 16px; border-radius: 999px; border: 2px solid var(--line); background: #fff; color: var(--muted2); }
+.pill { white-space: nowrap; flex-shrink: 0; padding: 7px 16px; border-radius: 999px; border: 2px solid var(--line); background: #fff; color: var(--muted2); }
 .pill:hover { color: var(--ink); background: var(--pale2); }
 .pill.on, .pill.on:hover { background: var(--green); color: #fff; border-color: var(--green); }
-.pill.login { border-color: #4a845a; color: var(--link-dk); }
+.pill.signin { border-color: #4a845a; color: var(--link-dk); }
+.pill.signin.on, .pill.signin.on:hover { color: #fff; }
 .round { width: 40px; height: 40px; border-radius: 50%; border: 2px solid var(--line); background: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; }
 .round:hover { background: var(--pale2); }
 .lang { font-family: var(--f-body); font-weight: 600; font-size: 14px; height: 40px; min-width: 40px; padding: 0 12px; border-radius: 999px; border: 2px solid var(--line); background: #fff; color: var(--muted2); display: flex; align-items: center; justify-content: center; }

@@ -5,6 +5,7 @@ import { constantTimeEqual, sha256Hex, toHex } from "./crypto";
 import { authorizeUpload, etagMatches, hasBody, HttpError, isAdmin, jsonResponse, RemovedError, textResponse, Uploader, wantsJson } from "./http";
 import { assertFileNotRemoved, assertHashAllowed, isTombstone, takedown } from "./moderation";
 import { cuteId, deleteToken, isFileId, randomId } from "./ids";
+import { accountsOn, forgetFiles, ownFile, ownsFile, resolvePrincipal } from "./auth/core";
 import { EXPIRIES, ExpiryId, HASH_MAX_BYTES, IMPORT_MAX_REDIRECTS, IMPORT_TIMEOUT_MS, IMPORT_UNKNOWN_LENGTH_MAX_BYTES, MAX_FILE_BYTES, NAME_MAX, parseExpiry, SINGLE_REQUEST_MAX_BYTES } from "./limits";
 import { MEDIA_BY_EXT, MediaType, SNIFF_BYTES, sniffMedia } from "./sniff";
 
@@ -278,6 +279,7 @@ export async function storeStream(env: Env, uploader: Uploader, opts: UploadOpti
     await env.BUCKET.delete(p.key);
     throw err;
   }
+  await ownFile(env, uploader.userId, p.key);
   return result(env, p, length, opts.name);
 }
 
@@ -289,6 +291,7 @@ export async function storeBytes(env: Env, uploader: Uploader, opts: UploadOptio
   const p = await prepare(env, uploader, opts, type, fixedId);
   const stored = await env.BUCKET.put(p.key, bytes, await reservedPutOptions(env, p, fixedId));
   if (stored === null) throw linkUsed();
+  await ownFile(env, uploader.userId, p.key);
   return result(env, p, bytes.byteLength, opts.name);
 }
 
@@ -554,19 +557,26 @@ export async function handleFileInfo(env: Env, id: string): Promise<Response> {
   return jsonResponse(publicInfo(env, found.file));
 }
 
-/** Deletes a current-API file after checking its delete token (`null` = already authorised, e.g. admin). Returns null when the file does not exist. */
-export async function deleteFile(env: Env, id: string, token: string | null): Promise<{ key: string; cachePurged: boolean } | null> {
+export type DeleteAuth = { token: string } | { userId: string } | "admin";
+
+export async function tokenMatches(obj: R2Object, token: string): Promise<boolean> {
+  const expected = obj.customMetadata?.del ?? "";
+  return Boolean(expected) && (await constantTimeEqual(await sha256Hex(new TextEncoder().encode(token)), expected));
+}
+
+/** Deletes a current-API file after checking its delete token or account ownership. Returns null when the file does not exist. */
+export async function deleteFile(env: Env, id: string, auth: DeleteAuth): Promise<{ key: string; cachePurged: boolean } | null> {
   if (!isFileId(id)) return null;
   for (const temporary of [false, true]) {
     const key = fileKey(id, temporary);
     const obj = await env.BUCKET.head(key);
     if (!obj || isTombstone(obj)) continue;
-    if (token !== null) {
-      const expected = obj.customMetadata?.del ?? "";
-      const given = await sha256Hex(new TextEncoder().encode(token));
-      if (!expected || !(await constantTimeEqual(given, expected))) throw new HttpError(403, "wrong delete token");
+    if (auth !== "admin") {
+      const ok = "token" in auth ? await tokenMatches(obj, auth.token) : await ownsFile(env, auth.userId, key);
+      if (!ok) throw new HttpError(403, "token" in auth ? "wrong delete token" : "this file does not belong to your account");
     }
     await env.BUCKET.delete(key);
+    if (accountsOn(env)) await forgetFiles(env, [key]);
     return { key, cachePurged: await purgeCache(env, [key]) };
   }
   return null;
@@ -577,14 +587,20 @@ export async function handleFileDelete(request: Request, env: Env, id: string): 
   if (!isFileId(id)) throw new HttpError(404, "not found");
   const admin = await isAdmin(request, env);
   const token = request.headers.get("sugi-token");
-  if (!admin && !token) throw new HttpError(401, "missing Sugi-Token header (the delete_token returned by the upload)");
   // An admin deletion is a takedown, exactly like the MCP tool: tombstone (451, id never reused), audit log, cache purge.
   if (admin) {
     const url = new URL(request.url);
     const r = await takedown(env, id, { reason: url.searchParams.get("reason") ?? "admin DELETE /api/files", blockContent: url.searchParams.get("block_content") === "1", via: "http" });
     return deletionResponse(r.removed.length ? [id] : [], r.cache_purged, r.already_removed.length ? { already_removed: [id] } : {});
   }
-  const done = await deleteFile(env, id, token);
+  let auth: DeleteAuth;
+  if (token) auth = { token };
+  else {
+    const principal = await resolvePrincipal(request, env);
+    if (!principal) throw new HttpError(401, "missing Sugi-Token header (the delete_token returned by the upload)");
+    auth = { userId: principal.user.id };
+  }
+  const done = await deleteFile(env, id, auth);
   if (done) return deletionResponse([id], done.cachePurged);
   // Already gone; purge anyway so a retry after a failed purge completes.
   if (!(await purgeCache(env, [fileKey(id, false), fileKey(id, true)]))) return deletionResponse([], false);
@@ -604,5 +620,6 @@ export async function sweepExpired(env: Env, now = Date.now()): Promise<{ delete
     cursor = page.truncated ? page.cursor : undefined;
   } while (cursor);
   for (let i = 0; i < expired.length; i += 1000) await env.BUCKET.delete(expired.slice(i, i + 1000));
+  if (accountsOn(env)) await forgetFiles(env, expired);
   return { deleted: expired, cachePurged: await purgeCache(env, expired) };
 }

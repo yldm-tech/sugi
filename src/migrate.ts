@@ -1,11 +1,15 @@
 // Applies the D1 schema at runtime, so a one-click deploy (where nobody runs `wrangler d1 migrations apply`) works on its first request. It shares wrangler's own bookkeeping table, so migrations applied with wrangler are recognised and vice versa.
 import m0001 from "../migrations/0001_albums.sql";
 import m0002 from "../migrations/0002_moderation.sql";
+import m0003 from "../migrations/0003_accounts.sql";
+import m0004 from "../migrations/0004_e2e_inbox.sql";
 
 // Every file in migrations/, in order; test/template.test.ts checks that none is missing.
 export const MIGRATIONS: [string, string][] = [
   ["0001_albums.sql", m0001],
   ["0002_moderation.sql", m0002],
+  ["0003_accounts.sql", m0003],
+  ["0004_e2e_inbox.sql", m0004],
 ];
 
 let ready: Promise<void> | null = null;

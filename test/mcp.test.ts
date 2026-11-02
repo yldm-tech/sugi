@@ -195,7 +195,7 @@ describe("CLI distribution", () => {
     const on = await (await call(new Request(`${MAIN}/dev`, { headers: { "accept-language": "zh-CN" } }), CLI_ON)).text();
     for (const needle of ["curl -fsSL https://sugi.moe/install.sh | sh", "sugi up -e 1h secret.jpg", "sugi up --clipboard", "claude mcp add --transport http sugi https://sugi.moe/mcp", "mcp-remote", "~/.cursor/mcp.json", "upload_file", "delete_file", "history.jsonl"]) expect(on, needle).toContain(needle);
     expect(on).not.toContain("sugi login");
-    expect(await (await call(new Request(`${MAIN}/dev`), { ...CLI_ON, FEATURE_ACCOUNTS: "1" })).text()).toContain("sugi login");
+    expect(await (await call(new Request(`${MAIN}/dev`), { ...CLI_ON, FEATURE_ACCOUNTS: "1", ACCOUNT_FEATURES: "email,tokens" })).text()).toContain("sugi login");
     const home = await (await call(new Request(`${MAIN}/`, { headers: { "accept-language": "zh-CN" } }), CLI_ON)).text();
     expect(home).toContain("sugi up cat.png");
     expect(home).toContain("在终端里、让 AI 帮你传");

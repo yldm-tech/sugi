@@ -11,6 +11,7 @@ import { base64url } from "./ids";
 import { constantTimeEqual, hmacSha256Hex } from "./crypto";
 import { prepare, peekStream, result, sanitizeName, unsupportedType, uploadResponse, parseOptions } from "./files";
 import { authorizeUpload, HttpError, jsonResponse } from "./http";
+import { ownFile } from "./auth/core";
 import { MAX_FILE_BYTES, MAX_PART_BYTES, MIN_PART_BYTES } from "./limits";
 import { MEDIA_BY_EXT, SNIFF_BYTES, sniffMedia } from "./sniff";
 
@@ -28,6 +29,7 @@ interface Session {
   nm: string | null;
   tk: string; // delete token, returned on completion
   exp: number; // session expiry (ms)
+  uid?: string; // account the finished file is recorded under
 }
 
 function partsOf(s: Pick<Session, "ps" | "sz">): number {
@@ -108,7 +110,7 @@ export async function handleChunkCreate(request: Request, env: Env): Promise<Res
     await mpu.abort();
     throw err;
   }
-  const session: Session = { k: p.key, u: mpu.uploadId, id: p.id, ext: type.ext, ps: partSize, sz: size, ex: p.expires, nm: opts.name, tk: p.token, exp: Date.now() + SESSION_TTL_MS };
+  const session: Session = { k: p.key, u: mpu.uploadId, id: p.id, ext: type.ext, ps: partSize, sz: size, ex: p.expires, nm: opts.name, tk: p.token, exp: Date.now() + SESSION_TTL_MS, uid: uploader.userId };
   return jsonResponse({ upload: await encodeSession(env, session), id: p.id, part_size: partSize, parts: partsOf(session), etag: part.etag }, 201);
 }
 
@@ -151,6 +153,7 @@ export async function handleChunkComplete(request: Request, env: Env): Promise<R
   }
   // Chunked files are always over HASH_MAX_BYTES, so the content blocklist does not apply to them (hashing them exceeds the CPU limit).
   const type = MEDIA_BY_EXT[s.ext];
+  await ownFile(env, s.uid, s.k);
   return uploadResponse(request, result(env, { id: s.id, key: s.k, type, token: s.tk, expires: s.ex, r2: {} }, s.sz, sanitizeName(s.nm)));
 }
 

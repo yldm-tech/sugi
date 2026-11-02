@@ -6,6 +6,7 @@ import { brand } from "./config";
 import { createAlbum } from "./albums";
 import { deleteFile, findFile, importUrl, parseOptions, publicInfo, storeBytes, UploadResult } from "./files";
 import { authorizeUpload, HttpError, isAdmin, isTrusted } from "./http";
+import { latestMessage } from "./inbox";
 import { assertFileNotRemoved, blockSource, inspect, listBlocks, listBySource, readLog, takedown, takedownBySource, unblockContent, unblockSource } from "./moderation";
 import { createUploadLinks } from "./links";
 import { ALBUM_MAX_FILES, ALBUM_TITLE_MAX, MAX_FILE_BYTES, RATE_LIMIT, RATE_LIMIT_PERIOD_SECONDS, SINGLE_REQUEST_MAX_BYTES, UPLOAD_LINK_MAX, UPLOAD_LINK_TTL_SECONDS } from "./limits";
@@ -130,6 +131,11 @@ function registerAdminTools(server: McpServer, env: Env): void {
     async (args) => run(() => listBlocks(env, args.limit ?? 100)),
   );
   server.registerTool(
+    "read_test_inbox",
+    { title: "Read the end-to-end test inbox (admin)", description: "The newest message received at the E2E_INBOX test address (kept for an hour), with the links found in it. For automated tests of email login.", inputSchema: {}, annotations: { readOnlyHint: true } },
+    async () => run(async () => (await latestMessage(env)) ?? { empty: true }),
+  );
+  server.registerTool(
     "takedown_log",
     { title: "Admin audit log (admin)", description: "Recent admin actions (takedowns, blocks, unblocks), newest first.", inputSchema: { limit: z.number().int().min(1).max(500).optional() }, annotations: { readOnlyHint: true } },
     async (args) => run(() => readLog(env, args.limit ?? 50)),
@@ -251,7 +257,7 @@ function buildServer(request: Request, env: Env, admin: boolean): McpServer {
     async (args) => {
       try {
         const id = args.id.trim().replace(/^.*\//, "").replace(/\.[a-z0-9]+$/i, "");
-        const done = await deleteFile(env, id, args.delete_token);
+        const done = await deleteFile(env, id, { token: args.delete_token });
         if (!done) throw new HttpError(404, "not found");
         return text({ deleted: id, cache_purged: done.cachePurged });
       } catch (err) {

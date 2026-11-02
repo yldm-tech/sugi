@@ -8,6 +8,8 @@ import { brand } from "../config";
 
 export interface Flags {
   accounts: boolean;
+  /** Live account features (ACCOUNT_FEATURES): email, github, google, passkey, sync, tokens. Empty when accounts are off. */
+  account: string[];
   cli: boolean;
   donate: boolean;
 }
@@ -19,9 +21,13 @@ export interface Ctx {
   gated: boolean;
   flags: Flags;
   path: string;
+  /** Query string of the request (login messages). */
+  query?: URLSearchParams;
+  /** The signed-in account, when accounts are on. */
+  user?: { email: string | null; name: string } | null;
 }
 
-export type PageId = "home" | "mine" | "dev" | "faq" | "terms" | "privacy" | "file" | "album" | "login" | "donate" | "notfound";
+export type PageId = "home" | "mine" | "dev" | "faq" | "terms" | "privacy" | "file" | "album" | "login" | "account" | "donate" | "notfound";
 
 export interface Page {
   id: PageId;
@@ -45,7 +51,9 @@ export function tr(ctx: Ctx): (zh: string, en: string) => string {
 }
 
 export function flagsOf(env: Env): Flags {
-  return { accounts: env.FEATURE_ACCOUNTS === "1", cli: env.FEATURE_CLI === "1", donate: env.FEATURE_DONATE === "1" };
+  const accounts = env.FEATURE_ACCOUNTS === "1";
+  const account = accounts ? (env.ACCOUNT_FEATURES ?? "").split(",").map((s) => s.trim()).filter(Boolean) : [];
+  return { accounts, account, cli: env.FEATURE_CLI === "1", donate: env.FEATURE_DONATE === "1" };
 }
 
 export function pageCsp(env: Env, nonce: string): string {
@@ -85,7 +93,7 @@ ${navLink(ctx, "/mine", ["mine", "album"], current, t("我的文件", "My files"
 ${navLink(ctx, "/dev", ["dev"], current, t("开发者", "Developers"))}
 ${navLink(ctx, "/faq", ["faq", "terms", "privacy"], current, t("问问题", "FAQ"))}
 ${ctx.flags.donate ? navLink(ctx, "/donate", ["donate"], current, t("投喂 ♡", "Feed ♡")) : ""}
-${ctx.flags.accounts ? navLink(ctx, "/login", ["login"], current, t("登录", "Log in"), " login") : ""}
+${ctx.flags.accounts ? (ctx.user ? navLink(ctx, "/account", ["account"], current, t("我的账号", "Account"), " signin") : navLink(ctx, "/login", ["login"], current, t("登录", "Log in"), " signin")) : ""}
 <a class="lang" href="?lang=${other}" hreflang="${other}" id="lang-switch" title="${t("Switch to English", "切换到中文")}">${other === "en" ? "EN" : "中"}</a>
 <button class="round" type="button" id="theme" title="${t("切换白天 / 夜间", "Toggle day / night")}" aria-label="${t("切换白天 / 夜间", "Toggle day / night")}">${MOON}${SUN}</button>
 </nav>

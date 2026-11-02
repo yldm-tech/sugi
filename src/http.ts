@@ -1,3 +1,4 @@
+import { resolvePrincipal } from "./auth/core";
 import { constantTimeEqual, hmacSha256Hex } from "./crypto";
 import { RATE_LIMIT_PERIOD_SECONDS } from "./limits";
 
@@ -99,12 +100,15 @@ export interface Uploader {
   /** HMAC of the client IP; stored with every object and album for abuse tracing. */
   source: string;
   trusted: boolean;
+  /** Account the upload is recorded under (API token or logged-in session), if any. */
+  userId?: string;
 }
 
 // Shared gate for every route that stores user content: the UPLOAD_TOKEN gate (skipped for the trusted token), the IP_HASH_SECRET requirement and the per-source rate limit. `bucket` separates counters, e.g. uploads from album creation; `cost` is how many uploads the call accounts for.
 export async function authorizeUpload(request: Request, env: Env, bucket = "upload", cost = 1): Promise<Uploader> {
   const trusted = await isTrusted(request, env);
   if (!trusted && env.UPLOAD_TOKEN) await requireBearer(request, env.UPLOAD_TOKEN, "upload");
+  const principal = trusted ? null : await resolvePrincipal(request, env);
   // Without the secret there is no way to record a traceable source, so refuse rather than store untraceable uploads.
   if (!env.IP_HASH_SECRET) throw new HttpError(503, "uploads are not configured");
   const ip = request.headers.get("cf-connecting-ip") ?? "unknown";
@@ -119,7 +123,7 @@ export async function authorizeUpload(request: Request, env: Env, bucket = "uplo
       if (!success) throw new HttpError(429, "too many uploads, slow down", { "retry-after": String(RATE_LIMIT_PERIOD_SECONDS) });
     }
   }
-  return { source, trusted };
+  return { source, trusted, userId: principal?.user.id };
 }
 
 export function hasBody(obj: R2Object): obj is R2ObjectBody {

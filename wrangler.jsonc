@@ -50,6 +50,8 @@
     "ZONE_ID": "",
     // Features: the CLI and MCP server are on; accounts and the donation page are off.
     "FEATURE_ACCOUNTS": "0",
+    // With accounts on: which parts are live, comma-separated, from email, github, google, passkey, sync, tokens.
+    "ACCOUNT_FEATURES": "email",
     "FEATURE_CLI": "1",
     "FEATURE_DONATE": "0"
   },

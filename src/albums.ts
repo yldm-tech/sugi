@@ -1,6 +1,7 @@
 // Albums ("打包链接"): an ordered set of uploaded files behind https://sugi.moe/a/<id>. Metadata lives in D1; the files themselves stay where they are, and deleting an album never deletes its files.
 import { constantTimeEqual, sha256Hex } from "./crypto";
 import { describe, fileKey, publicInfo, StoredFile } from "./files";
+import { ownAlbum, ownsAlbum, resolvePrincipal } from "./auth/core";
 import { authorizeUpload, HttpError, isAdmin, jsonResponse, wantsJson, textResponse, Uploader } from "./http";
 import { albumDeleteToken, isFileId, randomId } from "./ids";
 import { ALBUM_MAX_FILES, ALBUM_TITLE_MAX } from "./limits";
@@ -81,6 +82,7 @@ export async function createAlbum(env: Env, uploader: Uploader, rawIds: string[]
     env.DB.prepare("INSERT INTO albums (id, title, created_at, delete_hash, source) VALUES (?, ?, ?, ?, ?)").bind(id, title, Date.now(), await sha256Hex(new TextEncoder().encode(token)), uploader.source),
     ...keys.map((k, i) => env.DB.prepare("INSERT INTO album_files (album_id, position, file_key) VALUES (?, ?, ?)").bind(id, i, k)),
   ]);
+  await ownAlbum(env, uploader.userId, id);
   return { id, url: albumUrl(env, id), title, files: files.length, delete_token: token };
 }
 
@@ -128,8 +130,14 @@ export async function handleAlbumDelete(request: Request, env: Env, id: string):
     return jsonResponse({ deleted: [id] });
   }
   const token = request.headers.get("sugi-token");
-  if (!token) throw new HttpError(401, "missing Sugi-Token header (the delete_token returned when the album was created)");
-  if (!(await constantTimeEqual(await sha256Hex(new TextEncoder().encode(token)), row.delete_hash))) throw new HttpError(403, "wrong delete token");
+  if (token) {
+    if (!(await constantTimeEqual(await sha256Hex(new TextEncoder().encode(token)), row.delete_hash))) throw new HttpError(403, "wrong delete token");
+  } else {
+    // Signed-in owners may delete their albums without the token.
+    const principal = await resolvePrincipal(request, env);
+    if (!principal) throw new HttpError(401, "missing Sugi-Token header (the delete_token returned when the album was created)");
+    if (!(await ownsAlbum(env, principal.user.id, id))) throw new HttpError(403, "this album does not belong to your account");
+  }
   await env.DB.batch([env.DB.prepare("DELETE FROM album_files WHERE album_id = ?").bind(id), env.DB.prepare("DELETE FROM albums WHERE id = ?").bind(id)]);
   return jsonResponse({ deleted: [id] });
 }
