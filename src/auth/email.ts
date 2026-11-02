@@ -27,7 +27,7 @@ export function emailConfigured(env: Env): boolean {
 
 export class EmailQuotaError extends HttpError {
   constructor() {
-    super(503, "the login email quota for today is used up; try again tomorrow or log in with a passkey, GitHub or Google");
+    super(503, "the login email quota for today is used up; try again tomorrow");
   }
 }
 
