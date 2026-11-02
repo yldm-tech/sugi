@@ -177,3 +177,14 @@ describe("icons, manifest and OG images", () => {
     expect((await get("/apple-touch-icon.png")).headers.get("content-type")).toBe("image/png");
   });
 });
+
+describe("NOINDEX", () => {
+  it("keeps a staging or private instance out of search engines", async () => {
+    const robots = await call(new Request("https://sugi.test/robots.txt"), { NOINDEX: "1" });
+    expect(await robots.text()).toBe("User-agent: *\nDisallow: /\n");
+    const home = await call(new Request("https://sugi.test/", { headers: { accept: "text/html" } }), { NOINDEX: "1" });
+    expect(home.headers.get("x-robots-tag")).toBe("noindex");
+    const normal = await call(new Request("https://sugi.test/", { headers: { accept: "text/html" } }));
+    expect(normal.headers.get("x-robots-tag")).toBeNull();
+  });
+});

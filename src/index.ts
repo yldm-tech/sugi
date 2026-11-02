@@ -251,7 +251,12 @@ export default {
   async fetch(request, rawEnv, ctx): Promise<Response> {
     const env = withDefaults(rawEnv, request);
     try {
-      return await route(request, env);
+      const res = await route(request, env);
+      // Staging and private instances: nothing here belongs in a search engine.
+      if (env.NOINDEX !== "1") return res;
+      const out = new Response(res.body, res);
+      out.headers.set("x-robots-tag", "noindex");
+      return out;
     } catch (err) {
       // Server errors are counted per hour for the daily report and the alert emails.
       if (!(err instanceof HttpError) || err.status >= 500) ctx.waitUntil(countOps(env, "5xx"));

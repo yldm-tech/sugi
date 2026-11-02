@@ -1,10 +1,17 @@
 #!/usr/bin/env bash
-# End-to-end check of install.sh and the sugi CLI against a running instance (default: local `wrangler dev`). Uses a throwaway install dir and config dir, uploads only synthetic files, and deletes everything it created.
+# End-to-end check of install.sh and the sugi CLI against a running instance (default: the staging Worker). Uses a throwaway install dir and config dir, uploads only synthetic files, and deletes everything it created.
 #
 # Usage: SUGI_TOKEN=<token or empty> scripts/cli-e2e.sh [BASE_URL]
+#
+# BASE_URL defaults to the staging Worker (https://sugi-staging.evan-e2b.workers.dev); there, without SUGI_TOKEN, the trusted token from ~/.config/sugi/staging.env is used.
 set -uo pipefail
 
-base="${1:-http://localhost:8787}"
+staging="https://sugi-staging.evan-e2b.workers.dev"
+base="${1:-$staging}"
+if [ "$base" = "$staging" ] && [ -z "${SUGI_TOKEN+x}" ] && [ -r "$HOME/.config/sugi/staging.env" ]; then
+  SUGI_TOKEN="$(sed -n 's/^TRUSTED_TOKEN=//p' "$HOME/.config/sugi/staging.env")"
+  export SUGI_TOKEN
+fi
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 export SUGI_URL="$base" SUGI_CONFIG_DIR="$work/config" SUGI_INSTALL_DIR="$work/bin" LANG=en_US.UTF-8

@@ -3,14 +3,18 @@
 #
 # Keys are content hashes, so uploading a real file and deleting its key would delete anyone's identical upload. This script therefore never takes an input file: every image it uploads is generated here with random content, and it only deletes a key after the service confirmed (201, deduplicated:false) that this run created it.
 #
-# Usage: scripts/e2e.sh BASE_URL
-# Tokens come from ~/.config/sugi/secrets.env (or SUGI_SECRETS_FILE) and are only ever passed to curl through stdin.
+# Usage: scripts/e2e.sh [BASE_URL]   (default the staging Worker, https://sugi-staging.evan-e2b.workers.dev)
+# Tokens come from ~/.config/sugi/staging.env for staging and ~/.config/sugi/secrets.env for anything else (or SUGI_SECRETS_FILE), and are only ever passed to curl through stdin.
 
 set -euo pipefail
 
-base="${1:?usage: e2e.sh BASE_URL}"
+staging="https://sugi-staging.evan-e2b.workers.dev"
+base="${1:-$staging}"
 base="${base%/}"
-secrets="${SUGI_SECRETS_FILE:-$HOME/.config/sugi/secrets.env}"
+if [ "$base" = "$staging" ]; then default_secrets="$HOME/.config/sugi/staging.env"; else default_secrets="$HOME/.config/sugi/secrets.env"; fi
+# Only sugi.moe sits behind the zone (WAF rule, cache-through on r2.sugi.moe); staging and other workers.dev instances do not.
+if [ "$base" = "https://sugi.moe" ]; then zone=1; else zone=0; fi
+secrets="${SUGI_SECRETS_FILE:-$default_secrets}"
 here="$(cd "$(dirname "$0")/.." && pwd)"
 
 upload_token="$(sed -n 's/^UPLOAD_TOKEN=//p' "$secrets")"
@@ -18,11 +22,12 @@ admin_token="$(sed -n 's/^ADMIN_TOKEN=//p' "$secrets")"
 trusted_token="$(sed -n 's/^TRUSTED_TOKEN=//p' "$secrets")"
 burst="${SUGI_E2E_BURST:-100}"
 # Set to 0 when checking an instance without the zone WAF rate limiting rule (e.g. workers.dev, which the zone rules do not cover).
-expect_waf="${SUGI_E2E_EXPECT_WAF:-1}"
+expect_waf="${SUGI_E2E_EXPECT_WAF:-$zone}"
 # The abuse address the terms page must show (ABUSE_EMAIL); set to empty for an instance without one, such as a fresh template deployment.
 abuse_email="${SUGI_E2E_ABUSE_EMAIL-abuse@sugi.moe}"
 # The R2 custom domain the Worker reads images through (wrangler.jsonc CACHE_ORIGIN); set to empty to skip the cache checks.
-cache_origin="${SUGI_CACHE_ORIGIN-https://r2.sugi.moe}"
+if [ "$zone" = 1 ]; then default_cache="https://r2.sugi.moe"; else default_cache=""; fi
+cache_origin="${SUGI_CACHE_ORIGIN-$default_cache}"
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
