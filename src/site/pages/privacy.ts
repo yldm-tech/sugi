@@ -139,6 +139,12 @@ export function privacySections(b: Brand, features: string[] = ["email", "github
           zh: "为了限流，Cloudflare 会按 IP 短时间计数上传请求（几秒到一分钟）。",
           en: "To enforce rate limits, Cloudflare briefly counts upload requests per IP (for seconds up to a minute).",
         },
+        {
+          zh: "你举报内容时，我们保存被举报的链接、你选的原因、你写的补充说明和你留下的邮箱（如果填了），以及你 IP 的 HMAC 指纹。指纹只用来限制举报频率，7 天后抹掉。举报会发到运营者的举报邮箱，由人工处理；处理完一年后整条举报删除。被举报的人看不到是谁举报的。",
+          en: "When you report something we store the reported link, the reason you picked, the details you wrote, the email you left (if any) and an HMAC fingerprint of your IP. The fingerprint is used only to limit how often reports can be sent and is erased after 7 days. Reports are sent to the operator's abuse address and handled by a person; a report is deleted a year after it was dealt with. The person reported never sees who reported them.",
+          review:
+            "Proposed 2026-11-02 (needs the operator's confirmation): reporter source HMAC erased after 7 days; resolved reports, including the optional contact email, deleted 1 year after resolution; open reports kept until handled.",
+        },
       ],
     },
     {

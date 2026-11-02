@@ -122,6 +122,13 @@ export function devPage(ctx: Ctx): Page {
     ],
     ["GET /api/albums/:id", t("读取打包链接里的文件列表", "List the files in an album")],
     ["DELETE /api/albums/:id", t("删除打包链接（不会删除里面的文件），需要 Sugi-Token", "Delete an album (its files stay); needs Sugi-Token")],
+    [
+      "POST /api/reports",
+      t(
+        "举报文件或打包链接：JSON {target: 链接, reason: csam|illegal|copyright|privacy|spam|other, details?, contact?}，返回 202，由人工处理",
+        "Report a file or album: JSON {target: link, reason: csam|illegal|copyright|privacy|spam|other, details?, contact?}; returns 202 and a person reviews it",
+      ),
+    ],
   ];
   const html = `<section class="stack8">
 <h1 class="h1">${t("给开发者的仓仓", "The hamster for developers")}</h1>

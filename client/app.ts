@@ -1514,6 +1514,33 @@ document.addEventListener("click", (e) => {
 });
 window.addEventListener("popstate", () => void navigate(location.pathname + location.search, false));
 
+// The report form on file and album pages (form[data-report]); without this script it posts as a plain form and the server redirects back.
+document.addEventListener("submit", async (e) => {
+  const form = (e.target as HTMLElement).closest<HTMLFormElement>("form[data-report]");
+  if (!form) return;
+  e.preventDefault();
+  const button = $<HTMLButtonElement>("button[type=submit]", form);
+  if (button?.disabled) return;
+  if (button) button.disabled = true;
+  const data = new FormData(form);
+  let status = 0;
+  try {
+    const res = await fetch(form.action, {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify({ target: data.get("target"), reason: data.get("reason"), details: data.get("details"), contact: data.get("contact") }),
+      credentials: "same-origin",
+    });
+    status = res.status;
+  } catch {}
+  if (button) button.disabled = false;
+  if (status === 202) {
+    const note = h("p", { class: "gate", role: "status", text: form.dataset.done! });
+    form.replaceWith(note);
+    toast(form.dataset.done!);
+  } else toast(status === 429 ? form.dataset.rate! : form.dataset.fail!);
+});
+
 // ---------------------------------------------------------------- global listeners
 
 $("#theme")?.addEventListener("click", () => {

@@ -116,7 +116,7 @@ function objectUrls(env: Env, key: string, obj: R2Object): string[] {
   return type ? [...urls, publicUrl(env, { id, temporary: key.startsWith("t/"), type }), pageUrl(env, id)] : urls;
 }
 
-async function log(env: Env, action: string, target: string | null, reason: string | null, detail: unknown = null): Promise<D1PreparedStatement> {
+export async function auditLog(env: Env, action: string, target: string | null, reason: string | null, detail: unknown = null): Promise<D1PreparedStatement> {
   return env.DB.prepare("INSERT INTO admin_log (at, actor, action, target, reason, detail) VALUES (?, ?, ?, ?, ?, ?)").bind(
     Date.now(),
     ACTOR,
@@ -268,7 +268,7 @@ async function takedownKeys(env: Env, keys: string[], opts: TakedownOptions, act
     removed.push(key);
   }
   stmts.push(
-    await log(env, action, logTarget, opts.reason ?? null, {
+    await auditLog(env, action, logTarget, opts.reason ?? null, {
       via: opts.via ?? null,
       removed,
       already_removed: already,
@@ -302,7 +302,7 @@ async function takedownAlbum(env: Env, id: string, opts: TakedownOptions): Promi
     ),
     env.DB.prepare("DELETE FROM album_files WHERE album_id = ?").bind(id),
     env.DB.prepare("DELETE FROM albums WHERE id = ?").bind(id),
-    await log(env, "takedown", target, opts.reason ?? null, { via: opts.via ?? null, include_files: Boolean(opts.includeFiles) }),
+    await auditLog(env, "takedown", target, opts.reason ?? null, { via: opts.via ?? null, include_files: Boolean(opts.includeFiles) }),
   ]);
   const purged = await purgeUrls(env, [`${env.MAIN_ORIGIN}/a/${id}`]);
   return {
@@ -431,7 +431,7 @@ export async function blockSource(env: Env, raw: string, reason: string | null, 
       expires,
       Date.now(),
     ),
-    await log(env, "block_source", `source:${source}`, reason, { expires_at: iso(expires) }),
+    await auditLog(env, "block_source", `source:${source}`, reason, { expires_at: iso(expires) }),
   ]);
   return { source, blocked: true, expires_at: iso(expires) };
 }
@@ -439,7 +439,7 @@ export async function blockSource(env: Env, raw: string, reason: string | null, 
 export async function unblockSource(env: Env, raw: string, reason: string | null): Promise<Record<string, unknown>> {
   const source = await resolveSource(env, raw);
   const res = await env.DB.prepare("DELETE FROM blocked_sources WHERE source = ?").bind(source).run();
-  await (await log(env, "unblock_source", `source:${source}`, reason)).run();
+  await (await auditLog(env, "unblock_source", `source:${source}`, reason)).run();
   return { source, unblocked: res.meta.changes > 0 };
 }
 
@@ -447,7 +447,7 @@ export async function unblockContent(env: Env, sha256: string, reason: string | 
   const sha = sha256.trim().toLowerCase();
   if (!SHA_RE.test(sha)) throw new HttpError(400, "sha256 must be 64 hex characters");
   const res = await env.DB.prepare("DELETE FROM blocked_hashes WHERE sha256 = ?").bind(sha).run();
-  await (await log(env, "unblock_content", `sha256:${sha}`, reason)).run();
+  await (await auditLog(env, "unblock_content", `sha256:${sha}`, reason)).run();
   return { sha256: sha, unblocked: res.meta.changes > 0 };
 }
 

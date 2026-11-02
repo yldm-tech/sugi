@@ -115,8 +115,8 @@ export function faqPage(ctx: Ctx): Page {
     faqItem(
       t("看到不好的内容怎么办？", "I found something bad. What do I do?"),
       t(
-        `${abuse ? `把链接发到 ${abuse}` : "把链接发给这个网站的运营者"}，确认违规后会删除。${b.csamScanning ? "通过 Cloudflare 缓存提供的内容还会由 Cloudflare 的 CSAM 扫描工具检测。" : ""}`,
-        `${abuse ? `Send the link to ${abuse}` : "Send the link to the operator of this site"} and it will be removed once confirmed.${b.csamScanning ? " Content served through Cloudflare's cache is also checked by Cloudflare's CSAM Scanning Tool." : ""}`,
+        `点文件页或打包链接页最下面的「举报」，选一个原因提交就行${abuse ? `，也可以把链接发到 ${abuse}` : ""}。运营者会人工查看，确认违规后删除。${b.csamScanning ? "通过 Cloudflare 缓存提供的内容还会由 Cloudflare 的 CSAM 扫描工具检测。" : ""}`,
+        `Use “Report” at the bottom of the file or album page and pick a reason${abuse ? `, or send the link to ${abuse}` : ""}. A person at the operator reviews it and removes it once confirmed.${b.csamScanning ? " Content served through Cloudflare's cache is also checked by Cloudflare's CSAM Scanning Tool." : ""}`,
       ),
     ),
     faqItem(
@@ -188,7 +188,9 @@ export function termsPage(ctx: Ctx): Page {
       "The hamster takes good care of every file, but cannot promise that nothing is ever lost or that the service is always up. Keep your own copy of anything important. Temporary files are deleted when they expire.",
     ),
     ...(ctx.flags.accounts ? [t("未满 16 岁请不要注册账号。", "If you are under 16, please do not create an account.")] : []),
-    ...(abuse ? [t(`举报请写信到 ${abuse}。`, `Report abuse to ${abuse}.`)] : []),
+    abuse
+      ? t(`举报违规内容请用文件页上的「举报」，或写信到 ${abuse}。`, `Report abuse with “Report” on the file's page, or write to ${abuse}.`)
+      : t("举报违规内容请用文件页上的「举报」。", "Report abuse with “Report” on the file's page."),
   ];
   const html = `<section class="stack8">
 <h1 class="h1">${t("使用条款", "Terms of use")}</h1>

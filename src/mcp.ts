@@ -23,6 +23,7 @@ import {
   unblockSource,
 } from "./moderation";
 import { createUploadLinks } from "./links";
+import { listReports, resolveReport } from "./reports";
 import {
   ALBUM_MAX_FILES,
   ALBUM_TITLE_MAX,
@@ -89,6 +90,7 @@ function instructions(env: Env): string {
 
 const ADMIN_INSTRUCTIONS = [
   "This connection carries the admin token: it is never rate limited and also has moderation tools.",
+  "Reports from the site's report form: list_reports shows the open ones (reason, link, the reporter's words and optional contact). For each, inspect the link, then resolve_report with action takedown (removes it like takedown does; block_content: true for CSAM) or dismiss. Resolving settles every open report on the same link.",
   "Handling an abuse report: inspect the reported link (status, source, albums) -> takedown it (block_content: true for material that must never come back, e.g. CSAM or repeated spam; give a reason) -> list_by_source to see what else the same uploader posted -> takedown_by_source (dry_run first, then dry_run: false) and/or block_source if the whole source is abusive. Every action is recorded in takedown_log. Taken-down links answer 451 and their ids are never reused.",
   "Moderation tools act immediately on production data; confirm with the user before takedown_by_source with dry_run: false and before blocking a source.",
 ].join("\n");
@@ -230,6 +232,37 @@ function registerAdminTools(server: McpServer, env: Env): void {
         ...(await dailyNumbers(env, args.day ?? today())),
         ...(args.email ? { emailed: await sendDailyReport(env, Date.parse(`${args.day ?? today()}T12:00:00Z`) + 86400e3) } : {}),
       })),
+  );
+  server.registerTool(
+    "list_reports",
+    {
+      title: "List reports (admin)",
+      description:
+        "Reports sent with the report form on file and album pages, newest first: id, reason (csam, illegal, copyright, privacy, spam, other), link, the reporter's details and optional contact, when it was emailed to the abuse address, how many open reports the same link has, and the resolution. status defaults to open.",
+      inputSchema: {
+        status: z.enum(["open", "resolved", "all"]).optional(),
+        offset: z.number().int().min(0).optional(),
+        limit: z.number().int().min(1).max(200).optional(),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    async (args) => run(() => listReports(env, args.status ?? "open", args.offset ?? 0, args.limit ?? 50)),
+  );
+  server.registerTool(
+    "resolve_report",
+    {
+      title: "Resolve a report (admin)",
+      description:
+        "Settle a report and every other open report on the same link. action takedown removes the file or album exactly like the takedown tool (reason recorded as the report number plus your note; block_content: true also blocks re-uploads of the same bytes); action dismiss leaves it up and records the decision in takedown_log.",
+      inputSchema: {
+        id: z.number().int().positive(),
+        action: z.enum(["takedown", "dismiss"]),
+        note: z.string().max(500).optional().describe("Why (recorded with the report and in the audit log)."),
+        block_content: z.boolean().optional().describe("takedown only: also block re-uploads of the same bytes."),
+      },
+      annotations: { destructiveHint: true },
+    },
+    async (args) => run(() => resolveReport(env, args.id, args.action, { note: args.note ?? null, blockContent: args.block_content })),
   );
   server.registerTool(
     "takedown_log",

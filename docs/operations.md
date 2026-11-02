@@ -44,6 +44,7 @@ admin() { printf 'header = "Authorization: Bearer %s"\n' "$ADMIN_TOKEN" | curl -
 
 `sugi` MCP 服务按请求带的令牌决定权限：带 `ADMIN_TOKEN` 时多出一组管理工具（普通请求看不到也调用不了），并且不受限流。同一个 MCP 条目，把请求头换成管理员令牌即可。
 
+0. `list_reports`：网站上「举报」表单提交的举报（默认只列未处理的），带原因、链接、举报人写的说明和留下的邮箱。新举报会汇总发到 abuse@sugi.moe，最多一小时一封，涉及 CSAM 的标题带 URGENT。看完用 `inspect` 查链接，再 `resolve_report`：`action: "takedown"` 等于下面第 2 步的下架（原因自动记成举报编号加 `note`，CSAM 加 `block_content: true`），`action: "dismiss"` 保留内容并记审计日志。同一链接上所有未处理的举报会一起结掉。不是表单来的举报（邮件直接写到 abuse@）照下面的步骤处理。
 1. `inspect`：把举报的链接（files./tmp. 直链、`/f/<id>` 分享页、旧链接、`/a/<id>` 打包链接都行）查一遍，看状态、来源 HMAC、所在的打包链接。
 2. `takedown`：下架，写上 `reason`。对象换成墓碑，所有出过图的地址（缓存回源地址、直链、分享页）清缓存，链接从此返回 451（浏览器看到一句中英文的“因被举报已删除”，带 noindex），id 不再分配。CSAM、反复出现的垃圾内容加 `block_content: true`，记下内容的 SHA-256，之后任何上传途径（普通上传、multipart、链接搬运、`create_upload` 链接、旧接口 `/upload`）传同样的字节都会被 451 拒绝。内容屏蔽只覆盖 20 MB 以内的文件：Worker 在 CPU 限制内算不完更大文件的哈希（实测 95 MB 会触发 1102），更大的文件只下架、不屏蔽，结果里会列在 `not_blocked_too_big`。打包链接也能下架，`include_files: true` 连同里面的文件一起下架。
 3. `list_by_source`：同一来源还传过什么（按时间倒序，分页）。
