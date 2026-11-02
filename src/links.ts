@@ -18,6 +18,8 @@ interface LinkClaims {
   nm: string | null; // display name chosen when the link was made
   src: string; // source HMAC of whoever asked for the link
   exp: number; // link expiry (ms)
+  tr?: 1; // made by the trusted or admin token
+  uid?: string; // made by a logged-in account (session or API token); the upload is recorded under it
 }
 
 export interface UploadLink {
@@ -58,7 +60,15 @@ export async function createUploadLinks(
   while (ids.size < count) ids.add(opts.style === "cute" ? cuteId() : randomId());
   const links: UploadLink[] = [];
   for (const id of ids) {
-    const token = await encode(env, { id, ex: opts.expire, nm: count === 1 ? opts.name : null, src: uploader.source, exp });
+    const token = await encode(env, {
+      id,
+      ex: opts.expire,
+      nm: count === 1 ? opts.name : null,
+      src: uploader.source,
+      exp,
+      ...(uploader.trusted ? { tr: 1 as const } : {}),
+      ...(uploader.userId ? { uid: uploader.userId } : {}),
+    });
     links.push({ id, upload_url: `${env.MAIN_ORIGIN}/api/upload/${token}` });
   }
   return { links, expires_at: new Date(exp).toISOString() };
@@ -67,7 +77,8 @@ export async function createUploadLinks(
 // PUT or POST /api/upload/<link>
 export async function handleLinkUpload(request: Request, env: Env, token: string): Promise<Response> {
   const claims = await decode(env, token);
-  const uploader: Uploader = { source: claims.src, trusted: false };
+  // The link carries who asked for it, so quotas, ownership and the video rule apply as if they had uploaded directly.
+  const uploader: Uploader = { source: claims.src, trusted: claims.tr === 1, userId: claims.uid };
   const url = new URL(request.url);
   const opts: UploadOptions = { ...parseOptions(() => null), expire: claims.ex, name: claims.nm };
   if (request.method === "PUT") {

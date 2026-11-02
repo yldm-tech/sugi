@@ -1,4 +1,5 @@
 import { ASSETS } from "../generated/assets";
+import { type VideoPolicy, videoPolicy } from "../http";
 import { MAX_FILE_BYTES, RATE_LIMIT, RATE_LIMIT_PERIOD_SECONDS, SINGLE_REQUEST_MAX_BYTES } from "../limits";
 import { esc, jsonForScript, type Lang } from "./i18n";
 import { clientStrings } from "./strings";
@@ -13,6 +14,8 @@ export interface Flags {
   account: string[];
   cli: boolean;
   donate: boolean;
+  /** Who may upload videos (VIDEO_UPLOADS, see http.ts). */
+  video: VideoPolicy;
 }
 
 export interface Ctx {
@@ -65,7 +68,7 @@ export function flagsOf(env: Env): Flags {
         .map((s) => s.trim())
         .filter(Boolean)
     : [];
-  return { accounts, account, cli: env.FEATURE_CLI === "1", donate: env.FEATURE_DONATE === "1" };
+  return { accounts, account, cli: env.FEATURE_CLI === "1", donate: env.FEATURE_DONATE === "1", video: videoPolicy(env) };
 }
 
 export function pageCsp(env: Env, nonce: string): string {

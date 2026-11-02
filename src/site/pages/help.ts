@@ -10,6 +10,20 @@ function faqItem(q: string, a: string): { q: string; a: string } {
   return { q, a };
 }
 
+/** One sentence on who may upload videos (VIDEO_UPLOADS), or "" when anyone may. */
+export function videoRule(ctx: Ctx): string {
+  const t = tr(ctx);
+  const scan = brand(ctx.env).csamScanning;
+  if (ctx.flags.video === "account")
+    return t(
+      `${scan ? "Cloudflare 的 CSAM 扫描工具只检测图片、不检测视频，所以" : ""}视频要先登录（或者用 API 令牌）才能上传，图片不用。`,
+      `${scan ? "Cloudflare's CSAM Scanning Tool checks images but not videos, so v" : "V"}ideos need an account (a login or an API token); images do not.`,
+    );
+  if (ctx.flags.video === "trusted")
+    return t("这个网站只有维护者能上传视频，匿名只能传图片。", "On this site only the maintainers can upload videos; anonymous uploads are images only.");
+  return "";
+}
+
 const stripTags = (html: string) => html.replace(/<[^>]+>/g, "").replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)));
 
 export function faqPage(ctx: Ctx): Page {
@@ -66,8 +80,8 @@ export function faqPage(ctx: Ctx): Page {
     faqItem(
       t("能传什么格式？", "What can I upload?"),
       t(
-        `图片和短视频：PNG、JPEG、WebP、GIF、AVIF、MP4、WebM。格式按文件内容判断，不看扩展名。单个文件最大 ${maxMb} MB，超过 ${singleMb} MB 的网页会自动分片上传。其他格式（SVG、HTML、PDF、压缩包、可执行文件等）一律不收。`,
-        `Images and short videos: PNG, JPEG, WebP, GIF, AVIF, MP4 and WebM, recognised by their content rather than the file name. Up to ${maxMb} MB per file; the website splits anything over ${singleMb} MB into chunks for you. Everything else (SVG, HTML, PDF, archives, executables…) is refused.`,
+        `图片和短视频：PNG、JPEG、WebP、GIF、AVIF、MP4、WebM。格式按文件内容判断，不看扩展名。单个文件最大 ${maxMb} MB，超过 ${singleMb} MB 的网页会自动分片上传。其他格式（SVG、HTML、PDF、压缩包、可执行文件等）一律不收。${videoRule(ctx)}`,
+        `Images and short videos: PNG, JPEG, WebP, GIF, AVIF, MP4 and WebM, recognised by their content rather than the file name. Up to ${maxMb} MB per file; the website splits anything over ${singleMb} MB into chunks for you. Everything else (SVG, HTML, PDF, archives, executables…) is refused.${videoRule(ctx) ? ` ${videoRule(ctx)}` : ""}`,
       ),
     ),
     faqItem(
@@ -115,8 +129,8 @@ export function faqPage(ctx: Ctx): Page {
     faqItem(
       t("看到不好的内容怎么办？", "I found something bad. What do I do?"),
       t(
-        `点文件页或打包链接页最下面的「举报」，选一个原因提交就行${abuse ? `，也可以把链接发到 ${abuse}` : ""}。运营者会人工查看，确认违规后删除。${b.csamScanning ? "通过 Cloudflare 缓存提供的内容还会由 Cloudflare 的 CSAM 扫描工具检测。" : ""}`,
-        `Use “Report” at the bottom of the file or album page and pick a reason${abuse ? `, or send the link to ${abuse}` : ""}. A person at the operator reviews it and removes it once confirmed.${b.csamScanning ? " Content served through Cloudflare's cache is also checked by Cloudflare's CSAM Scanning Tool." : ""}`,
+        `点文件页或打包链接页最下面的「举报」，选一个原因提交就行${abuse ? `，也可以把链接发到 ${abuse}` : ""}。运营者会人工查看，确认违规后删除。${b.csamScanning ? "通过 Cloudflare 缓存提供的图片还会由 Cloudflare 的 CSAM 扫描工具检测（它只检测图片，不检测视频）。" : ""}`,
+        `Use “Report” at the bottom of the file or album page and pick a reason${abuse ? `, or send the link to ${abuse}` : ""}. A person at the operator reviews it and removes it once confirmed.${b.csamScanning ? " Images served through Cloudflare's cache are also checked by Cloudflare's CSAM Scanning Tool (it checks images only, not videos)." : ""}`,
       ),
     ),
     faqItem(
@@ -168,8 +182,8 @@ export function termsPage(ctx: Ctx): Page {
     ),
     t("禁止用 sugi 分发恶意软件、钓鱼页面或做任何诈骗。", "Do not use sugi to spread malware or phishing, or for any kind of fraud."),
     t(
-      `只接受图片和短视频（PNG、JPEG、WebP、GIF、AVIF、MP4、WebM），单个文件最大 ${maxMb} MB。`,
-      `Only images and short videos are accepted (PNG, JPEG, WebP, GIF, AVIF, MP4, WebM), up to ${maxMb} MB per file.`,
+      `只接受图片和短视频（PNG、JPEG、WebP、GIF、AVIF、MP4、WebM），单个文件最大 ${maxMb} MB。${videoRule(ctx)}`,
+      `Only images and short videos are accepted (PNG, JPEG, WebP, GIF, AVIF, MP4, WebM), up to ${maxMb} MB per file.${videoRule(ctx) ? ` ${videoRule(ctx)}` : ""}`,
     ),
     t(
       "所有上传都是公开的，任何拿到链接的人都能看到。只上传你有权公开的内容。",

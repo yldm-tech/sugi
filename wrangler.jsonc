@@ -34,9 +34,9 @@
     "OPERATOR_NAME": "",
     "CONTACT_EMAIL": "",
     "ABUSE_EMAIL": "",
-    // Set to "1" only after enabling Cloudflare's CSAM Scanning Tool on your zone; the FAQ and privacy policy then say so.
     // Public source code of your deployment (e.g. https://github.com/you/sugi), linked from the footer, FAQ and developer page. MIT does not require it, but it helps your users. Empty: no link.
     "SOURCE_URL": "",
+    // Set to "1" only after enabling Cloudflare's CSAM Scanning Tool on your zone; the FAQ and privacy policy then say so.
     "CSAM_SCANNING": "0",
     // Set to "1" if mail to CONTACT_EMAIL / ABUSE_EMAIL goes through Cloudflare Email Routing; the privacy policy then lists it.
     "EMAIL_ROUTING": "0",
@@ -50,7 +50,6 @@
     // Optional: an R2 custom domain on the bucket to serve files through your zone's cache, plus the zone id for purging (needs the CF_PURGE_TOKEN secret).
     "CACHE_ORIGIN": "",
     "ZONE_ID": "",
-    // Features: the CLI and MCP server are on; accounts and the donation page are off.
     // Daily upload quotas in bytes (0 = unlimited): per source without an account, per account, and for the whole site (after which only trusted and admin uploads are taken).
     "QUOTA_ANON_BYTES_PER_DAY": "1073741824",
     "QUOTA_ACCOUNT_BYTES_PER_DAY": "5368709120",
@@ -58,6 +57,9 @@
     // Alert emails to OPS_EMAIL (a secret, like the daily report): server errors per hour, and bytes uploaded in a day (0 = off).
     "ALERT_5XX_PER_HOUR": "20",
     "ALERT_DAILY_UPLOAD_BYTES": "0",
+    // Who may upload videos. Cloudflare's CSAM Scanning Tool only checks images, so by default videos need a logged-in account or an API token (with accounts off: only TRUSTED_TOKEN and ADMIN_TOKEN). "anyone" lets anonymous visitors upload videos too.
+    "VIDEO_UPLOADS": "account",
+    // Features: the CLI and MCP server are on; accounts and the donation page are off.
     "FEATURE_ACCOUNTS": "0",
     // With accounts on: which parts are live, comma-separated, from email, github, google, passkey, sync, tokens.
     "ACCOUNT_FEATURES": "email",

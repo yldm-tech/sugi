@@ -1,7 +1,7 @@
 // Files of the current API: ids, R2 keys (f/<id> permanent, t/<id> temporary), metadata, public links, lookup, deletion and the expiry sweep. Storing lives in upload.ts and serving in serve.ts.
 import { deletionResponse, purgeCache } from "./cache";
 import { constantTimeEqual, sha256Hex } from "./crypto";
-import { HttpError, isAdmin, jsonResponse, textResponse, type Uploader, wantsJson } from "./http";
+import { assertMayUpload, HttpError, isAdmin, jsonResponse, textResponse, type Uploader, wantsJson } from "./http";
 import { assertFileNotRemoved, isTombstone, takedown } from "./moderation";
 import { cuteId, deleteToken, isFileId, randomId } from "./ids";
 import { accountsOn, forgetFiles, ownsFile, resolvePrincipal } from "./auth/core";
@@ -117,6 +117,7 @@ export interface Prepared {
 
 // Everything decided before the bytes are stored: id, key, delete token, metadata. `fixedId` is an id reserved earlier (upload links); otherwise a free one is allocated.
 export async function prepare(env: Env, uploader: Uploader, opts: UploadOptions, type: MediaType, fixedId?: string): Promise<Prepared> {
+  assertMayUpload(env, uploader, type.kind);
   const id = fixedId ?? (await allocateId(env, opts.style));
   const temporary = opts.expire !== null;
   const now = Date.now();

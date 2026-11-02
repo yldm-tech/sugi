@@ -6,7 +6,7 @@ import { brand } from "./config";
 import { createAlbum } from "./albums";
 import { deleteFile, findFile, parseOptions, publicInfo, type UploadResult } from "./files";
 import { importUrl, storeBytes } from "./upload";
-import { authorizeUpload, HttpError, isAdmin, isTrusted } from "./http";
+import { authorizeUpload, HttpError, isAdmin, isTrusted, videoPolicy } from "./http";
 import { latestMessage } from "./inbox";
 import { dailyNumbers, sendDailyReport } from "./ops";
 import { today } from "./quota";
@@ -84,6 +84,13 @@ function instructions(env: Env): string {
     `2. Local files without the CLI: call create_upload with count = number of files, then upload each file to its own link with \`curl -T <path> '<upload_url>'\` (or \`curl -F file=@<path> '<upload_url>'\`). Links work once, expire after ${UPLOAD_LINK_TTL_SECONDS / 60} minutes and take files up to ${SINGLE_REQUEST_MAX_BYTES / MB} MB.`,
     "3. Files already on the internet: upload_url with the link.",
     `4. upload_file (base64 inside the tool call) only for small content you generated yourself; never re-type or hand-copy base64 of an existing file, it corrupts easily. Max ${MCP_MAX_BYTES / MB} MB.`,
+    ...(videoPolicy(env) === "anyone"
+      ? []
+      : [
+          videoPolicy(env) === "account"
+            ? "Videos (MP4, WebM) need an account: connect with an API token from the account page (Authorization: Bearer sugi_...); without one, video uploads fail with 403. Images need no token."
+            : "Videos (MP4, WebM) can only be uploaded with this site's trusted or admin token; anonymous uploads are images only.",
+        ]),
     `Without a token, uploads are rate limited to ${RATE_LIMIT} per ${RATE_LIMIT_PERIOD_SECONDS} seconds per IP. Keep each upload's delete_token if the user may want to delete the file later (delete_file).`,
   ].join("\n");
 }

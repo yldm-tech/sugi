@@ -9,7 +9,7 @@
 //    DELETE /api/uploads   Sugi-Upload: <session>   aborts.
 import { base64url } from "./ids";
 import { constantTimeEqual, hmacSha256Hex } from "./crypto";
-import { prepare, result, sanitizeName, uploadResponse, parseOptions } from "./files";
+import { type Prepared, prepare, result, sanitizeName, uploadResponse, parseOptions } from "./files";
 import { peekStream, unsupportedType } from "./upload";
 import { authorizeUpload, HttpError, jsonResponse } from "./http";
 import { checkQuota, recordUsage } from "./quota";
@@ -107,7 +107,13 @@ export async function handleChunkCreate(request: Request, env: Env): Promise<Res
     await stream.cancel();
     throw unsupportedType();
   }
-  const p = await prepare(env, uploader, opts, type);
+  let p: Prepared;
+  try {
+    p = await prepare(env, uploader, opts, type);
+  } catch (err) {
+    await stream.cancel();
+    throw err;
+  }
   const mpu = await env.BUCKET.createMultipartUpload(p.key, p.r2);
   let part: R2UploadedPart;
   try {
