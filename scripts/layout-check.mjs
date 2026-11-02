@@ -165,6 +165,17 @@ try {
           await page.waitForTimeout(150);
           const r = await page.evaluate(findOverflow);
           if (r.scroll > 1 || r.out.length) problems.push(`${name} ${lang}/${theme}/${width}px: page scrolls sideways by ${r.scroll}px; ${r.out.join(", ")}`);
+          // Chinese leads break only between clauses: a clause (.ph) is on one line unless it is wider than the whole paragraph.
+          const torn = await page.evaluate(() =>
+            [...document.querySelectorAll(".lead.phrased .ph")]
+              .filter((e) => {
+                // An inline-block is one box even when its text wraps inside it, so compare its height with one line.
+                const wrapped = e.getBoundingClientRect().height > parseFloat(getComputedStyle(e).lineHeight) * 1.5;
+                return wrapped && e.getBoundingClientRect().width < e.closest(".lead").getBoundingClientRect().width - 2;
+              })
+              .map((e) => e.textContent.slice(0, 20)),
+          );
+          if (torn.length) problems.push(`${name} ${lang}/${theme}/${width}px: lead breaks inside a phrase: ${torn.join(" | ")}`);
           if (shots && theme === "day" && (lang === "zh" || width === 390))
             await page.screenshot({ path: `${shots}/${lang}-${name}-${width}.png`, fullPage: true });
         }

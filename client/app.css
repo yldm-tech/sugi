@@ -618,7 +618,14 @@ html.night .theme-night {
   font-size: 15px;
   color: var(--muted2);
   line-height: 1.7;
-  text-wrap: pretty;
+  text-wrap: balance;
+}
+/* Chinese leads (src/site/phrases.ts): one line per sentence, and lines break only between clauses. */
+.lead.phrased .sent {
+  display: block;
+}
+.lead.phrased .ph {
+  display: inline-block;
 }
 .small {
   margin: 0;
