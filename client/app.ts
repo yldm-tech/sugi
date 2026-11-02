@@ -308,6 +308,8 @@ function errorFor(status: number, body: any, retryAfter: string | null): string 
   if (status === 401) return T.errGated;
   if (status === 413) return T.errTooBig;
   if (status === 415) return T.errType;
+  if (status === 429 && /quota/.test(body?.error ?? "")) return /log in/.test(body.error) ? T.errQuotaAnon : T.errQuota;
+  if (status === 507) return T.errFull;
   if (status === 429) return fmt(T.errRate, { s: retryAfter || "60" });
   if (status === 0) return T.errNetwork;
   return fmt(T.errFailed, { status, msg: body?.error || "" });

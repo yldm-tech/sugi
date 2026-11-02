@@ -12,6 +12,7 @@ import {
   WAF_PERIOD_SECONDS,
 } from "../../limits";
 import { esc } from "../i18n";
+import { quotas } from "../../quota";
 import { BRAND_ICONS } from "../brand-icons";
 import { brand } from "../../config";
 import { type Ctx, type Page, pageTitle, tr } from "../layout";
@@ -46,6 +47,21 @@ function jsonLine(key: string, value: string, indent: number, last = false): Lin
   return { kind: "json", indent, text: `<span class="k">"${key}"</span>: ${value}${last ? "" : ","}` };
 }
 const str = (s: string) => `<span class="s">"${esc(s)}"</span>`;
+
+function quotaLine(ctx: Ctx): string {
+  const t = tr(ctx);
+  const q = quotas(ctx.env);
+  const gb = (b: number) => `${Math.round((b / 1024 ** 3) * 10) / 10} GB`;
+  const parts = [
+    ...(q.anon ? [t(`不登录时每个来源每天 ${gb(q.anon)}`, `${gb(q.anon)} per source without an account`)] : []),
+    ...(q.account && ctx.flags.accounts ? [t(`登录账号每天 ${gb(q.account)}`, `${gb(q.account)} per account`)] : []),
+  ];
+  if (!parts.length && !q.global) return "";
+  return `<p class="small">${t(
+    `每日上传额度（按 UTC 日计）：${parts.join("，") || "不限"}。${q.global ? "整个网站每天的总量也有上限，到了之后当天只接受带可信令牌的上传。" : ""}超出时返回 429（个人额度）或 507（网站额度）。`,
+    `Daily upload allowance (UTC days): ${parts.join(", ") || "unlimited"}.${q.global ? " The whole site also has a daily total; once it is reached only uploads with a trusted token are taken that day." : ""} Going over returns 429 (your allowance) or 507 (the site's).`,
+  )}</p>`;
+}
 
 export function devPage(ctx: Ctx): Page {
   const b = brand(ctx.env);
@@ -159,6 +175,7 @@ ${rows.map(([path, desc]) => `<div class="apirow"><code>${esc(path)}</code><span
     `限流：每个 IP 每 ${RATE_LIMIT_PERIOD_SECONDS} 秒最多 ${RATE_LIMIT} 次上传（一次上传、一次链接搬运、一次分片上传的开始各算一次），打包链接另算，也是 ${RATE_LIMIT_PERIOD_SECONDS} 秒 ${RATE_LIMIT} 次${wafRule ? `；另外防火墙对 /upload、/api/upload 和 /api/uploads 每个 IP 每 ${WAF_PERIOD_SECONDS} 秒最多 ${WAF_LIMIT} 次请求，超过会被拦 ${WAF_PERIOD_SECONDS} 秒` : ""}。超过限制会返回 429，歇一下再来就好。`,
     `Rate limits: each IP may start ${RATE_LIMIT} uploads per ${RATE_LIMIT_PERIOD_SECONDS} seconds (an upload, a link import and the start of a chunked upload each count once), and separately create ${RATE_LIMIT} albums per ${RATE_LIMIT_PERIOD_SECONDS} seconds.${wafRule ? ` On top of that the firewall allows ${WAF_LIMIT} requests per ${WAF_PERIOD_SECONDS} seconds per IP to /upload, /api/upload and /api/uploads, and blocks for ${WAF_PERIOD_SECONDS} seconds beyond that.` : ""} Over a limit you get 429; wait a moment and try again.`,
   )}</p>
+${quotaLine(ctx)}
 <p class="small">${t(
     `旧接口 <code class="chip">POST /upload</code> 继续可用：只收 PNG、JPEG、WebP、GIF，最大 20 MB，链接是 ${main}/&lt;内容哈希&gt;.png 这种形式，相同内容得到同一个链接，没有删除凭证。`,
     `The original <code class="chip">POST /upload</code> keeps working: PNG, JPEG, WebP and GIF only, up to 20 MB, links look like ${main}/&lt;content hash&gt;.png, the same content always gets the same link, and there is no delete token.`,

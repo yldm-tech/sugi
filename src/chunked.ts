@@ -12,6 +12,7 @@ import { constantTimeEqual, hmacSha256Hex } from "./crypto";
 import { prepare, result, sanitizeName, uploadResponse, parseOptions } from "./files";
 import { peekStream, unsupportedType } from "./upload";
 import { authorizeUpload, HttpError, jsonResponse } from "./http";
+import { checkQuota, recordUsage } from "./quota";
 import { ownFile } from "./auth/core";
 import { MAX_FILE_BYTES, MAX_PART_BYTES, MIN_PART_BYTES } from "./limits";
 import { MEDIA_BY_EXT, SNIFF_BYTES, sniffMedia } from "./sniff";
@@ -31,6 +32,8 @@ interface Session {
   tk: string; // delete token, returned on completion
   exp: number; // session expiry (ms)
   uid?: string; // account the finished file is recorded under
+  src?: string; // source HMAC of the uploader, for the daily quota
+  tr?: boolean; // trusted uploader (not limited)
 }
 
 function partsOf(s: Pick<Session, "ps" | "sz">): number {
@@ -95,6 +98,8 @@ export async function handleChunkCreate(request: Request, env: Env): Promise<Res
   if (partSize < MIN_PART_BYTES && partSize < size) throw new HttpError(400, `parts must be at least ${MIN_PART_BYTES / MiB} MB (except the last)`);
   if (partSize > size) throw new HttpError(400, "the first part is larger than the declared size");
   if (!request.body) throw new HttpError(400, "empty upload");
+  // The whole file counts against the quota up front, before any part is stored.
+  await checkQuota(env, uploader, size);
 
   const { head, stream } = await peekStream(request.body, SNIFF_BYTES);
   const type = sniffMedia(head);
@@ -123,6 +128,8 @@ export async function handleChunkCreate(request: Request, env: Env): Promise<Res
     tk: p.token,
     exp: Date.now() + SESSION_TTL_MS,
     uid: uploader.userId,
+    src: uploader.source,
+    tr: uploader.trusted,
   };
   return jsonResponse({ upload: await encodeSession(env, session), id: p.id, part_size: partSize, parts: partsOf(session), etag: part.etag }, 201);
 }
@@ -167,6 +174,7 @@ export async function handleChunkComplete(request: Request, env: Env): Promise<R
   // Chunked files are always over HASH_MAX_BYTES, so the content blocklist does not apply to them (hashing them exceeds the CPU limit).
   const type = MEDIA_BY_EXT[s.ext];
   await ownFile(env, s.uid, s.k);
+  await recordUsage(env, { source: s.src ?? "unknown", trusted: Boolean(s.tr), userId: s.uid }, s.sz);
   return uploadResponse(request, result(env, { id: s.id, key: s.k, type, token: s.tk, expires: s.ex, r2: {} }, s.sz, sanitizeName(s.nm)));
 }
 

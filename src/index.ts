@@ -14,6 +14,7 @@ import { eraseOldFingerprints } from "./moderation";
 import { handleLinkUpload } from "./links";
 import { installScript } from "./site/install";
 import { handleMcp } from "./mcp";
+import { sweepUsage } from "./quota";
 import { handleInboxRead, receiveEmail, sweepInbox } from "./inbox";
 import { handleMagicRequest, handleMagicVerify } from "./auth/email";
 import {
@@ -260,6 +261,7 @@ export default {
         await ensureSchema(env.DB);
         await eraseOldFingerprints(env);
         await sweepInbox(env);
+        await sweepUsage(env);
       })(),
     );
   },
