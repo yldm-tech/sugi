@@ -76,8 +76,8 @@ export interface Uploader {
   trusted: boolean;
 }
 
-// Shared gate for every route that stores user content: the UPLOAD_TOKEN gate (skipped for the trusted token), the IP_HASH_SECRET requirement and the per-source rate limit. `bucket` separates counters, e.g. uploads from album creation.
-export async function authorizeUpload(request: Request, env: Env, bucket = "upload"): Promise<Uploader> {
+// Shared gate for every route that stores user content: the UPLOAD_TOKEN gate (skipped for the trusted token), the IP_HASH_SECRET requirement and the per-source rate limit. `bucket` separates counters, e.g. uploads from album creation; `cost` is how many uploads the call accounts for.
+export async function authorizeUpload(request: Request, env: Env, bucket = "upload", cost = 1): Promise<Uploader> {
   const trusted = await isTrusted(request, env);
   if (!trusted && env.UPLOAD_TOKEN) await requireBearer(request, env.UPLOAD_TOKEN, "upload");
   // Without the secret there is no way to record a traceable source, so refuse rather than store untraceable uploads.
@@ -86,8 +86,11 @@ export async function authorizeUpload(request: Request, env: Env, bucket = "uplo
   const source = await hmacSha256Hex(env.IP_HASH_SECRET, ip);
   if (!trusted) {
     const key = bucket === "upload" ? source : `${bucket}:${source}`;
-    const { success } = await env.UPLOAD_LIMITER.limit({ key });
-    if (!success) throw new HttpError(429, "too many uploads, slow down", { "retry-after": String(RATE_LIMIT_PERIOD_SECONDS) });
+    // `cost` > 1 reserves several uploads at once (one per upload link handed out).
+    for (let i = 0; i < cost; i++) {
+      const { success } = await env.UPLOAD_LIMITER.limit({ key });
+      if (!success) throw new HttpError(429, "too many uploads, slow down", { "retry-after": String(RATE_LIMIT_PERIOD_SECONDS) });
+    }
   }
   return { source, trusted };
 }

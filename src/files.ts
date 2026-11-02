@@ -111,9 +111,9 @@ export interface Prepared {
   r2: R2PutOptions;
 }
 
-// Everything decided before the bytes are stored: id, key, delete token, metadata.
-export async function prepare(env: Env, uploader: Uploader, opts: UploadOptions, type: MediaType): Promise<Prepared> {
-  const id = await allocateId(env, opts.style);
+// Everything decided before the bytes are stored: id, key, delete token, metadata. `fixedId` is an id reserved earlier (upload links); otherwise a free one is allocated.
+export async function prepare(env: Env, uploader: Uploader, opts: UploadOptions, type: MediaType, fixedId?: string): Promise<Prepared> {
+  const id = fixedId ?? (await allocateId(env, opts.style));
   const temporary = opts.expire !== null;
   const now = Date.now();
   const expires = opts.expire ? now + EXPIRIES[opts.expire] * 1000 : null;
@@ -203,8 +203,20 @@ export function unsupportedType(): HttpError {
   return new HttpError(415, "unsupported file type (only PNG, JPEG, WebP, GIF, AVIF, MP4 and WebM)");
 }
 
+function linkUsed(): HttpError {
+  return new HttpError(409, "this upload link has already been used; ask for a new one");
+}
+
+// A reserved id (upload links) must not exist in either namespace yet, and the write itself is conditional so the link can be used only once even under concurrent requests.
+async function reservedPutOptions(env: Env, p: Prepared, fixedId: string | undefined): Promise<R2PutOptions> {
+  if (fixedId === undefined) return p.r2;
+  const [a, b] = await Promise.all([env.BUCKET.head(fileKey(fixedId, false)), env.BUCKET.head(fileKey(fixedId, true))]);
+  if (a || b) throw linkUsed();
+  return { ...p.r2, onlyIf: { etagDoesNotMatch: "*" } };
+}
+
 // Streams a body of known length into R2 without buffering it, after sniffing its first bytes.
-export async function storeStream(env: Env, uploader: Uploader, opts: UploadOptions, body: ReadableStream<Uint8Array>, length: number): Promise<UploadResult> {
+export async function storeStream(env: Env, uploader: Uploader, opts: UploadOptions, body: ReadableStream<Uint8Array>, length: number, fixedId?: string): Promise<UploadResult> {
   if (length <= 0) throw new HttpError(400, "empty upload");
   const { head, stream } = await peekStream(body, SNIFF_BYTES);
   const type = sniffMedia(head);
@@ -212,28 +224,53 @@ export async function storeStream(env: Env, uploader: Uploader, opts: UploadOpti
     await stream.cancel();
     throw unsupportedType();
   }
-  const p = await prepare(env, uploader, opts, type);
-  const fixed = new FixedLengthStream(length);
+  const p = await prepare(env, uploader, opts, type, fixedId);
+  let put: R2PutOptions;
   try {
-    await Promise.all([stream.pipeTo(fixed.writable), env.BUCKET.put(p.key, fixed.readable, p.r2)]);
+    put = await reservedPutOptions(env, p, fixedId);
+  } catch (err) {
+    await stream.cancel();
+    throw err;
+  }
+  const fixed = new FixedLengthStream(length);
+  const abort = new AbortController();
+  const piping = stream.pipeTo(fixed.writable, { signal: abort.signal }).then(
+    () => null,
+    (err: unknown) => err ?? new Error("pipe failed"),
+  );
+  let stored: R2Object | null;
+  try {
+    stored = await env.BUCKET.put(p.key, fixed.readable, put);
   } catch {
+    abort.abort();
+    await piping;
     // A short or long body makes FixedLengthStream fail; make sure nothing partial is left behind.
+    if (fixedId === undefined) await env.BUCKET.delete(p.key);
+    throw new HttpError(400, "upload body did not match its declared length");
+  }
+  if (stored === null) {
+    abort.abort();
+    await piping;
+    throw linkUsed();
+  }
+  if ((await piping) !== null) {
     await env.BUCKET.delete(p.key);
     throw new HttpError(400, "upload body did not match its declared length");
   }
   return result(env, p, length, opts.name);
 }
 
-export async function storeBytes(env: Env, uploader: Uploader, opts: UploadOptions, bytes: Uint8Array): Promise<UploadResult> {
+export async function storeBytes(env: Env, uploader: Uploader, opts: UploadOptions, bytes: Uint8Array, fixedId?: string): Promise<UploadResult> {
   if (bytes.byteLength === 0) throw new HttpError(400, "empty upload");
   const type = sniffMedia(bytes.subarray(0, SNIFF_BYTES));
   if (!type) throw unsupportedType();
-  const p = await prepare(env, uploader, opts, type);
-  await env.BUCKET.put(p.key, bytes, p.r2);
+  const p = await prepare(env, uploader, opts, type, fixedId);
+  const stored = await env.BUCKET.put(p.key, bytes, await reservedPutOptions(env, p, fixedId));
+  if (stored === null) throw linkUsed();
   return result(env, p, bytes.byteLength, opts.name);
 }
 
-function tooLargeSingle(): HttpError {
+export function tooLargeSingle(): HttpError {
   return new HttpError(413, `file too large for a single request (max ${SINGLE_REQUEST_MAX_BYTES / MiB} MB); use the chunked upload API for files up to ${MAX_FILE_BYTES / MiB} MB`);
 }
 
@@ -251,16 +288,20 @@ export async function handleUploadPut(request: Request, env: Env): Promise<Respo
   return uploadResponse(request, await storeStream(env, uploader, opts, request.body, length));
 }
 
-// POST /api/upload: multipart/form-data with `file` or `url`, plus optional `expire`, `style`, `name`. The multipart stream is parsed incrementally; only the file part itself is held in memory.
-export async function handleUploadPost(request: Request, env: Env): Promise<Response> {
-  const uploader = await authorizeUpload(request, env);
+export interface MultipartUpload {
+  fields: Map<string, string>;
+  file: { bytes: Uint8Array; filename: string | undefined } | null;
+}
+
+// Parses a multipart/form-data upload incrementally; only the file part itself is held in memory.
+export async function readMultipartUpload(request: Request): Promise<MultipartUpload> {
   const contentType = request.headers.get("content-type") ?? "";
   if (!/^multipart\/form-data/i.test(contentType)) throw new HttpError(415, "expected multipart/form-data (or use PUT with the raw file)");
   const declared = Number(request.headers.get("content-length") ?? "0");
   if (declared > SINGLE_REQUEST_MAX_BYTES + 64 * 1024) throw tooLargeSingle();
 
   const fields = new Map<string, string>();
-  let file: { bytes: Uint8Array; filename: string | undefined } | null = null;
+  let file: MultipartUpload["file"] = null;
   try {
     for await (const part of parseMultipartRequest(request, { maxFileSize: SINGLE_REQUEST_MAX_BYTES, maxParts: 16, maxTotalSize: SINGLE_REQUEST_MAX_BYTES + 64 * 1024 })) {
       if (!part.name) continue;
@@ -278,6 +319,13 @@ export async function handleUploadPost(request: Request, env: Env): Promise<Resp
     if (err instanceof MultipartParseError) throw new HttpError(400, "malformed multipart body");
     throw err;
   }
+  return { fields, file };
+}
+
+// POST /api/upload: multipart/form-data with `file` or `url`, plus optional `expire`, `style`, `name`.
+export async function handleUploadPost(request: Request, env: Env): Promise<Response> {
+  const uploader = await authorizeUpload(request, env);
+  const { fields, file } = await readMultipartUpload(request);
 
   const opts = parseOptions((k) => fields.get(k) ?? null);
   const remote = fields.get("url");

@@ -6,6 +6,7 @@ import { handleInfo, handleLegacyDelete, handleLegacyServe, handleLegacyUpload, 
 import { handleSite } from "./site";
 import { ICONS } from "./site/og-images";
 import { fileHostRobotsTxt, robotsTxt, sitemapXml, webManifest } from "./site/seo";
+import { handleLinkUpload } from "./links";
 import { installScript } from "./site/install";
 import { handleMcp } from "./mcp";
 
@@ -83,6 +84,11 @@ async function routeApi(request: Request, env: Env, pathname: string): Promise<R
   if (part) {
     if (method === "PUT") return handleChunkPart(request, env, Number(part[1]));
     throw methodNotAllowed("PUT");
+  }
+  const link = /^\/api\/upload\/([A-Za-z0-9_-]+\.[0-9a-f]{64})$/.exec(pathname);
+  if (link) {
+    if (method === "PUT" || method === "POST") return handleLinkUpload(request, env, link[1]);
+    throw methodNotAllowed("PUT, POST");
   }
   const file = /^\/api\/files\/([^/]+)$/.exec(pathname);
   if (file) {

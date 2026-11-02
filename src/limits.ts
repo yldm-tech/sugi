@@ -26,6 +26,10 @@ export const RATE_LIMIT_PERIOD_SECONDS = 60;
 export const WAF_LIMIT = 5;
 export const WAF_PERIOD_SECONDS = 10;
 
+/** Upload links (MCP create_upload): how many one call may hand out and how long each stays valid. */
+export const UPLOAD_LINK_MAX = 50;
+export const UPLOAD_LINK_TTL_SECONDS = 600;
+
 /** Album limits. */
 export const ALBUM_MAX_FILES = 100;
 export const ALBUM_TITLE_MAX = 80;
