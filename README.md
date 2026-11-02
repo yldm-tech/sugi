@@ -78,12 +78,14 @@ After changing `wrangler.jsonc`, run `npm run types` and deploy again. The bucke
 
 ### Rate limits
 
-The Worker allows each IP 10 uploads (and separately 10 albums) per 60 seconds through the [Rate Limiting binding](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/). That binding counts per Cloudflare location and is eventually consistent, so a fast burst gets through well past the limit before it bites (in our tests the first 429 came after about 85 sequential uploads). For a public instance on your own domain, add a WAF rate limiting rule as well (free plan: path match, 10-second period):
+The Worker allows each IP 10 uploads (and separately 10 albums) per 60 seconds, and each logged-in account 60 uploads per 60 seconds (`ACCOUNT_LIMITER`, counted per account), through the [Rate Limiting binding](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/). That binding counts per Cloudflare location and is eventually consistent, so a fast burst gets through well past the limit before it bites (in our tests the first 429 came after about 85 sequential uploads). For a public instance on your own domain, add a WAF rate limiting rule as well (free plan: path match, 10-second period):
 
 - Expression: `http.request.uri.path in {"/upload" "/api/upload" "/api/uploads"}`, characteristic IP, 5 requests per 10 seconds, action Block for 10 seconds.
 - If you use `TRUSTED_TOKEN`, add a custom rule before it that skips the `http_ratelimit` phase when `http.request.uri.path` matches the same paths and `any(http.request.headers["authorization"][*] == "Bearer <TRUSTED_TOKEN>")`. The WAF cannot verify tokens, so the value itself is in the rule; change both together when you rotate it.
 
-Then set `WAF_RATE_LIMIT` to `1`.
+- With accounts on, let logged-in uploads skip it too by adding `or any(starts_with(http.request.headers["authorization"][*], "Bearer sugi_")) or http.cookie contains "sugi_session="` to that skip rule. A forged cookie or token prefix only gets past this coarse edge limit: the Worker still limits by IP when the session is not real and answers 401 to a token it does not know.
+
+Then set `WAF_RATE_LIMIT` to `1`. The website reads the limits that apply to the visitor from its page configuration and paces its upload queue under them; a 429 puts the file back in the queue with a countdown and it is retried automatically (only a daily quota is final). The CLI paces itself without a token and honours `Retry-After`.
 
 ### Moderation
 

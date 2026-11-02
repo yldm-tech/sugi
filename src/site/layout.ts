@@ -1,7 +1,7 @@
 import { ASSETS } from "../generated/assets";
 import { donateConfig, donateOn } from "./pages/donate";
 import { type VideoPolicy, videoPolicy } from "../http";
-import { MAX_FILE_BYTES, RATE_LIMIT, RATE_LIMIT_PERIOD_SECONDS, SINGLE_REQUEST_MAX_BYTES } from "../limits";
+import { ACCOUNT_RATE_LIMIT, MAX_FILE_BYTES, RATE_LIMIT, RATE_LIMIT_PERIOD_SECONDS, SINGLE_REQUEST_MAX_BYTES, WAF_LIMIT, WAF_PERIOD_SECONDS } from "../limits";
 import { esc, jsonForScript, type Lang } from "./i18n";
 import { clientStrings } from "./strings";
 import { HEART, LOGO, MOON, SUN } from "./svg";
@@ -148,7 +148,14 @@ export function clientConfig(ctx: Ctx, page: PageId) {
     flags: ctx.flags,
     user: Boolean(ctx.user),
     origins: { main: ctx.env.MAIN_ORIGIN, files: ctx.env.FILES_ORIGIN, tmp: ctx.env.TMP_ORIGIN },
-    limits: { maxFile: MAX_FILE_BYTES, single: SINGLE_REQUEST_MAX_BYTES, rate: RATE_LIMIT, ratePeriod: RATE_LIMIT_PERIOD_SECONDS },
+    // What this visitor may start, so the page paces its queue instead of running into 429s: the Worker's limit (per source, or per account when logged in) and, without an account, the zone WAF rule on upload paths.
+    limits: {
+      maxFile: MAX_FILE_BYTES,
+      single: SINGLE_REQUEST_MAX_BYTES,
+      rate: ctx.user ? ACCOUNT_RATE_LIMIT : RATE_LIMIT,
+      ratePeriod: RATE_LIMIT_PERIOD_SECONDS,
+      waf: brand(ctx.env).wafRule && !ctx.user ? { limit: WAF_LIMIT, period: WAF_PERIOD_SECONDS } : null,
+    },
     t: clientStrings(ctx.lang, brand(ctx.env).siteName),
   };
 }

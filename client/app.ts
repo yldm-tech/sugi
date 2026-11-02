@@ -11,7 +11,7 @@ interface Config {
   flags: { accounts: boolean; account: string[]; cli: boolean; donate: boolean; video: "anyone" | "account" | "trusted" };
   user?: boolean;
   origins: { main: string; files: string; tmp: string };
-  limits: { maxFile: number; single: number; rate: number; ratePeriod: number };
+  limits: { maxFile: number; single: number; rate: number; ratePeriod: number; waf: { limit: number; period: number } | null };
   t: Record<string, string>;
 }
 
@@ -245,11 +245,16 @@ interface Upload {
   ext: string;
   kind: "image" | "video";
   pct: number;
-  status: "queued" | "up" | "done" | "err";
+  status: "queued" | "up" | "done" | "err" | "wait";
   error: string | null;
   thumb: string | null;
   local: string | null;
   res: HistItem | null;
+  /** Rate limited: when to try again (ms), and how many times it was put back. */
+  waitUntil?: number;
+  attempts?: number;
+  /** The failure is worth another try (network trouble, rate limit), so the error shows a retry button. */
+  retryable?: boolean;
 }
 
 let uploads: Upload[] = [];
@@ -436,23 +441,79 @@ async function runUpload(u: Upload) {
     if (prefs.autoCopy) void copy(fmtLink(item), T.linkCopied);
     if (CFG.page === "home") burst();
     if (prefs.sound) chirp();
+  } else if (r.status === 429 && !/quota/.test(r.body?.error ?? "") && (u.attempts ?? 0) < 6) {
+    // Rate limited (the Worker's limiter, or the zone WAF rule whose page carries no Retry-After): wait and go again by itself. Daily quota answers are final.
+    u.attempts = (u.attempts ?? 0) + 1;
+    const base = r.retryAfter ? Number(r.retryAfter) * 1000 : (CFG.limits.waf?.period ?? CFG.limits.ratePeriod) * 1000;
+    const backoff = Math.min(60e3, Math.max(base, 2 ** u.attempts * 1000));
+    u.waitUntil = Date.now() + backoff + Math.random() * 1500;
+    u.status = "wait";
+    u.pct = 0;
   } else {
     u.status = "err";
     u.error = errorFor(r.status, r.body, r.retryAfter);
+    u.retryable = r.status === 0 || r.status === 429 || r.status >= 500 ? !/quota/.test(r.body?.error ?? "") && r.status !== 507 : false;
   }
   touch();
 }
 
+// Pacing: the start times of recent requests that count against the server's upload limits (one per upload, link import or start of a chunked upload). The queue waits for a free slot instead of running into 429s.
+const starts: number[] = [];
+let pumpTimer = 0;
+
+function startDelay(now = Date.now()): number {
+  const windows: [number, number][] = [[CFG.limits.rate, CFG.limits.ratePeriod * 1000]];
+  if (CFG.limits.waf) windows.push([CFG.limits.waf.limit, CFG.limits.waf.period * 1000]);
+  let wait = 0;
+  for (const [limit, ms] of windows) {
+    const recent = starts.filter((t) => now - t < ms);
+    // A little headroom: the server's counters are approximate.
+    if (recent.length >= limit) wait = Math.max(wait, recent[recent.length - limit] + ms + 300 - now);
+  }
+  return wait;
+}
+
 function pump() {
   while (active < MAX_PARALLEL) {
+    const now = Date.now();
+    for (const u of uploads) if (u.status === "wait" && (u.waitUntil ?? 0) <= now) u.status = "queued";
     const next = uploads.find((u) => u.status === "queued");
-    if (!next) return;
+    if (!next) break;
+    const delay = startDelay(now);
+    if (delay > 0) {
+      clearTimeout(pumpTimer);
+      pumpTimer = window.setTimeout(pump, delay);
+      return;
+    }
+    starts.push(now);
+    while (starts.length > 200) starts.shift();
     active++;
     void runUpload(next).finally(() => {
       active--;
       pump();
     });
   }
+  // Wake up for the next item put back after a 429.
+  const waiting = uploads.filter((u) => u.status === "wait").map((u) => u.waitUntil ?? 0);
+  if (waiting.length) {
+    clearTimeout(pumpTimer);
+    pumpTimer = window.setTimeout(pump, Math.max(50, Math.min(...waiting) - Date.now()));
+  }
+}
+
+// Countdown for items waiting after a 429.
+window.setInterval(() => {
+  if (uploads.some((u) => u.status === "wait")) touch();
+}, 1000);
+
+/** Puts an upload back in the queue at once (the retry button). */
+function retryNow(u: Upload) {
+  u.status = "queued";
+  u.error = null;
+  u.waitUntil = undefined;
+  u.pct = 0;
+  touch();
+  pump();
 }
 
 function addFiles(list: FileList | File[] | null | undefined) {
@@ -578,9 +639,15 @@ function renderResults() {
       if (u.status === "done" && u.res) {
         body.append(h("a", { class: "url", href: u.res.url, target: "_blank", rel: "noopener", text: u.res.url }));
         tail = h("button", { type: "button", class: "copybtn", text: T.copy, onclick: () => void copy(fmtLink(u.res!)) });
-      } else if (u.status === "err") {
-        body.append(h("span", { class: "errtext", text: u.error || "" }));
-        tail = h("button", {
+      } else if (u.status === "err" || u.status === "wait") {
+        const waiting = u.status === "wait";
+        body.append(
+          h("span", {
+            class: waiting ? "notetext" : "errtext",
+            text: waiting ? fmt(T.waiting, { s: Math.max(1, Math.ceil(((u.waitUntil ?? 0) - Date.now()) / 1000)) }) : u.error || "",
+          }),
+        );
+        const dismiss = h("button", {
           type: "button",
           class: "dismiss",
           "aria-label": T.close,
@@ -590,6 +657,10 @@ function renderResults() {
             touch();
           },
         });
+        tail =
+          waiting || u.retryable
+            ? h("div", { class: "tailbtns" }, h("button", { type: "button", class: "copybtn", text: T.retry, onclick: () => retryNow(u) }), dismiss)
+            : dismiss;
       } else {
         const fill = h("div", { class: "fill" });
         fill.style.width = `${Math.round(u.pct)}%`;
@@ -597,11 +668,12 @@ function renderResults() {
         runner.innerHTML = RUNNER_SVG;
         runner.style.left = `${Math.round(u.pct)}%`;
         body.append(h("div", { class: "bar" }, h("div", { class: "track" }, fill), runner));
+        if (u.status === "queued") body.append(h("span", { class: "notetext", text: T.queued }));
         tail = h("span", { class: "pct", text: `${Math.round(u.pct)}%` });
       }
       return h(
         "div",
-        { class: `item${u.status === "err" ? " err" : ""}` },
+        { class: `item${u.status === "err" ? " err" : u.status === "wait" ? " wait" : ""}` },
         thumbNode(u, "thumb", u.status === "done" && u.res ? () => openPreview(u.res!, u.local) : undefined),
         body,
         tail,
