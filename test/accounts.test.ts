@@ -201,3 +201,78 @@ describe("end-to-end test inbox", () => {
     expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM e2e_inbox").first<{ n: number }>())!.n).toBe(0);
   });
 });
+
+describe("GitHub login", () => {
+  const GH: Partial<Env> = { ...ON, ACCOUNT_FEATURES: "email,github", GITHUB_CLIENT_ID: "gh-client", GITHUB_CLIENT_SECRET: "gh-secret" };
+
+  function stubGitHub(user = { id: 4242, login: "octocat", name: "Octo Cat" }, emails = [{ email: "Octo@Example.com", primary: true, verified: true }]) {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (url === "https://github.com/login/oauth/access_token")
+        return Response.json({ access_token: "gho_test", token_type: "bearer", scope: "read:user,user:email" });
+      if (url === "https://api.github.com/user") return Response.json(user);
+      if (url === "https://api.github.com/user/emails") return Response.json(emails);
+      throw new Error(`unexpected fetch ${url}`);
+    });
+  }
+
+  async function start(extra: Record<string, string> = {}) {
+    const res = await call(new Request(`${MAIN}/auth/github`, { headers: extra }), GH);
+    expect(res.status).toBe(302);
+    const location = new URL(res.headers.get("location")!);
+    const cookie = /sugi_oauth=([^;]+)/.exec(res.headers.get("set-cookie")!)![1];
+    return { location, cookie, state: location.searchParams.get("state")! };
+  }
+
+  it("redirects to GitHub with the callback on our origin, and only when configured", async () => {
+    const { location } = await start();
+    expect(location.origin + location.pathname).toBe("https://github.com/login/oauth/authorize");
+    expect(location.searchParams.get("client_id")).toBe("gh-client");
+    expect(location.searchParams.get("redirect_uri")).toBe("https://sugi.moe/auth/github/callback");
+    expect(location.searchParams.get("scope")).toBe("read:user user:email");
+    expect((await call(new Request(`${MAIN}/auth/github`), ON)).status).toBe(404);
+    expect((await call(new Request(`${MAIN}/auth/google`), GH)).status).toBe(404);
+  });
+
+  it("shows the button only when github is in ACCOUNT_FEATURES", async () => {
+    expect(await (await call(new Request(`${MAIN}/login?lang=en`), GH)).text()).toContain('href="/auth/github"');
+    expect(await (await call(new Request(`${MAIN}/login?lang=en`), { ...GH, ACCOUNT_FEATURES: "email" })).text()).not.toContain("/auth/github");
+    expect(await (await call(new Request(`${MAIN}/privacy?lang=en`), GH)).text()).toContain("your GitHub user id");
+  });
+
+  it("logs in with the verified primary email, and refuses a forged state", async () => {
+    const { cookie, state } = await start();
+    stubGitHub();
+    const bad = await call(new Request(`${MAIN}/auth/github/callback?code=abc&state=nope`, { headers: { cookie: `sugi_oauth=${cookie}` } }), GH);
+    expect(bad.headers.get("location")).toBe("https://sugi.moe/login?error=oauth");
+    const ok = await call(new Request(`${MAIN}/auth/github/callback?code=abc&state=${state}`, { headers: { cookie: `sugi_oauth=${cookie}` } }), GH);
+    expect(ok.status).toBe(302);
+    expect(ok.headers.get("location")).toBe("https://sugi.moe/account");
+    const session = /sugi_session=([^;]+)/.exec(ok.headers.get("set-cookie")!)![1];
+    vi.restoreAllMocks();
+    const me = await (await call(new Request(`${MAIN}/api/me`, { headers: { cookie: `sugi_session=${session}` } }), GH)).json<{
+      email: string;
+      name: string;
+    }>();
+    expect(me).toMatchObject({ email: "octo@example.com", name: "Octo Cat" });
+    const account = await (await call(new Request(`${MAIN}/account?lang=en`, { headers: { cookie: `sugi_session=${session}` } }), GH)).text();
+    expect(account).toContain("Log in with: GitHub");
+    expect(account).not.toContain('href="/auth/github"');
+  });
+
+  it("links GitHub to the account you are logged in to", async () => {
+    const session = await logIn("linker@example.com");
+    const { cookie, state } = await start({ cookie: `sugi_session=${session}` });
+    stubGitHub({ id: 777, login: "linker", name: "" }, [{ email: "other@example.com", primary: true, verified: true }]);
+    const res = await call(
+      new Request(`${MAIN}/auth/github/callback?code=abc&state=${state}`, { headers: { cookie: `sugi_oauth=${cookie}; sugi_session=${session}` } }),
+      GH,
+    );
+    expect(res.headers.get("location")).toBe("https://sugi.moe/account");
+    expect(res.headers.get("set-cookie")).not.toContain("sugi_session=");
+    vi.restoreAllMocks();
+    const account = await (await call(new Request(`${MAIN}/account?lang=en`, { headers: { cookie: `sugi_session=${session}` } }), GH)).text();
+    expect(account).toContain("linker@example.com");
+    expect(account).toContain("Email · GitHub");
+  });
+});
