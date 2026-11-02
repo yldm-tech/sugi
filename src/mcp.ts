@@ -87,7 +87,7 @@ function registerAdminTools(server: McpServer, env: Env): void {
     "takedown",
     {
       title: "Take down a file or album (admin)",
-      description: "Remove a file or album after a report: the object is deleted, every URL it was served from is purged from the cache, and a tombstone keeps the id from being reused and answers 451 from now on. block_content: true also records the content SHA-256 so identical uploads are refused on every upload path. For albums, include_files: true also takes down every file in it.",
+      description: "Remove a file or album after a report: the object is deleted, every URL it was served from is purged from the cache, and a tombstone keeps the id from being reused and answers 451 from now on. block_content: true also records the content SHA-256 so identical uploads are refused on every upload path (files up to 20 MB; bigger files are only taken down). For albums, include_files: true also takes down every file in it.",
       inputSchema: { target, reason, block_content: z.boolean().optional().describe("Also block re-uploads of the same bytes."), include_files: z.boolean().optional().describe("Albums only: take down the files too.") },
       annotations: { destructiveHint: true },
     },

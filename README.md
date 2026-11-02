@@ -183,7 +183,7 @@ admin() { printf 'header = "Authorization: Bearer %s"\n' "$ADMIN_TOKEN" | curl -
 `sugi` MCP 服务按请求带的令牌决定权限：带 `ADMIN_TOKEN` 时多出一组管理工具（普通请求看不到也调用不了），并且不受限流。同一个 MCP 条目，把请求头换成管理员令牌即可。
 
 1. `inspect`：把举报的链接（files./tmp. 直链、`/f/<id>` 分享页、旧链接、`/a/<id>` 打包链接都行）查一遍，看状态、来源 HMAC、所在的打包链接。
-2. `takedown`：下架，写上 `reason`。对象换成墓碑，所有出过图的地址（缓存回源地址、直链、分享页）清缓存，链接从此返回 451（浏览器看到一句中英文的“因被举报已删除”，带 noindex），id 不再分配。CSAM、反复出现的垃圾内容加 `block_content: true`，记下内容的 SHA-256，之后任何上传途径（普通上传、multipart、链接搬运、分片、`create_upload` 链接、旧接口 `/upload`）传同样的字节都会被 451 拒绝。打包链接也能下架，`include_files: true` 连同里面的文件一起下架。
+2. `takedown`：下架，写上 `reason`。对象换成墓碑，所有出过图的地址（缓存回源地址、直链、分享页）清缓存，链接从此返回 451（浏览器看到一句中英文的“因被举报已删除”，带 noindex），id 不再分配。CSAM、反复出现的垃圾内容加 `block_content: true`，记下内容的 SHA-256，之后任何上传途径（普通上传、multipart、链接搬运、`create_upload` 链接、旧接口 `/upload`）传同样的字节都会被 451 拒绝。内容屏蔽只覆盖 20 MB 以内的文件：Worker 在 CPU 限制内算不完更大文件的哈希（实测 95 MB 会触发 1102），更大的文件只下架、不屏蔽，结果里会列在 `not_blocked_too_big`。打包链接也能下架，`include_files: true` 连同里面的文件一起下架。
 3. `list_by_source`：同一来源还传过什么（按时间倒序，分页）。
 4. `takedown_by_source`：整批下架，默认 `dry_run: true` 只列出来，确认后再传 `dry_run: false`；必要时 `block_source`（可设 `expires_in_hours`），该来源之后的上传得到不说明原因的 403。
 5. `takedown_log` 看最近的管理操作；`list_blocks` 看屏蔽列表；误伤时用 `unblock_source`、`unblock_content` 解除。

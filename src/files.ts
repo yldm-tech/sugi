@@ -5,7 +5,7 @@ import { constantTimeEqual, sha256Hex, toHex } from "./crypto";
 import { authorizeUpload, etagMatches, hasBody, HttpError, isAdmin, jsonResponse, RemovedError, textResponse, Uploader, wantsJson } from "./http";
 import { assertFileNotRemoved, assertHashAllowed, isTombstone, takedown } from "./moderation";
 import { cuteId, deleteToken, isFileId, randomId } from "./ids";
-import { EXPIRIES, ExpiryId, IMPORT_MAX_REDIRECTS, IMPORT_TIMEOUT_MS, IMPORT_UNKNOWN_LENGTH_MAX_BYTES, MAX_FILE_BYTES, NAME_MAX, parseExpiry, SINGLE_REQUEST_MAX_BYTES } from "./limits";
+import { EXPIRIES, ExpiryId, HASH_MAX_BYTES, IMPORT_MAX_REDIRECTS, IMPORT_TIMEOUT_MS, IMPORT_UNKNOWN_LENGTH_MAX_BYTES, MAX_FILE_BYTES, NAME_MAX, parseExpiry, SINGLE_REQUEST_MAX_BYTES } from "./limits";
 import { MEDIA_BY_EXT, MediaType, SNIFF_BYTES, sniffMedia } from "./sniff";
 
 const MiB = 1024 * 1024;
@@ -237,16 +237,16 @@ export async function storeStream(env: Env, uploader: Uploader, opts: UploadOpti
   }
   const fixed = new FixedLengthStream(length);
   const abort = new AbortController();
-  // Hash on the way through (no second copy of the body in memory) so blocked content can be refused.
-  const digest = new crypto.DigestStream("SHA-256");
-  const hashWriter = digest.getWriter();
+  // Hash on the way through (no second copy of the body in memory) so blocked content can be refused; only up to HASH_MAX_BYTES, see limits.ts.
+  const digest = length <= HASH_MAX_BYTES ? new crypto.DigestStream("SHA-256") : null;
+  const hashWriter = digest?.getWriter();
   const hasher = new TransformStream<Uint8Array, Uint8Array>({
     async transform(chunk, controller) {
-      await hashWriter.write(chunk.slice());
+      if (hashWriter) await hashWriter.write(chunk.slice());
       controller.enqueue(chunk);
     },
     async flush() {
-      await hashWriter.close();
+      if (hashWriter) await hashWriter.close();
     },
   });
   const piping = stream.pipeThrough(hasher).pipeTo(fixed.writable, { signal: abort.signal }).then(
@@ -273,7 +273,7 @@ export async function storeStream(env: Env, uploader: Uploader, opts: UploadOpti
     throw new HttpError(400, "upload body did not match its declared length");
   }
   try {
-    await assertHashAllowed(env, toHex(await digest.digest));
+    if (digest) await assertHashAllowed(env, toHex(await digest.digest));
   } catch (err) {
     await env.BUCKET.delete(p.key);
     throw err;
@@ -285,7 +285,7 @@ export async function storeBytes(env: Env, uploader: Uploader, opts: UploadOptio
   if (bytes.byteLength === 0) throw new HttpError(400, "empty upload");
   const type = sniffMedia(bytes.subarray(0, SNIFF_BYTES));
   if (!type) throw unsupportedType();
-  await assertHashAllowed(env, await sha256Hex(bytes));
+  if (bytes.byteLength <= HASH_MAX_BYTES) await assertHashAllowed(env, await sha256Hex(bytes));
   const p = await prepare(env, uploader, opts, type, fixedId);
   const stored = await env.BUCKET.put(p.key, bytes, await reservedPutOptions(env, p, fixedId));
   if (stored === null) throw linkUsed();

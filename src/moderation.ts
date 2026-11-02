@@ -3,6 +3,7 @@ import { purgeUrls } from "./cache";
 import { toHex } from "./crypto";
 import { describe, fileKey, pageUrl, publicUrl } from "./files";
 import { MEDIA_BY_EXT } from "./sniff";
+import { HASH_MAX_BYTES } from "./limits";
 import { HttpError, isSourceBlocked, RemovedError } from "./http";
 import { isFileId } from "./ids";
 import { LEGACY_KEY_RE } from "./legacy";
@@ -38,6 +39,11 @@ export async function assertAlbumNotRemoved(env: Env, id: string): Promise<void>
 export async function hashObject(env: Env, key: string): Promise<string | null> {
   const obj = await env.BUCKET.get(key);
   if (!obj) return null;
+  // Too big to hash within the CPU limit; such files are taken down without a content block.
+  if (obj.size > HASH_MAX_BYTES) {
+    await obj.body.cancel();
+    return null;
+  }
   const digest = new crypto.DigestStream("SHA-256");
   await obj.body.pipeTo(digest);
   return toHex(await digest.digest);
@@ -179,6 +185,8 @@ export interface TakedownResult {
   removed: string[];
   already_removed: string[];
   blocked_hashes: string[];
+  /** block_content was asked for but these files are over HASH_MAX_BYTES, so only taken down. */
+  not_blocked_too_big?: string[];
   cache_purged: boolean;
 }
 
@@ -187,6 +195,7 @@ async function takedownKeys(env: Env, keys: string[], opts: TakedownOptions, act
   const removed: string[] = [];
   const already: string[] = [];
   const hashes: string[] = [];
+  const tooBig: string[] = [];
   const urls: string[] = [];
   const stmts: D1PreparedStatement[] = [];
   const now = Date.now();
@@ -206,16 +215,17 @@ async function takedownKeys(env: Env, keys: string[], opts: TakedownOptions, act
     await env.BUCKET.put(key, new Uint8Array(0), { httpMetadata: { contentType: "application/octet-stream" }, customMetadata: marker });
     const name = LEGACY_KEY_RE.test(key) ? `legacy:${key}` : `file:${key.slice(2)}`;
     stmts.push(env.DB.prepare("INSERT OR REPLACE INTO tombstones (target, reason, sha256, source, created_at) VALUES (?, ?, ?, ?, ?)").bind(name, opts.reason ?? null, sha, m.source ?? null, now));
+    if (opts.blockContent && !sha) tooBig.push(key);
     if (opts.blockContent && sha) {
       stmts.push(env.DB.prepare("INSERT OR IGNORE INTO blocked_hashes (sha256, target, reason, created_at) VALUES (?, ?, ?, ?)").bind(sha, name, opts.reason ?? null, now));
       hashes.push(sha);
     }
     removed.push(key);
   }
-  stmts.push(await log(env, action, logTarget, opts.reason ?? null, { via: opts.via ?? null, removed, already_removed: already, blocked_hashes: hashes }));
+  stmts.push(await log(env, action, logTarget, opts.reason ?? null, { via: opts.via ?? null, removed, already_removed: already, blocked_hashes: hashes, too_big_to_block: tooBig }));
   await env.DB.batch(stmts);
   const purged = await purgeUrls(env, urls);
-  return { removed, already_removed: already, blocked_hashes: hashes, cache_purged: purged };
+  return { removed, already_removed: already, blocked_hashes: hashes, ...(tooBig.length ? { not_blocked_too_big: tooBig } : {}), cache_purged: purged };
 }
 
 async function takedownAlbum(env: Env, id: string, opts: TakedownOptions): Promise<TakedownResult> {
