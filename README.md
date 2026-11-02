@@ -26,7 +26,7 @@ The instance run by its authors is <https://sugi.moe>. This repository deploys y
 
 ### One click
 
-Press **Deploy to Cloudflare** above. Cloudflare copies this repository into your GitHub or GitLab account, creates the R2 bucket and the D1 database, asks for the two secrets below and deploys the Worker. The site then works on its `*.workers.dev` address; the Worker creates its database tables on the first request.
+Press **Deploy to Cloudflare** above. Cloudflare copies this repository into your GitHub or GitLab account (later pushes deploy automatically through Workers Builds), creates the R2 bucket and the D1 database under names you can change, asks for the two secrets below and deploys the Worker. The site then works on its `*.workers.dev` address; the Worker creates its database tables on the first request.
 
 | Secret           | What to enter                                                                                                                                                                            |
 | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
