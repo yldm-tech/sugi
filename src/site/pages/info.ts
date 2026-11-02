@@ -250,7 +250,7 @@ export function termsPage(ctx: Ctx): Page {
   ];
   const html = `<section class="stack8">
 <h1 class="h1">${t("使用条款", "Terms of use")}</h1>
-<p class="lead">${b.operator ? t(`${esc(b.siteName)} 由 ${esc(b.operator)} 运营。用 ${esc(b.siteName)} 就代表你同意下面这些规则。`, `${esc(b.siteName)} is operated by ${esc(b.operator)}. By using ${esc(b.siteName)} you agree to the rules below.`) : t(`用 ${esc(b.siteName)} 就代表你同意下面这些规则。`, `By using ${esc(b.siteName)} you agree to the rules below.`)}</p>
+<p class="lead">${b.operator ? t(`${esc(b.siteName)} 由 ${esc(b.operator)} 运营。用 ${esc(b.siteName)} 就代表你同意下面这些规则。`, `${esc(b.siteName)} is operated by ${esc(b.operator)}${b.operator.endsWith(".") ? "" : "."} By using ${esc(b.siteName)} you agree to the rules below.`) : t(`用 ${esc(b.siteName)} 就代表你同意下面这些规则。`, `By using ${esc(b.siteName)} you agree to the rules below.`)}</p>
 </section>
 <ol class="card terms">
 ${items.map((i) => `<li>${i}</li>`).join("\n")}

@@ -196,6 +196,7 @@ describe("privacy policy", () => {
       expect(html).toContain("HMAC");
       expect(html).toContain("abuse@sugi.moe");
       expect(html).toContain("sugi_lang");
+      expect(html, "2-year limit on source fingerprints").toContain(lang === "zh" ? "来源指纹最长保留 2 年" : "source fingerprint is kept for at most 2 years");
       expect(html).not.toContain("sugi_session");
       for (const s of PRIVACY) for (const p of s.paras) if (p.review) expect(html).not.toContain(p.review);
     }
@@ -207,5 +208,13 @@ describe("privacy policy", () => {
     const on = await (await page("/privacy", zh, { FEATURE_ACCOUNTS: "1" })).text();
     expect(on).toContain("sugi_session");
     expect(on).toContain("通行密钥的公钥");
+  });
+});
+
+describe("operator sentence", () => {
+  it("does not double the full stop after an operator name ending in one", async () => {
+    const terms = await (await page("/terms?lang=en")).text();
+    expect(terms).toContain("sugi.moe is operated by YLDM Co., Ltd. By using sugi.moe");
+    expect(terms).not.toContain("Ltd..");
   });
 });

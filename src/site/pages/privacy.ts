@@ -177,9 +177,9 @@ export function privacySections(b: Brand): Section[] {
           en: "Albums stay until you delete them; files deleted from an album's set simply stop appearing in it.",
         },
         {
-          zh: "因为违反使用条款而被删除的文件，我们会保留一条删除记录（文件 id、删除的时间和原因、上传来源的 HMAC 指纹），用来处理同一来源后续的滥用；必要时还会保留文件内容的 SHA-256 哈希放进屏蔽列表，阻止同样的文件再次上传。哈希是单向的指纹，不能从它还原出文件。被删除文件的链接会一直显示「已删除」。",
-          en: "When a file is removed for breaking the terms, we keep a record of the removal (the file id, when and why it was removed, and the HMAC fingerprint of its source) to deal with further abuse from the same source, and where needed the SHA-256 hash of its content in a blocklist, so the same file cannot be uploaded again. A hash is a one-way fingerprint; the file cannot be recovered from it. The removed file's link keeps saying that it was removed.",
-          review: "Pending maintainer review (added with the moderation tools, 2026-11-02): takedown records keep the source HMAC after the file is gone; content hashes of removed files may be kept indefinitely in a blocklist.",
+          zh: "因为违反使用条款而被删除的文件，我们会保留一条删除记录：文件 id、删除的时间和原因，以及上传来源的 HMAC 指纹，用来处理同一来源后续的滥用。来源指纹最长保留 2 年，到期后从记录里抹掉，只留下文件 id、时间和原因。必要时我们还会把文件内容的 SHA-256 哈希放进屏蔽列表，阻止同样的文件再次上传：哈希是单向的指纹，不能从它还原出文件，它会保留到不再需要阻止重新上传为止，你也可以请求解除。被禁止上传的来源按各自设定的期限解除。被删除文件的链接会一直显示「已删除」。",
+          en: "When a file is removed for breaking the terms, we keep a record of the removal: the file id, when and why it was removed, and the HMAC fingerprint of its source, to deal with further abuse from the same source. The source fingerprint is kept for at most 2 years; after that it is erased from the record, leaving only the file id, time and reason. Where needed we also put the SHA-256 hash of the content in a blocklist so the same file cannot be uploaded again: a hash is a one-way fingerprint that the file cannot be recovered from, it is kept as long as it is needed to stop re-uploads, and you can ask for it to be lifted. Sources barred from uploading are released when their own block expires. The removed file's link keeps saying that it was removed.",
+          review: "Decided (2026-11-02): keep takedown records; the source HMAC is erased from them (and from the admin log) after at most 2 years by the cron, leaving file id, time and reason; content hashes stay in the blocklist as long as needed to stop re-uploads and can be lifted on request; source blocks keep their own expiry.",
         },
         {
           zh: "账号数据保存到你要求删除账号为止；会话 30 天后过期，邮件登录链接 15 分钟后失效。",
