@@ -7,6 +7,7 @@ import m0005 from "../migrations/0005_usage.sql";
 import m0006 from "../migrations/0006_ops.sql";
 import m0007 from "../migrations/0007_reports.sql";
 import m0008 from "../migrations/0008_ops_state.sql";
+import m0009 from "../migrations/0009_backup.sql";
 
 // Every file in migrations/, in order; test/template.test.ts checks that none is missing.
 export const MIGRATIONS: [string, string][] = [
@@ -18,6 +19,7 @@ export const MIGRATIONS: [string, string][] = [
   ["0006_ops.sql", m0006],
   ["0007_reports.sql", m0007],
   ["0008_ops_state.sql", m0008],
+  ["0009_backup.sql", m0009],
 ];
 
 let ready: Promise<void> | null = null;

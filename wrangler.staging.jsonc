@@ -65,6 +65,11 @@
     {
       "binding": "BUCKET",
       "bucket_name": "sugi-staging"
+    },
+    // Daily-ish backup of permanent files (src/backup.ts), same location hint (APAC) as the main bucket.
+    {
+      "binding": "BACKUP",
+      "bucket_name": "sugi-staging-backup"
     }
   ],
   "ratelimits": [

@@ -1,5 +1,6 @@
 // Moderation for admins: inspect anything by link or id, take content down (with a tombstone so the id is never reused and serves 451, and optionally a content-hash block so the same bytes cannot come back), act on everything from one source, block sources from uploading, and keep an append-only audit log. Used by the admin MCP tools and by the admin HTTP endpoints, so both behave the same.
 import { purgeUrls } from "./cache";
+import { dropFromBackup } from "./backup";
 import { toHex } from "./crypto";
 import { describe, fileKey, pageUrl, publicUrl } from "./files";
 import { MEDIA_BY_EXT } from "./sniff";
@@ -277,6 +278,8 @@ async function takedownKeys(env: Env, keys: string[], opts: TakedownOptions, act
     }),
   );
   await env.DB.batch(stmts);
+  // Removed content does not survive in the backup either.
+  await dropFromBackup(env, [...removed, ...already]);
   const purged = await purgeUrls(env, urls);
   return { removed, already_removed: already, blocked_hashes: hashes, ...(tooBig.length ? { not_blocked_too_big: tooBig } : {}), cache_purged: purged };
 }

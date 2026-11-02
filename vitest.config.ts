@@ -8,6 +8,8 @@ export default defineConfig(async () => {
       cloudflareTest({
         wrangler: { configPath: "./wrangler.jsonc" },
         miniflare: {
+          // The optional backup bucket (only in wrangler.production.jsonc); tests of the template run without it by overriding BACKUP.
+          r2Buckets: ["BACKUP"],
           // Test-only values; production secrets live in Cloudflare and ~/.config/sugi/secrets.env.
           bindings: {
             IP_HASH_SECRET: "test-ip-hash-secret",

@@ -212,6 +212,12 @@ export function privacySections(b: Brand, features: string[] = ["email", "github
           zh: "打包链接保存到你删除它为止；里面的文件被删除后，打包链接里就不再显示它们。",
           en: "Albums stay until you delete them; files deleted from an album's set simply stop appearing in it.",
         },
+        ...when<Para>(b.backup, {
+          zh: "为了防止数据丢失，我们会把永久保存的文件复制一份到同一存储区域里的备份存储（临时文件不备份）。文件被删除后，它在备份里的副本最多再保留 7 天，然后删除；因为违反使用条款被删除的文件，备份副本立即删除。",
+          en: "To guard against data loss we keep a copy of files kept “forever” in backup storage in the same storage region (temporary files are not backed up). When a file is deleted, its backup copy is kept for at most 7 more days and then deleted; the backup copy of a file removed for breaking the terms is deleted at once.",
+          review:
+            "Proposed 2026-11-02 (needs the operator's confirmation): R2 backup bucket in the same location (APAC); copies of deleted files kept 7 days; takedowns removed from the backup immediately.",
+        }),
         {
           zh: "因为违反使用条款而被删除的文件，我们会保留一条删除记录：文件 id、删除的时间和原因，以及上传来源的 HMAC 指纹，用来处理同一来源后续的滥用。来源指纹最长保留 2 年，到期后从记录里抹掉，只留下文件 id、时间和原因。必要时我们还会把文件内容的 SHA-256 哈希放进屏蔽列表，阻止同样的文件再次上传：哈希是单向的指纹，不能从它还原出文件，它会保留到不再需要阻止重新上传为止，你也可以请求解除。被禁止上传的来源按各自设定的期限解除。被删除文件的链接会一直显示「已删除」。",
           en: "When a file is removed for breaking the terms, we keep a record of the removal: the file id, when and why it was removed, and the HMAC fingerprint of its source, to deal with further abuse from the same source. The source fingerprint is kept for at most 2 years; after that it is erased from the record, leaving only the file id, time and reason. Where needed we also put the SHA-256 hash of the content in a blocklist so the same file cannot be uploaded again: a hash is a one-way fingerprint that the file cannot be recovered from, it is kept as long as it is needed to stop re-uploads, and you can ask for it to be lifted. Sources barred from uploading are released when their own block expires. The removed file's link keeps saying that it was removed.",

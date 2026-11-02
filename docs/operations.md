@@ -41,6 +41,27 @@
 - **生产只做轻量检查**：`scripts/deploy-production.sh` 部署完会自动跑 `scripts/smoke.sh https://sugi.moe`：`/healthz`、几个页面、用可信令牌传一个文件、原样取回、用删除凭证删掉、确认 404。
 - **CI 部署 staging 需要的 API 令牌**（还没建，现在从本机部署）：Account 级别、只限 yldm 账号（`e2b27aea5f599efdbe0a7016a2580d05`）：`Workers Scripts: Edit`（部署、secrets、workers.dev）、`D1: Edit`（远程迁移）、`Workers R2 Storage: Read`（部署时校验 bucket 绑定）、`Account Settings: Read`。不需要任何 Zone 权限。放进 GitHub 仓库 secret `CLOUDFLARE_API_TOKEN`，staging 的 secrets 另存为仓库 secret 后用 `wrangler secret bulk` 写入。以后要让 CI 部署生产，还要加 Zone `sugi.moe` 的 `Workers Routes: Edit` 和 `DNS: Edit`（自定义域名），建议用另一枚令牌、只给受保护的环境用。
 
+## 备份
+
+- **内容**：R2 `sugi` 里永久保存的文件（`f/` 和旧接口的 `<16 位十六进制>.<扩展名>`）复制到 R2 `sugi-backup`（APAC，和主 bucket 同一位置，隐私政策里写的存储区域不变）。临时文件（`t/`）不备份。staging 对应 `sugi-staging-backup`。
+- **频率**：每 10 分钟的 cron 处理一批（100 个对象），按游标（`ops_state` 里的 `backup_cursor`）把整个 bucket 一轮轮走完；源对象的 etag 记在副本的 `src_etag` 里，没变的不重复复制。按现在的规模每轮几分钟就走完，所以新文件一般在半小时内进备份。
+- **删除**：用户删掉（或账号删除连带删掉）的文件，备份副本再留 7 天（`backup_gone` 表记开始时间），之后清理，防止误删一大批时无法恢复。**下架的文件立即从备份删除**（下架流程里直接删，备份清理也会再检查一次墓碑），恢复时也永远跳过墓碑。
+- **数据库**：D1 不在这个备份里，用 D1 自带的 Time Travel（`wrangler d1 time-travel info sugi` / `restore sugi --timestamp=…`，免费计划可回到 7 天内任一时刻）。
+- **查看**：管理员 MCP 的 `backup_status`（对象数、字节数、等待清理的已删除副本）。
+
+### 恢复
+
+1. 先查：`backup_status`；再对要恢复的范围跑 `restore_from_backup`，默认 `dry_run: true`，只列出会恢复的 key。
+2. 单个或几个文件：`restore_from_backup {"keys": ["f/<id>", "abcd0123abcd0123.png"], "dry_run": false}`。文件、元数据（删除凭证的哈希、名称、到期时间、来源）原样回到主 bucket，链接立即恢复；已存在的对象不会被覆盖（`onlyIf`），下架的不会恢复。
+3. 一大批（比如误删、bucket 被清空）：不带 `keys`，`{"dry_run": false, "limit": 200}` 一页页恢复，每次用返回的 `next_cursor` 接着调，直到它为 `null`。一页在 Worker 里流式复制，200 个小图片在 CPU 限制内；大文件多时把 `limit` 调小。
+4. 整个 bucket 都没了：先 `wrangler r2 bucket create sugi --location apac`（同名、同绑定），再按第 3 步全量恢复；D1 用 Time Travel 回到事故前。
+5. 恢复的文件不会自动回到用户账号的「我的文件」里（那是 D1 的 `file_owners`），D1 用 Time Travel 恢复后就一并回来了。
+
+### 成本
+
+- 存储翻倍，但目前远在免费额度内：主 bucket 约 42 MB（见投喂页的实测），备份同样大小，两者合计远低于每月 10 GB 免费存储。超出后备份按 US$0.015/GB·月计，例如永久文件 100 GB 时备份每月多 US$1.50（不含免费额度）。
+- 操作次数：每次 cron 两次 list（Class A）、最多 200 次 head（Class B），每月约 8,600 次 Class A、约 86 万次 Class B，加上每个新文件一次 put（Class A），都在免费额度（每月 100 万次 A、1,000 万次 B）内。R2 没有出口流量费，bucket 之间复制也不收流量费。
+
 ## Secrets
 
 Secrets 只存在两处：Cloudflare 的 Worker secrets，以及本机 `~/.config/sugi/secrets.env`（权限 600）。`TRUSTED_TOKEN` 例外，它的值还在 zone 的 WAF 自定义规则里。`secrets.env` 会被 `wrangler deploy --secrets-file` 整个上传，所以只放 Worker 要用的东西；改 WAF 用的 ops token 放在 `~/.config/sugi/ops.env`。
