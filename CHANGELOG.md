@@ -12,6 +12,9 @@ All notable changes to sugi are listed here. The format follows [Keep a Changelo
 - The donate page ("Feed the hamster") with an Alipay QR code and link (`DONATE_ALIPAY_QR`, `DONATE_ALIPAY_LINK`), and a cost list computed from real data: R2 storage from the measured bucket size, the free plans in use, and the domain renewal when `DONATE_DOMAIN_COST_USD` is set. It replaces `FEATURE_DONATE`.
 - Integrations: a ShareX custom uploader at `/integrations/sharex.sxcu`, settings for PicGo / PicList, uPic, Typora and Obsidian on `/dev#tools`, and `sugi up --plain` for tools that read bare links.
 
+- Resumable chunked uploads: the website keeps an unfinished big upload's progress in the browser, waits out a lost connection and continues after a reload when the file is picked again; the CLI keeps it in `~/.config/sugi/pending/`, continues on the next run, shows progress bars and has `sugi abort FILE`. Cancelling aborts the multipart upload on the server.
+- The upload queue on the website and the CLI pace themselves under the server's limits and retry after a 429 on their own; logged-in accounts may start 60 uploads a minute.
+
 ### Changed
 
 - Videos need an account or a maintainer token by default (`VIDEO_UPLOADS`), since Cloudflare's CSAM Scanning Tool checks images only.

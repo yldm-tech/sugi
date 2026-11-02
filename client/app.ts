@@ -128,6 +128,33 @@ function persist() {
   }
 }
 
+// Unfinished chunked uploads, so they can continue after a lost connection or a reload: the signed session from the server (valid 24 hours) and the etag of every part already stored. A file is recognised by name, size and modification time when it is picked again.
+interface Pending {
+  fp: string;
+  name: string;
+  size: number;
+  session: string;
+  partSize: number;
+  etags: (string | null)[];
+  createdAt: number;
+}
+const PENDING_KEY = "sugi.pending.v1";
+const PENDING_TTL = 23 * 3600e3;
+let pending: Pending[] = load<Pending[]>(PENDING_KEY, []).filter((p) => Date.now() - p.createdAt < PENDING_TTL);
+
+function savePending() {
+  try {
+    localStorage.setItem(PENDING_KEY, JSON.stringify(pending));
+  } catch {}
+}
+
+function dropPending(fp: string) {
+  pending = pending.filter((p) => p.fp !== fp);
+  savePending();
+}
+
+const fingerprint = (f: File) => `${f.name}|${f.size}|${f.lastModified}`;
+
 // ---------------------------------------------------------------- toast, copy, sound
 
 let toastTimer = 0;
@@ -245,7 +272,7 @@ interface Upload {
   ext: string;
   kind: "image" | "video";
   pct: number;
-  status: "queued" | "up" | "done" | "err" | "wait";
+  status: "queued" | "up" | "done" | "err" | "wait" | "paused";
   error: string | null;
   thumb: string | null;
   local: string | null;
@@ -255,6 +282,13 @@ interface Upload {
   attempts?: number;
   /** The failure is worth another try (network trouble, rate limit), so the error shows a retry button. */
   retryable?: boolean;
+  /** Shown under the bar while a chunked upload waits (e.g. for the network to come back). */
+  note?: string | null;
+  /** The request in flight, so the upload can be cancelled. */
+  req?: XMLHttpRequest | null;
+  cancelled?: boolean;
+  /** Fingerprint of an unfinished chunked upload this entry stands for (status "paused", restored after a reload). */
+  fp?: string;
 }
 
 let uploads: Upload[] = [];
@@ -342,9 +376,11 @@ function xhr(
   body: Blob | FormData | string | null,
   headers: Record<string, string>,
   onProgress?: (loaded: number) => void,
+  owner?: Upload,
 ): Promise<XhrResult> {
   return new Promise((resolve) => {
     const x = new XMLHttpRequest();
+    if (owner) owner.req = x;
     x.open(method, url);
     x.setRequestHeader("Accept", "application/json");
     for (const [k, v] of Object.entries(headers)) x.setRequestHeader(k, v);
@@ -358,31 +394,134 @@ function xhr(
       resolve({ status: x.status, body: parsed, retryAfter: x.getResponseHeader("retry-after") });
     };
     x.onerror = () => resolve({ status: 0, body: null, retryAfter: null });
+    x.onabort = () => resolve({ status: 0, body: null, retryAfter: null });
     x.send(body);
   });
 }
 
 async function sendFile(u: Upload, blob: Blob, progress: (frac: number) => void): Promise<XhrResult> {
   if (blob.size <= CFG.limits.single) {
-    return xhr("PUT", `/api/upload?${queryFor(u)}`, blob, {}, (l) => progress(l / blob.size));
+    return xhr("PUT", `/api/upload?${queryFor(u)}`, blob, {}, (l) => progress(l / blob.size), u);
   }
-  // Chunked: Cloudflare caps request bodies, so big files go up in parts.
-  const parts = Math.ceil(blob.size / PART_SIZE);
-  const etags: string[] = [];
-  const first = await xhr("POST", `/api/uploads?${queryFor(u, { size: String(blob.size) })}`, blob.slice(0, PART_SIZE), {}, (l) => progress(l / blob.size));
-  if (first.status !== 201) return first;
-  const session = first.body.upload as string;
-  etags.push(first.body.etag);
-  for (let n = 2; n <= parts; n++) {
-    const start = (n - 1) * PART_SIZE;
-    const r = await xhr("PUT", `/api/uploads/${n}`, blob.slice(start, start + PART_SIZE), { "Sugi-Upload": session }, (l) => progress((start + l) / blob.size));
+  return sendChunked(u, blob, progress);
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const waitOnline = () => (navigator.onLine ? Promise.resolve() : new Promise<void>((r) => window.addEventListener("online", () => r(), { once: true })));
+
+// One request of a chunked upload, retried while the connection is down or the server is busy: waits for the browser to be online again, then backs off 2, 4, 8… up to 30 seconds, for up to 12 tries.
+async function retrying(u: Upload, send: () => Promise<XhrResult>): Promise<XhrResult> {
+  let r: XhrResult = { status: 0, body: null, retryAfter: null };
+  for (let attempt = 0; attempt < 12 && !u.cancelled; attempt++) {
+    if (!navigator.onLine) {
+      u.note = T.waitingNetwork;
+      touch();
+      await waitOnline();
+    }
+    r = await send();
+    // A daily quota (429 that says so, or 507) is final; only rate limits, a lost connection and server trouble are worth waiting for.
+    if (u.cancelled || (r.status !== 0 && r.status !== 429 && r.status < 500) || r.status === 507 || /quota/.test(r.body?.error ?? "")) break;
+    const wait = r.retryAfter ? Math.min(60, Number(r.retryAfter) || 5) * 1000 : Math.min(30, 2 ** (attempt + 1)) * 1000;
+    u.note = r.status === 0 ? T.waitingNetwork : r.status === 429 ? fmt(T.waiting, { s: Math.round(wait / 1000) }) : T.retrying;
+    touch();
+    await sleep(wait);
+  }
+  u.note = null;
+  touch();
+  return r;
+}
+
+// Chunked upload (Cloudflare caps request bodies). Picks up an unfinished upload of the same file where it stopped.
+async function sendChunked(u: Upload, blob: Blob, progress: (frac: number) => void): Promise<XhrResult> {
+  const fp = fingerprint(u.file!);
+  u.fp = fp;
+  // The stored session must describe these exact bytes (photo metadata stripping is deterministic, but check the size anyway).
+  let p = pending.find((x) => x.fp === fp && x.size === blob.size);
+  if (!p) {
+    const first = await retrying(u, () =>
+      xhr("POST", `/api/uploads?${queryFor(u, { size: String(blob.size) })}`, blob.slice(0, PART_SIZE), {}, (l) => progress(l / blob.size), u),
+    );
+    if (first.status !== 201) return first;
+    const parts = Number(first.body.parts);
+    p = {
+      fp,
+      name: u.name,
+      size: blob.size,
+      session: first.body.upload,
+      partSize: Number(first.body.part_size),
+      etags: Array(parts).fill(null),
+      createdAt: Date.now(),
+    };
+    p.etags[0] = first.body.etag;
+    pending = [...pending.filter((x) => x.fp !== fp), p];
+    savePending();
+  }
+  const cur = p;
+  const head = { "Sugi-Upload": cur.session };
+  const doneBytes = () => cur.etags.reduce((a, e, i) => a + (e ? Math.min(cur.partSize, blob.size - i * cur.partSize) : 0), 0);
+  progress(doneBytes() / blob.size);
+  for (let n = 2; n <= cur.etags.length; n++) {
+    if (cur.etags[n - 1]) continue;
+    const start = (n - 1) * cur.partSize;
+    const base = doneBytes();
+    const r = await retrying(u, () =>
+      xhr("PUT", `/api/uploads/${n}`, blob.slice(start, start + cur.partSize), head, (l) => progress((base + l) / blob.size), u),
+    );
+    if (u.cancelled) return r;
     if (r.status !== 200) {
-      void xhr("DELETE", "/api/uploads", null, { "Sugi-Upload": session });
+      // An expired or unknown session cannot be resumed; anything else (still offline after all retries) keeps it for later.
+      if (r.status === 401 || r.status === 410) dropPending(fp);
       return r;
     }
-    etags.push(r.body.etag);
+    cur.etags[n - 1] = r.body.etag;
+    savePending();
   }
-  return xhr("POST", "/api/uploads/complete", JSON.stringify({ etags }), { "Sugi-Upload": session, "Content-Type": "application/json" });
+  const done = await retrying(u, () =>
+    xhr("POST", "/api/uploads/complete", JSON.stringify({ etags: cur.etags }), { ...head, "Content-Type": "application/json" }, undefined, u),
+  );
+  if (done.status === 201 || (done.status >= 400 && done.status < 500 && done.status !== 429)) dropPending(fp);
+  return done;
+}
+
+/** Cancels an upload; a chunked one is aborted on the server so its parts do not linger. */
+function cancelUpload(u: Upload) {
+  u.cancelled = true;
+  u.req?.abort();
+  const p = u.fp ? pending.find((x) => x.fp === u.fp) : undefined;
+  if (p) {
+    void xhr("DELETE", "/api/uploads", null, { "Sugi-Upload": p.session });
+    dropPending(p.fp);
+  }
+  uploads = uploads.filter((x) => x !== u);
+  touch();
+}
+
+// After a reload: unfinished chunked uploads appear in the list; picking the same file again continues them.
+let pendingShown = false;
+function showPending() {
+  if (pendingShown) return;
+  pendingShown = true;
+  for (const p of pending) {
+    if (uploads.some((u) => u.fp === p.fp)) continue;
+    const done = p.etags.reduce((a, e, i) => a + (e ? Math.min(p.partSize, p.size - i * p.partSize) : 0), 0);
+    uploads.push({
+      key: `u${++uploadSeq}`,
+      file: null,
+      remote: null,
+      name: p.name,
+      size: p.size,
+      ext: extOf(p.name),
+      kind: kindOf(null, p.name),
+      pct: (done / p.size) * 100,
+      status: "paused",
+      error: null,
+      thumb: null,
+      local: null,
+      res: null,
+      fp: p.fp,
+    });
+  }
+  touch();
 }
 
 async function runUpload(u: Upload) {
@@ -413,6 +552,8 @@ async function runUpload(u: Upload) {
       u.pct = Math.min(99, frac * 100);
       touch();
     });
+    u.req = null;
+    if (u.cancelled) return;
   }
   if (r.status === 201 && r.body && r.body.url) {
     const b = r.body;
@@ -449,6 +590,9 @@ async function runUpload(u: Upload) {
     u.waitUntil = Date.now() + backoff + Math.random() * 1500;
     u.status = "wait";
     u.pct = 0;
+  } else if (u.fp && pending.some((p) => p.fp === u.fp)) {
+    // A chunked upload that could not finish (still offline after the retries): keep it to continue later.
+    u.status = "paused";
   } else {
     u.status = "err";
     u.error = errorFor(r.status, r.body, r.retryAfter);
@@ -522,6 +666,8 @@ function addFiles(list: FileList | File[] | null | undefined) {
   if (CFG.page !== "home") void navigate("/");
   let fly = 0;
   for (const file of arr) {
+    // Picking a file again that has an unfinished chunked upload continues it; the restored entry makes way for the new one.
+    uploads = uploads.filter((x) => !(x.status === "paused" && x.fp === fingerprint(file)));
     const name = file.name || `paste-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "")}.png`;
     const u: Upload = {
       key: `u${++uploadSeq}`,
@@ -661,6 +807,26 @@ function renderResults() {
           waiting || u.retryable
             ? h("div", { class: "tailbtns" }, h("button", { type: "button", class: "copybtn", text: T.retry, onclick: () => retryNow(u) }), dismiss)
             : dismiss;
+      } else if (u.status === "paused") {
+        body.append(h("span", { class: "notetext", text: fmt(u.file ? T.resumeReady : T.resumeHint, { pct: Math.round(u.pct) }) }));
+        tail = h(
+          "div",
+          { class: "tailbtns" },
+          h("button", {
+            type: "button",
+            class: "copybtn",
+            text: T.resume,
+            onclick: () => {
+              if (u.file) {
+                u.status = "queued";
+                u.cancelled = false;
+                touch();
+                pump();
+              } else $<HTMLInputElement>("#file")?.click();
+            },
+          }),
+          h("button", { type: "button", class: "dismiss", "aria-label": T.cancelUpload, title: T.cancelUpload, text: "×", onclick: () => cancelUpload(u) }),
+        );
       } else {
         const fill = h("div", { class: "fill" });
         fill.style.width = `${Math.round(u.pct)}%`;
@@ -669,7 +835,15 @@ function renderResults() {
         runner.style.left = `${Math.round(u.pct)}%`;
         body.append(h("div", { class: "bar" }, h("div", { class: "track" }, fill), runner));
         if (u.status === "queued") body.append(h("span", { class: "notetext", text: T.queued }));
-        tail = h("span", { class: "pct", text: `${Math.round(u.pct)}%` });
+        if (u.note) body.append(h("span", { class: "notetext", text: u.note }));
+        tail = h(
+          "div",
+          { class: "tailbtns" },
+          h("span", { class: "pct", text: `${Math.round(u.pct)}%` }),
+          u.status === "up" && u.size > CFG.limits.single
+            ? h("button", { type: "button", class: "dismiss", "aria-label": T.cancelUpload, title: T.cancelUpload, text: "×", onclick: () => cancelUpload(u) })
+            : null,
+        );
       }
       return h(
         "div",
@@ -1082,6 +1256,7 @@ function updateTab() {
 // ---------------------------------------------------------------- page: home
 
 function initHome() {
+  showPending();
   const input = $<HTMLInputElement>("#file")!;
   const dz = $("#dropzone")!;
   dz.addEventListener("click", () => input.click());

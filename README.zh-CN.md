@@ -146,6 +146,7 @@ sugi up cat.png dog.gif                       # 每个文件一行链接，自�
 sugi up -e 1h --cute secret.jpg
 sugi album "猫猫合集" *.png
 sugi ls ; sugi rm <id>
+sugi up big.mp4 ; sugi abort big.mp4          # 接着传中断的大文件，或者放弃它
 ```
 
 命令行工具只依赖 bash 和 curl，默认连到安装它的那个实例。MCP 服务在 `https://<域名>/mcp`（Streamable HTTP，无状态），工具有 `upload_file`、`upload_url`、`create_album`、`get_file`、`delete_file`，例如 `claude mcp add --transport http sugi https://<域名>/mcp`。

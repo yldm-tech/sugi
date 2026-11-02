@@ -51,7 +51,19 @@ if "$sugi" up --no-copy "$work/a.png" "$work/missing.png" >/dev/null 2>&1; then 
 
 png "$work/big.png" $((95 * 1024 * 1024))
 start=$(date +%s)
-out="$("$sugi" up --no-copy "$work/big.png")" && pass "95 MB file uploads in chunks ($(( $(date +%s) - start ))s)" || fail "big: $out"
+# Interrupt the chunked upload after its first part (curl slowed down by a throwaway .curlrc so there is time), then run the same command again: it must continue, not start over.
+mkdir -p "$work/slow"
+printf 'limit-rate = 15M\n' >"$work/slow/.curlrc"
+CURL_HOME="$work/slow" "$sugi" up --no-copy "$work/big.png" >"$work/int.out" 2>"$work/int.err" &
+pid=$!
+for _ in $(seq 1 300); do compgen -G "$SUGI_CONFIG_DIR/pending/*" >/dev/null && break; sleep 0.2; done
+sleep 1
+kill -TERM "$pid" 2>/dev/null
+wait "$pid"
+code=$?
+[ "$code" = 130 ] && grep -q 'continue' "$work/int.err" && compgen -G "$SUGI_CONFIG_DIR/pending/*" >/dev/null && pass "an interrupted chunked upload keeps its progress" || fail "interrupt: exit $code, $(cat "$work/int.err")"
+out="$("$sugi" up --no-copy "$work/big.png" 2>"$work/resume.err")" && grep -q 'resuming: 1 of 2' "$work/resume.err" && pass "95 MB file resumes and finishes ($(( $(date +%s) - start ))s)" || fail "big: $out $(cat "$work/resume.err")"
+compgen -G "$SUGI_CONFIG_DIR/pending/*" >/dev/null && fail "progress file left after finishing" || pass "progress file removed after finishing"
 big_url="$(printf '%s' "$out" | sed -nE 's/.*→  (http[^ ]+).*/\1/p')"
 size="$(curl -sI "$big_url" | tr -d '\r' | sed -nE 's/^[Cc]ontent-[Ll]ength: ([0-9]+)/\1/p')"
 [ "$size" = "$(wc -c <"$work/big.png" | tr -d ' ')" ] && pass "chunked file has the right size" || fail "chunked size $size"

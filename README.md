@@ -146,6 +146,7 @@ sugi up cat.png dog.gif                       # one link per file, copied to the
 sugi up -e 1h --cute secret.jpg
 sugi album "Cats" *.png
 sugi ls ; sugi rm <id>
+sugi up big.mp4 ; sugi abort big.mp4          # continue an interrupted big upload, or drop it
 ```
 
 The CLI needs only bash and curl and talks to the instance it was installed from. The MCP server at `https://<host>/mcp` (Streamable HTTP, stateless) offers `upload_file`, `upload_url`, `create_album`, `get_file` and `delete_file`; for example `claude mcp add --transport http sugi https://<host>/mcp`.
