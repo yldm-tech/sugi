@@ -145,10 +145,10 @@ ${paid.length > 1 ? `<p class="small">${t(`合计约 ${usd(Math.round(total * 10
     ],
     [
       t("R2 存储和操作", "R2 storage and operations"),
-      t(`超出 ${R2_FREE_GB_MONTH} GB 后每 GB US$0.015 / 月`, `US$0.015 per GB a month past ${R2_FREE_GB_MONTH} GB`),
+      t("US$0.015 / GB·月", "US$0.015 / GB-month"),
       t(
-        "另外每月超过 100 万次写、1000 万次读之后，分别按每百万次 US$4.50、US$0.36 计。流量不收费。",
-        "Plus US$4.50 per million writes past 1 million and US$0.36 per million reads past 10 million a month. Traffic is free.",
+        `存储超过 ${R2_FREE_GB_MONTH} GB 之后按这个价计；每月超过 100 万次写、1000 万次读之后，再按每百万次 US$4.50、US$0.36 计。流量不收费。`,
+        `For storage past ${R2_FREE_GB_MONTH} GB; past 1 million writes and 10 million reads a month, US$4.50 and US$0.36 per million. Traffic is free.`,
       ),
       "https://developers.cloudflare.com/r2/pricing/",
     ],
