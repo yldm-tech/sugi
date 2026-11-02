@@ -1,7 +1,7 @@
 // Albums ("打包链接"): an ordered set of uploaded files behind https://sugi.moe/a/<id>. Metadata lives in D1; the files themselves stay where they are, and deleting an album never deletes its files.
 import { constantTimeEqual, sha256Hex } from "./crypto";
 import { describe, fileKey, publicInfo, StoredFile } from "./files";
-import { authorizeUpload, HttpError, isAdmin, jsonResponse, wantsJson, textResponse } from "./http";
+import { authorizeUpload, HttpError, isAdmin, jsonResponse, wantsJson, textResponse, Uploader } from "./http";
 import { albumDeleteToken, isFileId, randomId } from "./ids";
 import { ALBUM_MAX_FILES, ALBUM_TITLE_MAX } from "./limits";
 
@@ -21,7 +21,7 @@ function cleanTitle(raw: unknown): string {
   return Array.from(raw.replace(/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/g, "").replace(/\s+/g, " ").trim()).slice(0, ALBUM_TITLE_MAX).join("");
 }
 
-async function readInput(request: Request): Promise<{ files: string[]; title: string }> {
+async function readInput(request: Request): Promise<{ files: string[]; title: unknown }> {
   const ct = request.headers.get("content-type") ?? "";
   let filesRaw: unknown;
   let titleRaw: unknown;
@@ -44,16 +44,24 @@ async function readInput(request: Request): Promise<{ files: string[]; title: st
     filesRaw = form.getAll("files").flatMap((v) => (typeof v === "string" ? v.split(",") : []));
     titleRaw = form.get("title");
   }
-  const list = (Array.isArray(filesRaw) ? filesRaw : typeof filesRaw === "string" ? filesRaw.split(",") : []).map((v) => (typeof v === "string" ? v.trim() : "")).filter(Boolean);
-  // Accept bare ids as well as full links such as https://files.sugi.moe/<id>.png.
-  const ids = list.map((v) => v.replace(/^.*\//, "").replace(/\.[a-z0-9]+$/i, ""));
-  return { files: [...new Set(ids)], title: cleanTitle(titleRaw) };
+  const list = (Array.isArray(filesRaw) ? filesRaw : typeof filesRaw === "string" ? filesRaw.split(",") : []).map((v) => (typeof v === "string" ? v : ""));
+  return { files: list, title: titleRaw };
 }
 
 // POST /api/albums
-export async function handleAlbumCreate(request: Request, env: Env): Promise<Response> {
-  const uploader = await authorizeUpload(request, env, "album");
-  const { files, title } = await readInput(request);
+export interface CreatedAlbum {
+  id: string;
+  url: string;
+  title: string;
+  files: number;
+  delete_token: string;
+}
+
+/** Validates the file ids and stores the album. Shared by the HTTP API and the MCP tool. */
+export async function createAlbum(env: Env, uploader: Uploader, rawIds: string[], rawTitle: unknown): Promise<CreatedAlbum> {
+  // Accept bare ids as well as full links such as https://files.sugi.moe/<id>.png.
+  const files = [...new Set(rawIds.map((v) => v.trim().replace(/^.*\//, "").replace(/\.[a-z0-9]+$/i, "")).filter(Boolean))];
+  const title = cleanTitle(rawTitle);
   if (files.length === 0) throw new HttpError(400, 'give at least one file id in "files"');
   if (files.length > ALBUM_MAX_FILES) throw new HttpError(400, `an album holds at most ${ALBUM_MAX_FILES} files`);
   const keys: string[] = [];
@@ -66,14 +74,20 @@ export async function handleAlbumCreate(request: Request, env: Env): Promise<Res
   let id = randomId();
   for (let i = 0; i < 5 && (await env.DB.prepare("SELECT 1 FROM albums WHERE id = ?").bind(id).first()); i++) id = randomId();
   const token = albumDeleteToken();
-  const now = Date.now();
   await env.DB.batch([
-    env.DB.prepare("INSERT INTO albums (id, title, created_at, delete_hash, source) VALUES (?, ?, ?, ?, ?)").bind(id, title, now, await sha256Hex(new TextEncoder().encode(token)), uploader.source),
+    env.DB.prepare("INSERT INTO albums (id, title, created_at, delete_hash, source) VALUES (?, ?, ?, ?, ?)").bind(id, title, Date.now(), await sha256Hex(new TextEncoder().encode(token)), uploader.source),
     ...keys.map((k, i) => env.DB.prepare("INSERT INTO album_files (album_id, position, file_key) VALUES (?, ?, ?)").bind(id, i, k)),
   ]);
-  const url = albumUrl(env, id);
-  if (!wantsJson(request)) return textResponse(url, 201);
-  return jsonResponse({ id, url, title, files: files.length, delete_token: token }, 201);
+  return { id, url: albumUrl(env, id), title, files: files.length, delete_token: token };
+}
+
+// POST /api/albums
+export async function handleAlbumCreate(request: Request, env: Env): Promise<Response> {
+  const uploader = await authorizeUpload(request, env, "album");
+  const { files, title } = await readInput(request);
+  const album = await createAlbum(env, uploader, files, title);
+  if (!wantsJson(request)) return textResponse(album.url, 201);
+  return jsonResponse(album, 201);
 }
 
 // Loads an album with the files that still exist (deleted and expired ones are skipped).

@@ -2,6 +2,7 @@
 import { build } from "esbuild";
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
+import { createHash } from "node:crypto";
 
 const outdir = "public/static/build";
 mkdirSync(outdir, { recursive: true });
@@ -28,6 +29,11 @@ for (const [file, meta] of Object.entries(result.metafile.outputs)) {
   assets[kind] = "/" + relative("public", file).split("\\").join("/");
 }
 if (!assets.js || !assets.css) throw new Error("client build did not produce both bundles");
+// The CLI is served as a static file; install.sh pins its hash so a truncated or mismatched download is refused.
+const cli = readFileSync("public/static/cli/sugi");
+assets.cli = "/static/cli/sugi";
+assets.cliSha256 = createHash("sha256").update(cli).digest("hex");
+assets.cliVersion = /SUGI_CLI_VERSION="([^"]+)"/.exec(cli.toString("utf8"))?.[1] ?? "unknown";
 // Drop bundles from earlier builds.
 const current = new Set(Object.keys(result.metafile.outputs).map((f) => relative(outdir, f)));
 for (const f of readdirSync(outdir)) if (!current.has(f)) rmSync(join(outdir, f), { force: true });

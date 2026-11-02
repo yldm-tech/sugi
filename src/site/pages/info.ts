@@ -1,3 +1,4 @@
+import { MCP_MAX_BYTES } from "../../mcp";
 import { ALBUM_MAX_FILES, MAX_FILE_BYTES, RATE_LIMIT, RATE_LIMIT_PERIOD_SECONDS, SINGLE_REQUEST_MAX_BYTES, WAF_LIMIT, WAF_PERIOD_SECONDS } from "../../limits";
 import { esc } from "../i18n";
 import { Ctx, Page, tr } from "../layout";
@@ -57,8 +58,9 @@ export function devPage(ctx: Ctx): Page {
 <p class="lead">${t(`HTTP API 和网页用的是同一套规则：不登录也能直接用，单个文件最大 ${maxMb} MB，只收图片和短视频（PNG、JPEG、WebP、GIF、AVIF、MP4、WebM，按内容识别格式）。`, `The HTTP API follows the same rules as the website: no account needed, up to ${maxMb} MB per file, images and short videos only (PNG, JPEG, WebP, GIF, AVIF, MP4, WebM, detected from the content).`)}</p>
 ${ctx.gated ? `<p class="lead">${t("现在还在内测：上传接口暂时需要请求头 <code class=\"chip\">Authorization: Bearer &lt;token&gt;</code>，匿名请求会得到 401。", "Closed test for now: the upload endpoints need <code class=\"chip\">Authorization: Bearer &lt;token&gt;</code>, anonymous requests get 401.")}</p>` : ""}
 </section>
+${ctx.flags.cli ? `<div class="seg big" data-tabs="dev" role="tablist"><button type="button" class="on" data-tab="api" role="tab">HTTP API</button><button type="button" data-tab="cli" role="tab">${t("命令行 CLI", "CLI")}</button><button type="button" data-tab="mcp" role="tab">MCP</button></div>` : ""}
 
-<section class="stack">
+<section class="stack" data-panel="dev:api">
 <h2 class="h2">${t("上传", "Upload")}</h2>
 ${codeBlock(ctx, [
   { kind: "comment", text: t("# 永久保存，返回直链", "# keep forever, prints the direct link") },
@@ -102,8 +104,82 @@ ${rows.map(([path, desc]) => `<div class="apirow"><code>${esc(path)}</code><span
     `旧接口 <code class="chip">POST /upload</code> 继续可用：只收 PNG、JPEG、WebP、GIF，最大 20 MB，链接是 ${main}/&lt;内容哈希&gt;.png 这种形式，相同内容得到同一个链接，没有删除凭证。`,
     `The original <code class="chip">POST /upload</code> keeps working: PNG, JPEG, WebP and GIF only, up to 20 MB, links look like ${main}/&lt;content hash&gt;.png, the same content always gets the same link, and there is no delete token.`,
   )}</p>
-</section>`;
+</section>
+${ctx.flags.cli ? cliPanel(ctx) + mcpPanel(ctx) : ""}`;
   return { id: "dev", title: t("开发者 · sugi.moe", "Developers · sugi.moe"), main: html, description: t("sugi.moe 的 HTTP API：curl 一行上传图片和视频，返回直链和删除凭证；支持临时文件、链接搬运、打包链接和分片上传。", "The sugi.moe HTTP API: upload images and videos with one curl command and get a direct link and a delete token; temporary files, link import, albums and chunked uploads.") };
+}
+
+function cliPanel(ctx: Ctx): string {
+  const t = tr(ctx);
+  const files = ctx.env.FILES_ORIGIN;
+  return `<section class="stack" data-panel="dev:cli" hidden>
+<h2 class="h2">${t("安装", "Install")}</h2>
+${codeBlock(ctx, [{ kind: "cmd", text: `curl -fsSL ${ctx.env.MAIN_ORIGIN}/install.sh | sh` }])}
+<p class="small">${t("一个 bash 脚本，只依赖 curl，macOS、Linux 和 WSL 都能用；装到 ~/.local/bin/sugi，安装脚本会校验下载文件的 SHA-256。", "A single bash script that only needs curl; works on macOS, Linux and WSL. It goes to ~/.local/bin/sugi and the installer checks the download's SHA-256.")}</p>
+<h2 class="h2 gap">${t("常用命令", "Everyday commands")}</h2>
+${codeBlock(ctx, [
+  { kind: "comment", text: t("# 传一个或很多个，链接自动进剪贴板", "# upload one or many; the links land on your clipboard") },
+  { kind: "cmd", text: "sugi up cat.png dog.gif" },
+  { kind: "out", text: `✿ cat.png  →  ${files}/k3x9qa2m.png` },
+  { kind: "out", text: `✿ dog.gif  →  ${files}/p0w2nd7x.gif` },
+  { kind: "comment", text: t("# 临时保存 1 小时", "# keep for 1 hour"), gap: true },
+  { kind: "cmd", text: "sugi up -e 1h secret.jpg" },
+  { kind: "comment", text: t("# 直接传剪贴板里的截图", "# upload the screenshot on your clipboard"), gap: true },
+  { kind: "cmd", text: "sugi up --clipboard" },
+  { kind: "comment", text: t("# 从管道读", "# read from a pipe"), gap: true },
+  { kind: "cmd", text: "cat cat.png | sugi up - --name cat.png" },
+  { kind: "comment", text: t("# 打包成一个分享链接", "# bundle into one share link"), gap: true },
+  { kind: "cmd", text: `sugi album "${t("猫猫合集", "Cats")}" *.png` },
+  { kind: "comment", text: t("# 查看和删除自己传过的", "# list and delete what you uploaded"), gap: true },
+  { kind: "cmd", text: "sugi ls" },
+  { kind: "cmd", text: "sugi rm k3x9qa2m" },
+  ...(ctx.flags.accounts ? [{ kind: "comment" as const, text: t("# 登录账号，之后传的都会同步（可选）", "# log in so uploads go to your account (optional)"), gap: true }, { kind: "cmd" as const, text: "sugi login" }] : []),
+])}
+<p class="small">${t('CLI 会把删除凭证存在 <code class="chip">~/.config/sugi/history.jsonl</code>，所以 sugi rm 只能删这台电脑传过的文件。超过 90 MB 的文件会自动分片上传。加 --json 可以拿到完整返回；SUGI_TOKEN 环境变量里的令牌会作为 Authorization: Bearer 发出去。', 'The CLI keeps delete tokens in <code class="chip">~/.config/sugi/history.jsonl</code>, so sugi rm can only delete files uploaded from this machine. Files over 90 MB are uploaded in chunks automatically. Add --json for the full responses; a token in SUGI_TOKEN is sent as Authorization: Bearer.')}</p>
+</section>`;
+}
+
+function mcpPanel(ctx: Ctx): string {
+  const t = tr(ctx);
+  const mcp = `${ctx.env.MAIN_ORIGIN}/mcp`;
+  const tool = (name: string, desc: string) => `<div class="card feature"><code class="toolname">${name}</code><span class="d">${desc}</span></div>`;
+  return `<section class="stack" data-panel="dev:mcp" hidden>
+<p class="lead">${t(`接上 sugi 的 MCP 服务后，AI 助手可以直接上传文件、搬运链接、建打包链接，然后把链接交给你。服务地址是 <code class="chip">${mcp}</code>（Streamable HTTP）。MCP 一次最多传 ${MCP_MAX_BYTES / MiB} MB；要传本地的大文件，让 AI 直接用命令行 sugi up。`, `Connect the sugi MCP server and your AI assistant can upload files, fetch links and make albums, then hand you the links. The server lives at <code class="chip">${mcp}</code> (Streamable HTTP). It takes up to ${MCP_MAX_BYTES / MiB} MB per file; for bigger local files, have the AI run the sugi CLI.`)}</p>
+<div class="results-head"><h2 class="h2">${t("接入", "Connect")}</h2><div class="seg" data-tabs="mcp" role="tablist"><button type="button" class="on" data-tab="code" role="tab">Claude Code</button><button type="button" data-tab="desktop" role="tab">Claude Desktop</button><button type="button" data-tab="cursor" role="tab">Cursor</button></div></div>
+<div data-panel="mcp:code">${codeBlock(ctx, [
+  { kind: "cmd", text: `claude mcp add --transport http sugi ${mcp}` },
+  ...(ctx.gated ? [{ kind: "comment" as const, text: t("# 内测期间带上令牌", "# during the closed test, add your token"), gap: true }, { kind: "cmd" as const, text: `claude mcp add --transport http sugi ${mcp} --header "Authorization: Bearer <token>"` }] : []),
+])}</div>
+<div data-panel="mcp:desktop" hidden><p class="lead">${t('把下面这段加进 <code class="chip">claude_desktop_config.json</code>，重启一下就好（用 mcp-remote 把远程服务接到桌面版）。', 'Add this to <code class="chip">claude_desktop_config.json</code> and restart (mcp-remote bridges the remote server into the desktop app).')}</p>
+${codeBlock(ctx, [
+  { kind: "json", text: "{" },
+  { kind: "json", indent: 2, text: '<span class="k">"mcpServers"</span>: {' },
+  { kind: "json", indent: 4, text: '<span class="k">"sugi"</span>: {' },
+  jsonLine("command", str("npx"), 6),
+  { kind: "json", indent: 6, text: `<span class="k">"args"</span>: [${str("-y")}, ${str("mcp-remote")}, ${str(mcp)}]` },
+  { kind: "json", indent: 4, text: "}" },
+  { kind: "json", indent: 2, text: "}" },
+  { kind: "json", text: "}" },
+])}</div>
+<div data-panel="mcp:cursor" hidden><p class="lead">${t('把下面这段加进 <code class="chip">~/.cursor/mcp.json</code>。', 'Add this to <code class="chip">~/.cursor/mcp.json</code>.')}</p>
+${codeBlock(ctx, [
+  { kind: "json", text: "{" },
+  { kind: "json", indent: 2, text: '<span class="k">"mcpServers"</span>: {' },
+  { kind: "json", indent: 4, text: `<span class="k">"sugi"</span>: { <span class="k">"url"</span>: ${str(mcp)} }` },
+  { kind: "json", indent: 2, text: "}" },
+  { kind: "json", text: "}" },
+])}</div>
+<h2 class="h2 gap">${t("仓仓会的工具", "Tools")}</h2>
+<div class="features">
+${tool("upload_file", t(`上传 base64 内容（最大 ${MCP_MAX_BYTES / MiB} MB），可选 expire`, `Upload base64 content (up to ${MCP_MAX_BYTES / MiB} MB), optional expire`))}
+${tool("upload_url", t("把网上的图片或视频搬到 sugi", "Copy an image or video from the web to sugi"))}
+${tool("create_album", t("把几个文件打包成一个分享链接", "Bundle files into one share link"))}
+${tool("get_file", t("查文件的链接、大小和过期时间", "Look up a file's link, size and expiry"))}
+${tool("delete_file", t("用上传时拿到的 delete_token 删除文件", "Delete a file with the delete_token from its upload"))}
+</div>
+<h2 class="h2 gap">${t("试着这样说", "Try saying")}</h2>
+<div class="chat"><div class="me">${t("把这几张截图传到 sugi，打包成一个链接，标题叫「周报配图」", "Upload these screenshots to sugi and bundle them into one link titled “Weekly report”")}</div><div class="bot">${t("传好啦，一共 4 张～", "Done, 4 pictures~")}<br><span class="link">${ctx.env.MAIN_ORIGIN}/a/w8k2ru5d</span></div></div>
+</section>`;
 }
 
 function faqItem(q: string, a: string): { q: string; a: string } {

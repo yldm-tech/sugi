@@ -480,24 +480,32 @@ export async function handleFileInfo(env: Env, id: string): Promise<Response> {
   return jsonResponse(publicInfo(env, found.file));
 }
 
+/** Deletes a current-API file after checking its delete token (`null` = already authorised, e.g. admin). Returns null when the file does not exist. */
+export async function deleteFile(env: Env, id: string, token: string | null): Promise<{ key: string; cachePurged: boolean } | null> {
+  if (!isFileId(id)) return null;
+  for (const temporary of [false, true]) {
+    const key = fileKey(id, temporary);
+    const obj = await env.BUCKET.head(key);
+    if (!obj) continue;
+    if (token !== null) {
+      const expected = obj.customMetadata?.del ?? "";
+      const given = await sha256Hex(new TextEncoder().encode(token));
+      if (!expected || !(await constantTimeEqual(given, expected))) throw new HttpError(403, "wrong delete token");
+    }
+    await env.BUCKET.delete(key);
+    return { key, cachePurged: await purgeCache(env, [key]) };
+  }
+  return null;
+}
+
 // DELETE /api/files/:id with `Sugi-Token: <delete_token>` (or the admin bearer token).
 export async function handleFileDelete(request: Request, env: Env, id: string): Promise<Response> {
   if (!isFileId(id)) throw new HttpError(404, "not found");
   const admin = await isAdmin(request, env);
   const token = request.headers.get("sugi-token");
   if (!admin && !token) throw new HttpError(401, "missing Sugi-Token header (the delete_token returned by the upload)");
-  for (const temporary of [false, true]) {
-    const key = fileKey(id, temporary);
-    const obj = await env.BUCKET.head(key);
-    if (!obj) continue;
-    if (!admin) {
-      const expected = obj.customMetadata?.del ?? "";
-      const given = await sha256Hex(new TextEncoder().encode(token!));
-      if (!expected || !(await constantTimeEqual(given, expected))) throw new HttpError(403, "wrong delete token");
-    }
-    await env.BUCKET.delete(key);
-    return deletionResponse([id], await purgeCache(env, [key]));
-  }
+  const done = await deleteFile(env, id, admin ? null : token);
+  if (done) return deletionResponse([id], done.cachePurged);
   // Already gone; purge anyway so a retry after a failed purge completes.
   if (!(await purgeCache(env, [fileKey(id, false), fileKey(id, true)]))) return deletionResponse([], false);
   throw new HttpError(404, "not found");
