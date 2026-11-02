@@ -276,3 +276,57 @@ describe("GitHub login", () => {
     expect(account).toContain("Email · GitHub");
   });
 });
+
+describe("Google login", () => {
+  const GO: Partial<Env> = { ...ON, ACCOUNT_FEATURES: "email,google", GOOGLE_CLIENT_ID: "go-client", GOOGLE_CLIENT_SECRET: "go-secret" };
+  const b64 = (o: unknown) => btoa(JSON.stringify(o)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+
+  function stubGoogle(claims: Record<string, unknown>) {
+    const bodies: string[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input instanceof Request ? input.url : input);
+      if (url !== "https://oauth2.googleapis.com/token") throw new Error(`unexpected fetch ${url}`);
+      bodies.push(String(input instanceof Request ? await input.text() : init?.body));
+      return Response.json({ access_token: "ya29.test", token_type: "Bearer", expires_in: 3600, id_token: `${b64({ alg: "RS256" })}.${b64(claims)}.sig` });
+    });
+    return bodies;
+  }
+
+  it("uses PKCE, asks to pick an account, and logs in with the verified email", async () => {
+    const res = await call(new Request(`${MAIN}/auth/google`), GO);
+    const location = new URL(res.headers.get("location")!);
+    expect(location.origin + location.pathname).toBe("https://accounts.google.com/o/oauth2/v2/auth");
+    expect(location.searchParams.get("redirect_uri")).toBe("https://sugi.moe/auth/google/callback");
+    expect(location.searchParams.get("code_challenge_method")).toBe("S256");
+    expect(location.searchParams.get("prompt")).toBe("select_account");
+    expect(location.searchParams.get("scope")).toBe("openid email profile");
+    const cookie = /sugi_oauth=([^;]+)/.exec(res.headers.get("set-cookie")!)![1];
+    const state = location.searchParams.get("state")!;
+    const bodies = stubGoogle({ sub: "g-123", email: "Goo@Example.com", email_verified: true, name: "Goo" });
+    const done = await call(new Request(`${MAIN}/auth/google/callback?code=abc&state=${state}`, { headers: { cookie: `sugi_oauth=${cookie}` } }), GO);
+    expect(done.headers.get("location")).toBe("https://sugi.moe/account");
+    expect(bodies[0]).toContain("code_verifier=");
+    const session = /sugi_session=([^;]+)/.exec(done.headers.get("set-cookie")!)![1];
+    vi.restoreAllMocks();
+    expect(await (await call(new Request(`${MAIN}/api/me`, { headers: { cookie: `sugi_session=${session}` } }), GO)).json()).toMatchObject({
+      email: "goo@example.com",
+      name: "Goo",
+    });
+    expect(await (await call(new Request(`${MAIN}/login?lang=en`), GO)).text()).toContain('href="/auth/google"');
+    expect(await (await call(new Request(`${MAIN}/privacy?lang=en`), GO)).text()).toContain("your Google user id");
+  });
+
+  it("does not take an unverified email", async () => {
+    const res = await call(new Request(`${MAIN}/auth/google`), GO);
+    const cookie = /sugi_oauth=([^;]+)/.exec(res.headers.get("set-cookie")!)![1];
+    const state = new URL(res.headers.get("location")!).searchParams.get("state")!;
+    stubGoogle({ sub: "g-456", email: "unverified@example.com", email_verified: false, name: "U" });
+    const done = await call(new Request(`${MAIN}/auth/google/callback?code=abc&state=${state}`, { headers: { cookie: `sugi_oauth=${cookie}` } }), GO);
+    const session = /sugi_session=([^;]+)/.exec(done.headers.get("set-cookie")!)![1];
+    vi.restoreAllMocks();
+    expect(await (await call(new Request(`${MAIN}/api/me`, { headers: { cookie: `sugi_session=${session}` } }), GO)).json()).toMatchObject({
+      email: null,
+      name: "U",
+    });
+  });
+});
