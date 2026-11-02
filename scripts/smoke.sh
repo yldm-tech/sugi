@@ -35,5 +35,18 @@ if [ -n "$url" ]; then
   c="$(code "$url")"
   [ "$c" = 404 ] && pass "deleted file is gone" || fail "deleted file answers $c"
 fi
+# Cross-host requests on one connection: browsers reuse an HTTP/2 connection for a sibling host its certificate covers, so the site, files and tmp hosts must answer for each other (an empty 403 from the edge here means the hostnames have separate certificates; see README, "Your own domain").
+origins="$(curl -s --max-time 30 -H 'accept: text/html' "$base/" | sed -nE 's/.*"origins":\{"main":"([^"]*)","files":"([^"]*)","tmp":"([^"]*)"\}.*/\1 \2 \3/p')"
+read -r o_main o_files o_tmp <<<"$origins"
+host() { printf '%s' "$1" | sed -E 's#^https?://([^/]+).*#\1#'; }
+if [ -n "$o_files" ] && [ "$(host "$o_files")" != "$(host "$o_main")" ]; then
+  h_main="$(host "$o_main")"; h_files="$(host "$o_files")"; h_tmp="$(host "$o_tmp")"
+  for pair in "$h_main $h_files" "$h_main $h_tmp" "$h_files $h_main" "$h_files $h_tmp" "$h_tmp $h_main" "$h_tmp $h_files"; do
+    read -r sni hst <<<"$pair"
+    if [ "$hst" = "$h_main" ]; then p=/healthz; want=200; else p=/zzzzzzzz.png; want=404; fi
+    c="$(curl -s -o /dev/null --max-time 30 -H "Host: $hst" -w '%{http_code}' "https://$sni$p")"
+    [ "$c" = "$want" ] && pass "Host $hst on a $sni connection" || fail "Host $hst on a $sni connection answered $c (want $want)"
+  done
+fi
 [ "$failures" -eq 0 ] && echo "smoke: all checks passed" || echo "smoke: $failures check(s) failed"
 exit $((failures > 0))
