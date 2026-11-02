@@ -16,7 +16,7 @@ import { installScript } from "./site/install";
 import { handleMcp } from "./mcp";
 import { handleInboxRead, receiveEmail, sweepInbox } from "./inbox";
 import { handleMagicRequest, handleMagicVerify } from "./auth/email";
-import { handleDeletePasskey, handleLogout, handleMe } from "./auth/me";
+import { handleDeleteAccount, handleDeletePasskey, handleLogout, handleMe } from "./auth/me";
 import { handlePasskeyLoginOptions, handlePasskeyLoginVerify, handlePasskeyRegisterOptions, handlePasskeyRegisterVerify } from "./auth/passkey";
 import { handleOAuthCallback, handleOAuthStart, type Provider } from "./auth/oauth";
 
@@ -113,7 +113,8 @@ async function routeApi(request: Request, env: Env, pathname: string): Promise<R
   }
   if (pathname === "/api/me") {
     if (method === "GET") return handleMe(request, env);
-    throw methodNotAllowed("GET");
+    if (method === "DELETE") return handleDeleteAccount(request, env);
+    throw methodNotAllowed("GET, DELETE");
   }
   if (pathname === "/api/albums") {
     if (method === "POST") return handleAlbumCreate(request, env);

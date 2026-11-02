@@ -1,8 +1,8 @@
-// End-to-end check of passkeys with Chromium's virtual authenticator: create a passkey-only account, see it on the account page, log out, log in with the passkey, remove it.
+// End-to-end check of passkeys with Chromium's virtual authenticator: create a passkey-only account, see it on the account page, log out, log in with the passkey, remove it, and delete the account.
 //
 //   node scripts/passkey-e2e.mjs [BASE_URL]
 //
-// BASE_URL defaults to http://localhost:8787. The instance needs FEATURE_ACCOUNTS=1 and passkey in ACCOUNT_FEATURES. Each run leaves one passkey-only account without a passkey behind.
+// BASE_URL defaults to http://localhost:8787. The instance needs FEATURE_ACCOUNTS=1 and passkey in ACCOUNT_FEATURES. The run deletes the account it creates.
 import { chromium } from "playwright";
 
 const base = (process.argv[2] ?? "http://localhost:8787").replace(/\/$/, "");
@@ -51,7 +51,13 @@ try {
 
   await Promise.all([page.waitForURL(/\/account$/), page.click("[data-passkey-delete]")]);
   check("remove the passkey", (await page.locator("[data-passkey-delete]").count()) === 0);
-  await page.click('form[action="/auth/logout"] button');
+
+  // Leave nothing behind: delete the account through the account page.
+  page.on("dialog", (d) => d.accept());
+  await page.click(".danger-zone summary");
+  await Promise.all([page.waitForURL(`${base}/`), page.click("[data-account-delete]")]);
+  const gone = await page.evaluate(async () => (await fetch("/api/me")).status);
+  check("delete the account", gone === 401, `${gone}`);
   await ctx.close();
 } finally {
   await browser.close();

@@ -213,8 +213,8 @@ export function privacySections(b: Brand, features: string[] = ["email", "github
             "Decided (2026-11-02): keep takedown records; the source HMAC is erased from them (and from the admin log) after at most 2 years by the cron, leaving file id, time and reason; content hashes stay in the blocklist as long as needed to stop re-uploads and can be lifted on request; source blocks keep their own expiry.",
         },
         {
-          zh: "账号数据保存到你要求删除账号为止；会话 30 天后过期，邮件登录链接 15 分钟后失效。",
-          en: "Account data is kept until you ask us to delete the account; sessions expire after 30 days and email login links after 15 minutes.",
+          zh: "账号数据保存到你在账号页删除账号（或写信要求我们删除）为止；会话 30 天后过期，邮件登录链接 15 分钟后失效。",
+          en: "Account data is kept until you delete the account on the account page (or ask us to); sessions expire after 30 days and email login links after 15 minutes.",
           accountsOnly: true,
         },
       ],

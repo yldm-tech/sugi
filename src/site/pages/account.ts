@@ -105,6 +105,11 @@ ${u.providers.length ? `<p class="small">${t("登录方式", "Log in with")}${t(
 ${providerButtons(ctx, u.providers.join(","), true)}
 ${ctx.flags.account.includes("passkey") ? passkeySection(ctx) : ""}
 <p class="small">${t("登录状态下新上传的文件会记在这个账号下。在多台设备上查看和管理它们的功能还在路上。", "New uploads made while logged in are recorded under this account. Seeing and managing them across devices is on its way.")}</p>
-<form method="post" action="/auth/logout"><button class="mini" type="submit">${t("退出登录", "Log out")}</button></form>`;
+<form method="post" action="/auth/logout"><button class="mini" type="submit">${t("退出登录", "Log out")}</button></form>
+<details class="danger-zone"><summary>${t("删除账号", "Delete account")}</summary>
+<p class="small">${t("删除账号会删掉你的登录方式、通行密钥和会话。上传的文件默认保留（链接继续有效），勾选下面一项则一起删除。", "Deleting the account removes its logins, passkeys and sessions. Uploaded files stay (their links keep working) unless you tick the box below.")}</p>
+<label class="check"><input type="checkbox" id="delete-files"> ${t("同时删除这个账号上传的文件和打包链接", "Also delete the files and albums this account uploaded")}</label>
+<button type="button" class="mini danger" data-account-delete data-confirm="${esc(t("确定要删除账号吗？这一步不能撤销。", "Delete the account? This cannot be undone."))}" data-fail="${esc(t("没能删除账号，再试一次吧。", "The account could not be deleted; please try again."))}">${t("删除账号", "Delete account")}</button>
+</details>`;
   return { id: "account", title: pageTitle(ctx, "我的账号", "Account"), main: loginFrame(ctx, inner), noindex: true };
 }
