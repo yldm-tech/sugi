@@ -72,7 +72,10 @@ describe("template deployment", () => {
   });
 
   it("points install.sh, robots.txt and the sitemap at its own host", async () => {
-    expect(await (await get("/install.sh")).text()).toContain(`origin="\${SUGI_URL:-${HOST}}"`);
+    const install = await (await get("/install.sh")).text();
+    expect(install).toContain(`origin="\${SUGI_URL:-${HOST}}"`);
+    // After the checksum check the installer points the CLI's default server at this host.
+    expect(install).toContain(`awk -v o="$origin" '$0 == "BASE=\\"\${SUGI_URL:-https://sugi.moe}\\"" { print "BASE=\\"\${SUGI_URL:-" o "}\\""; next } { print }'`);
     expect(await (await get("/robots.txt")).text()).toContain(`${HOST}/sitemap.xml`);
     expect(await (await get("/sitemap.xml")).text()).toContain(`<loc>${HOST}/?lang=en</loc>`);
   });
