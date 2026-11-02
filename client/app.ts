@@ -487,9 +487,10 @@ function touch() {
   });
 }
 
-function thumbNode(x: { thumb?: string | null; local?: string | null; url?: string; kind: string; ext: string; status?: string }, cls: string, onClick?: () => void): HTMLElement {
+function thumbNode(x: Upload, cls: string, onClick?: () => void): HTMLElement {
   const box = h(onClick ? "button" : "div", { class: cls + (onClick ? " zoom" : ""), type: onClick ? "button" : null, onclick: onClick });
-  const src = x.thumb || (x.kind === "image" ? x.local || null : null);
+  // Failed items show their extension: the local file may not even be an image.
+  const src = x.status === "err" ? null : x.thumb || (x.kind === "image" ? x.local || x.res?.url || null : null);
   if (src) box.append(h("img", { src, alt: "" }));
   else box.textContent = x.ext || "?";
   return box;
@@ -1059,7 +1060,8 @@ function renderMine() {
       for (let i = 0; i < 3; i++) {
         const c = h("div");
         const x = its[i];
-        if (x?.thumb) c.append(h("img", { src: x.thumb, alt: "" }));
+        const src = x && (x.thumb || (x.kind === "image" && !expInfo(x.expiresAt).expired ? x.url : null));
+        if (src) c.append(h("img", { src, alt: "", loading: "lazy" }));
         covers.append(c);
       }
       return h(
@@ -1069,13 +1071,9 @@ function renderMine() {
         h("a", { class: "info", href: `/a/${a.id}`, "data-nav": true }, h("span", { class: "t", text: a.title || T.untitled }), h("span", { class: "m", text: fmt(T.albumMeta, { n: a.fileIds.length, date: new Date(a.createdAt).toLocaleDateString(LOCALE) }) })),
         h(
           "div",
-          { class: "tile" },
-          h(
-            "div",
-            { class: "acts" },
-            h("button", { type: "button", class: "c", text: T.copyLink, onclick: () => void copy(a.url, T.linkCopied) }),
-            h("button", { type: "button", class: "x", title: T.del, "aria-label": T.del, text: "×", onclick: () => void deleteAlbum(a) }),
-          ),
+          { class: "acts" },
+          h("button", { type: "button", class: "c", text: T.copyLink, onclick: () => void copy(a.url, T.linkCopied) }),
+          h("button", { type: "button", class: "x", title: T.del, "aria-label": T.del, text: "×", onclick: () => void deleteAlbum(a) }),
         ),
       );
     }),

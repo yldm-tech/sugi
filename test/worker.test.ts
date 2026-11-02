@@ -1,6 +1,7 @@
 import { env } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import worker, { MAX_BYTES } from "../src/index";
+import worker from "../src/index";
+import { LEGACY_MAX_BYTES as MAX_BYTES } from "../src/limits";
 
 const ORIGIN = "https://sugi.test";
 const UPLOAD_AUTH = { authorization: "Bearer test-upload-token" };

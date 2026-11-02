@@ -24,7 +24,7 @@ export const CUTE_WORDS = [
   "foam", "fudge", "gelato", "ginger", "glow", "grape", "gumdrop", "hazel", "honey", "hug", "jelly", "jam", "kiwi", "latte", "lemon", "lily", "lime", "lychee", "macaron", "mallow",
   "mango", "maple", "matcha", "meadow", "melon", "meringue", "milk", "mint", "mitten", "mocha", "mochi", "momo", "moss", "muffin", "nectar", "nibble", "noodle", "nori", "nougat", "nutmeg",
   "oat", "olive", "onigiri", "orange", "pancake", "papaya", "parfait", "pea", "peach", "peanut", "pear", "pebble", "pecan", "pepper", "petal", "pickle", "pie", "pillow", "pine", "pistachio",
-  "plum", "pocky", "pom", "popcorn", "poppy", "posy", "pretzel", "puddle", "pudding", "puff", "pumpkin", "purr", "quince", "radish", "raisin", "ramen", "raspberry", "ribbon", "rice", "ripple",
+  "plum", "biscotti", "pom", "popcorn", "poppy", "posy", "pretzel", "puddle", "pudding", "puff", "pumpkin", "purr", "quince", "radish", "raisin", "ramen", "raspberry", "ribbon", "rice", "ripple",
   "rose", "sage", "sakura", "scone", "seed", "sesame", "shortcake", "snooze", "snow", "snuggle", "soba", "sorbet", "souffle", "sprinkle", "sprout", "squish", "star", "strudel", "sugar", "sunny",
   "sushi", "sweet", "taffy", "tangerine", "tart", "tea", "teacup", "thistle", "toast", "toffee", "tofu", "truffle", "tulip", "udon", "velvet", "waffle", "walnut", "wasabi", "whisk", "willow",
   "wonton", "yam", "yuzu", "zest", "acorncap", "applepie", "babka", "beanie", "blini", "brioche", "candle", "cheddar", "churro", "crumble", "eclair", "fondue", "galette", "granola", "gyoza", "jasmine",
@@ -32,7 +32,7 @@ export const CUTE_WORDS = [
   "puffin", "quokka", "rabbit", "risotto", "rosemary", "saffron", "seal", "shiba", "smore", "sparrow", "squirrel", "tamago", "tapioca", "teddy", "tiramisu", "tortilla", "turnip", "vanilla", "whiskers", "yogurt",
   "anise", "azuki", "bluebell", "bramble", "buckwheat", "buttercup", "calico", "camellia", "canary", "chai", "chamomile", "citrus", "clementine", "cobble", "comet", "coral", "cornbread", "cranberry", "daikon", "dandelion",
   "doodle", "duckling", "edamame", "elderberry", "feather", "firefly", "flapjack", "frost", "gingko", "gooseberry", "guava", "hamster", "hedgehog", "hibiscus", "huckleberry", "icing", "jujube", "kitten", "kumquat", "ladybug",
-  "lantern", "lilac", "loquat", "lullaby", "marshmallow", "minnow", "mulberry", "nutella", "orchid", "otter", "peony", "pinwheel", "plover", "pomelo", "puppy", "robin", "sundae", "teapot", "tinsel", "wren",
+  "lantern", "lilac", "loquat", "lullaby", "marshmallow", "minnow", "mulberry", "oolong", "orchid", "otter", "peony", "pinwheel", "plover", "pomelo", "puppy", "robin", "sundae", "teapot", "tinsel", "wren",
 ];
 
 /** "word-word-NN": easy to read aloud, but only a few million combinations, so easier to guess than randomId(). */

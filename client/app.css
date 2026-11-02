@@ -319,10 +319,10 @@ html.night .theme-night { display: none; }
 .tile .meta .n { font-weight: 700; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tile .meta .s { font-size: 12px; color: var(--muted); font-family: var(--f-brand); font-weight: 600; display: flex; gap: 6px; align-items: center; }
 .tile .meta .local { font-family: var(--f-body); font-size: 11px; font-weight: 700; color: #a08a6a; }
-.tile .acts { display: flex; gap: 6px; }
-.tile .acts .c { flex: 1; font-family: var(--f-cute); font-size: 15px; height: 38px; border: 0; border-radius: 999px; background: var(--pale); color: var(--link-dk); cursor: pointer; }
-.tile .acts .c:hover { background: var(--pale-hv); }
-.tile .acts .x { width: 38px; height: 38px; border: 0; border-radius: 50%; background: var(--danger-bg); color: var(--danger); cursor: pointer; font-size: 15px; }
+.tile .acts, .albumcard .acts { display: flex; gap: 6px; }
+.tile .acts .c, .albumcard .acts .c { flex: 1; font-family: var(--f-cute); font-size: 15px; height: 38px; border: 0; border-radius: 999px; background: var(--pale); color: var(--link-dk); cursor: pointer; }
+.tile .acts .c:hover, .albumcard .acts .c:hover { background: var(--pale-hv); }
+.tile .acts .x, .albumcard .acts .x { width: 38px; height: 38px; border: 0; border-radius: 50%; background: var(--danger-bg); color: var(--danger); cursor: pointer; font-size: 15px; }
 .albums { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
 .albumcard { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
 .covers { cursor: pointer; display: grid; grid-template-columns: 2fr 1fr; grid-template-rows: 1fr 1fr; gap: 6px; aspect-ratio: 3 / 2; }
@@ -436,3 +436,8 @@ html.night .theme-night { display: none; }
 /* Konami code: golden hamster */
 .gold .fur { fill: #f7d774; }
 .term .cmdl { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.code .i2 { padding-left: 2ch; }
+.code .i4 { padding-left: 4ch; }
+.code .i6 { padding-left: 6ch; }
+.qrcard > div:last-child { flex: 1; min-width: 160px; display: flex; flex-direction: column; gap: 6px; }
+#album-delete, #file-delete { align-self: flex-start; padding-left: 20px; padding-right: 20px; }

@@ -559,3 +559,16 @@ describe("api routing", () => {
     expect((await call(new Request(`${MAIN}/api/files/abc`))).status).toBe(404);
   });
 });
+
+describe("path-based file origins (local development)", () => {
+  it("serves files under the origin's path on any host when the origin has a path", async () => {
+    const dev = { FILES_ORIGIN: "http://localhost:8787/_files", TMP_ORIGIN: "http://localhost:8787/_tmp", MAIN_ORIGIN: "http://localhost:8787" };
+    const res = await call(put("/api/upload?expire=1h", png(), { accept: "application/json" }), dev);
+    const r = await res.json<{ id: string; url: string }>();
+    expect(r.url).toBe(`http://localhost:8787/_tmp/${r.id}.png`);
+    expect((await call(new Request(`${MAIN}/_tmp/${r.id}.png`), dev)).status).toBe(200);
+    expect((await call(new Request(`${MAIN}/_files/${r.id}.png`), dev)).status).toBe(404);
+    // With dedicated hosts configured (production), those paths are ordinary site paths.
+    expect((await call(new Request(`${MAIN}/_tmp/${r.id}.png`))).status).toBe(404);
+  });
+});

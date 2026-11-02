@@ -3,30 +3,40 @@ import { handleChunkAbort, handleChunkComplete, handleChunkCreate, handleChunkPa
 import { handleFileDelete, handleFileInfo, handleFileServe, handleUploadPost, handleUploadPut, sweepExpired } from "./files";
 import { errorResponse, HttpError, methodNotAllowed } from "./http";
 import { handleInfo, handleLegacyDelete, handleLegacyServe, handleLegacyUpload, handlePurgeBySource, LEGACY_KEY_RE } from "./legacy";
-import { LEGACY_MAX_BYTES } from "./limits";
 import { handleSite } from "./site";
 
-/** Size limit of the legacy /upload endpoint (kept as the module's export for existing callers and tests). */
-export const MAX_BYTES = LEGACY_MAX_BYTES;
+// Only the default handler may be exported from this module: workerd treats every named export of the main module as an entrypoint.
 
 const ADMIN_KEY_RE = /^(?:[0-9a-f]{16}\.(?:png|jpg|webp|gif)|[ft]\/[a-z0-9-]{1,64})$/;
 
-function hostOf(origin: string | undefined): string | null {
-  if (!origin) return null;
-  try {
-    return new URL(origin).hostname;
-  } catch {
-    return null;
+// FILES_ORIGIN and TMP_ORIGIN are normally hostnames of their own (files.sugi.moe, tmp.sugi.moe) that serve uploaded files and nothing else. An origin with a path (e.g. http://localhost:8787/_files) is served under that path on any host instead, which is how local development works: `wrangler dev` rewrites every request's host to the first route.
+function matchFileOrigin(env: Env, url: URL): { temporary: boolean; name: string; dedicatedHost: boolean } | null {
+  for (const [origin, temporary] of [
+    [env.FILES_ORIGIN, false],
+    [env.TMP_ORIGIN, true],
+  ] as const) {
+    if (!origin) continue;
+    let o: URL;
+    try {
+      o = new URL(origin);
+    } catch {
+      continue;
+    }
+    const prefix = o.pathname.replace(/\/$/, "");
+    if (prefix) {
+      if (url.pathname.startsWith(prefix + "/")) return { temporary, name: url.pathname.slice(prefix.length + 1), dedicatedHost: false };
+    } else if (url.hostname === o.hostname) {
+      return { temporary, name: url.pathname.slice(1), dedicatedHost: true };
+    }
   }
+  return null;
 }
 
-// files.sugi.moe and tmp.sugi.moe serve uploaded files and nothing else.
-async function routeFileHost(request: Request, env: Env, temporary: boolean): Promise<Response> {
-  const { pathname } = new URL(request.url);
+async function routeFileHost(request: Request, env: Env, m: { temporary: boolean; name: string; dedicatedHost: boolean }): Promise<Response> {
   if (request.method !== "GET" && request.method !== "HEAD") throw methodNotAllowed("GET, HEAD");
-  if (pathname === "/") return Response.redirect(env.MAIN_ORIGIN + "/", 302);
-  if (pathname === "/robots.txt") return new Response("User-agent: *\nAllow: /\n", { headers: { "content-type": "text/plain; charset=utf-8" } });
-  return handleFileServe(request, env, temporary, pathname.slice(1));
+  if (m.dedicatedHost && m.name === "") return Response.redirect(env.MAIN_ORIGIN + "/", 302);
+  if (m.dedicatedHost && m.name === "robots.txt") return new Response("User-agent: *\nAllow: /\n", { headers: { "content-type": "text/plain; charset=utf-8" } });
+  return handleFileServe(request, env, m.temporary, m.name);
 }
 
 async function serveStatic(request: Request, env: Env, pathname: string): Promise<Response> {
@@ -84,9 +94,8 @@ async function route(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
   const { pathname } = url;
   const method = request.method;
-  const host = url.hostname;
-  if (host === hostOf(env.FILES_ORIGIN)) return routeFileHost(request, env, false);
-  if (host === hostOf(env.TMP_ORIGIN)) return routeFileHost(request, env, true);
+  const fileMatch = matchFileOrigin(env, url);
+  if (fileMatch) return routeFileHost(request, env, fileMatch);
 
   if (pathname.startsWith("/static/")) return serveStatic(request, env, pathname);
   if (pathname === "/favicon.ico") return Response.redirect(new URL("/static/favicon.svg", url).toString(), 301);
