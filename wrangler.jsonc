@@ -5,6 +5,12 @@
   "compatibility_date": "2026-10-01",
   "workers_dev": true,
   "preview_urls": false,
+  "routes": [
+    {
+      "pattern": "sugi.moe",
+      "custom_domain": true
+    }
+  ],
   "r2_buckets": [
     {
       "binding": "BUCKET",
@@ -15,7 +21,7 @@
   "ratelimits": [
     {
       "name": "UPLOAD_LIMITER",
-      "namespace_id": "5317",
+      "namespace_id": "48613",
       "simple": {
         "limit": 10,
         "period": 60
