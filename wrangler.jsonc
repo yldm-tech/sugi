@@ -5,7 +5,7 @@
   "account_id": "e2b27aea5f599efdbe0a7016a2580d05",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
-  "workers_dev": true,
+  "workers_dev": false,
   "preview_urls": false,
   "routes": [
     {
