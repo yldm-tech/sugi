@@ -14,6 +14,7 @@ import { eraseOldFingerprints } from "./moderation";
 import { handleLinkUpload } from "./links";
 import { installScript } from "./site/install";
 import { handleMcp } from "./mcp";
+import { checkAlerts, countOps, DAILY_REPORT_CRON, handleHealthz, sendDailyReport, sweepOps } from "./ops";
 import { sweepUsage } from "./quota";
 import { handleInboxRead, receiveEmail, sweepInbox } from "./inbox";
 import { handleMagicRequest, handleMagicVerify } from "./auth/email";
@@ -171,6 +172,7 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (pathname === "/apple-touch-icon.png" || pathname === "/apple-touch-icon-precomposed.png")
     return serveStatic(new Request(new URL(ICONS.apple, url), request), env, ICONS.apple);
   if (pathname === "/robots.txt") return robotsTxt(env);
+  if (pathname === "/healthz") return handleHealthz(env);
   if (pathname === "/sitemap.xml") return sitemapXml(env);
   if (pathname === "/manifest.webmanifest") return webManifest(env);
   if (pathname.startsWith("/api/")) return routeApi(request, env, pathname);
@@ -239,11 +241,13 @@ async function route(request: Request, env: Env): Promise<Response> {
 }
 
 export default {
-  async fetch(request, rawEnv): Promise<Response> {
+  async fetch(request, rawEnv, ctx): Promise<Response> {
     const env = withDefaults(rawEnv, request);
     try {
       return await route(request, env);
     } catch (err) {
+      // Server errors are counted per hour for the daily report and the alert emails.
+      if (!(err instanceof HttpError) || err.status >= 500) ctx.waitUntil(countOps(env, "5xx"));
       if (err instanceof HttpError) return errorResponse(request, err);
       throw err;
     }
@@ -253,7 +257,11 @@ export default {
     await ensureSchema(env.DB);
     await receiveEmail(message, env);
   },
-  async scheduled(_controller, env, ctx): Promise<void> {
+  async scheduled(controller, env, ctx): Promise<void> {
+    if (controller.cron === DAILY_REPORT_CRON) {
+      ctx.waitUntil(ensureSchema(env.DB).then(() => sendDailyReport(env)));
+      return;
+    }
     ctx.waitUntil(
       (async () => {
         await sweepExpired(env);
@@ -262,6 +270,8 @@ export default {
         await eraseOldFingerprints(env);
         await sweepInbox(env);
         await sweepUsage(env);
+        await sweepOps(env);
+        await checkAlerts(env);
       })(),
     );
   },

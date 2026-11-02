@@ -21,7 +21,7 @@
   },
   // Deletes expired temporary uploads.
   "triggers": {
-    "crons": ["*/10 * * * *"]
+    "crons": ["*/10 * * * *", "5 0 * * *"]
   },
   "vars": {
     // Name shown in titles and the logo ("sugi.moe" becomes "sugi♥moe"). Empty: the hostname.
@@ -55,6 +55,9 @@
     "QUOTA_ANON_BYTES_PER_DAY": "1073741824",
     "QUOTA_ACCOUNT_BYTES_PER_DAY": "5368709120",
     "QUOTA_GLOBAL_BYTES_PER_DAY": "53687091200",
+    // Alert emails to OPS_EMAIL (a secret, like the daily report): server errors per hour, and bytes uploaded in a day (0 = off).
+    "ALERT_5XX_PER_HOUR": "20",
+    "ALERT_DAILY_UPLOAD_BYTES": "0",
     "FEATURE_ACCOUNTS": "0",
     // With accounts on: which parts are live, comma-separated, from email, github, google, passkey, sync, tokens.
     "ACCOUNT_FEATURES": "email",

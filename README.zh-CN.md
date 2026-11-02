@@ -99,6 +99,12 @@ admin -H 'content-type: application/json' -d '{"source":"<hmac>","dry_run":true}
 
 同样的管理功能也能通过 MCP 用：带 `Authorization: Bearer <ADMIN_TOKEN>` 连接 `https://<域名>/mcp`，会多出 `inspect`、`takedown`（可加 `block_content`，打包链接可加 `include_files`）、`list_by_source`、`takedown_by_source`（默认只预演）、`block_source` / `unblock_source`、`unblock_content`、`list_blocks`、`takedown_log`。处理举报的顺序：`inspect` 查链接，`takedown` 下架，`list_by_source` 看同一上传者还传了什么，必要时 `takedown_by_source` 或 `block_source`。管理员令牌也不受限流；用了 WAF 规则的话，把它和 `TRUSTED_TOKEN` 一起写进跳过规则。
 
+### 额度和监控
+
+- 每日上传额度（按 UTC 日、单位字节，`0` 表示不限）：`QUOTA_ANON_BYTES_PER_DAY`（没登录时每个来源，默认 1 GB）、`QUOTA_ACCOUNT_BYTES_PER_DAY`（每个账号，5 GB）、`QUOTA_GLOBAL_BYTES_PER_DAY`（全站，50 GB，超过后只接受可信令牌和管理员上传）。超出个人额度返回 429，超出全站额度返回 507。
+- `GET /healthz` 在数据库和 bucket 都正常时返回 200，否则 503，可以接到在线监控上。
+- 设置 secret `OPS_EMAIL`（并配置好发信，见 `MAIL_FROM`）后，每天 UTC 零点刚过会收到日报（上传数和字节数、额度拒绝、服务器错误、下架、举报、登录邮件、存储量），以及告警邮件（每种最多 6 小时一封）：`ALERT_5XX_PER_HOUR`（一小时内的服务器错误数，默认 20）、`ALERT_DAILY_UPLOAD_BYTES`（一天的上传字节数，0 表示关闭），以及达到全站每日上限。
+
 ## 安全检查清单
 
 对外开放之前：

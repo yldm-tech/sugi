@@ -2,6 +2,15 @@ import { env } from "cloudflare:test";
 import { expect } from "vitest";
 import worker from "../src/index";
 
+/** A stand-in for the Workers execution context: background work runs, its result is ignored. */
+export function testCtx(): ExecutionContext {
+  return {
+    waitUntil: (p: Promise<unknown>) => void p.catch(() => undefined),
+    passThroughOnException: () => undefined,
+    props: {},
+  } as unknown as ExecutionContext;
+}
+
 export const MAIN = "https://sugi.test";
 export const FILES = "https://files.sugi.moe";
 export const TMP = "https://tmp.sugi.moe";
@@ -29,7 +38,7 @@ export async function call(request: Request, overrides: Partial<Env> = {}): Prom
     headers.set("content-length", String(body.byteLength));
     req = new Request(req.url, { method: req.method, headers, body });
   }
-  return worker.fetch(req as Parameters<typeof worker.fetch>[0], { ...env, ...overrides } as Env) as Promise<Response>;
+  return worker.fetch(req as Parameters<typeof worker.fetch>[0], { ...env, ...overrides } as Env, testCtx()) as Promise<Response>;
 }
 
 function withPayload(prefix: number[], size: number): Uint8Array {

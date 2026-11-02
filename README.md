@@ -99,6 +99,12 @@ An admin deletion is a takedown: the object is replaced by an empty tombstone, s
 
 The same moderation is available over MCP: connect to `https://<host>/mcp` with `Authorization: Bearer <ADMIN_TOKEN>` and the server adds `inspect`, `takedown` (with `block_content`, and `include_files` for albums), `list_by_source`, `takedown_by_source` (dry run by default), `block_source` / `unblock_source`, `unblock_content`, `list_blocks` and `takedown_log`. Handling a report: `inspect` the link, `takedown` it, `list_by_source` to see what else that uploader posted, then `takedown_by_source` or `block_source` if the whole source is abusive. The admin token is also never rate limited; if you use the WAF rule, add it to the skip rule next to `TRUSTED_TOKEN`.
 
+### Quotas and monitoring
+
+- Daily upload quotas (UTC days, bytes, `0` = unlimited): `QUOTA_ANON_BYTES_PER_DAY` (per source without an account, default 1 GB), `QUOTA_ACCOUNT_BYTES_PER_DAY` (per account, 5 GB), `QUOTA_GLOBAL_BYTES_PER_DAY` (whole site, 50 GB; after that only trusted and admin uploads). Over a personal allowance is 429, over the site's 507.
+- `GET /healthz` answers 200 when the database and the bucket respond, 503 otherwise; point an uptime monitor at it.
+- Set the `OPS_EMAIL` secret (and a mail sender, see `MAIL_FROM`) to get a daily report just after midnight UTC (uploads, bytes, quota rejections, server errors, takedowns, reports, login emails, storage) and alert emails, at most one of each kind per 6 hours: `ALERT_5XX_PER_HOUR` server errors in an hour (default 20), `ALERT_DAILY_UPLOAD_BYTES` uploaded in a day (0 = off), and the daily cap being reached.
+
 ## Security checklist
 
 Before you open an instance to the public:
