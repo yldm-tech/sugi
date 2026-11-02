@@ -18,7 +18,7 @@ export function homePage(ctx: Ctx): Page {
 <span class="deco d1" aria-hidden="true">✦</span><span class="deco d2" aria-hidden="true">♡</span><span class="deco d3" aria-hidden="true">✿</span><span class="deco d4" aria-hidden="true">✦</span>
 <h1>${t("把图图交给仓仓吧～", "Hand your pics to the hamster~")}</h1>
 <div class="tagrow"><span class="tag">kawaii-sugi file host</span><span class="tagnote">${t("可爱过头的图床", "the cutest image host")}</span></div>
-<p class="facts">${t(`匿名 · 免费 · 不用注册也能传 · 单个文件最大 ${maxMb}MB`, `Anonymous · free · no sign-up · up to ${maxMb} MB per file`)}</p>
+<p class="facts">${(ctx.lang === "zh" ? ["匿名", "免费", "不用注册也能传", `单个文件最大 ${maxMb} MB`] : ["Anonymous", "free", "no sign-up", `up to ${maxMb} MB per file`]).map((x) => `<span class="nw">${x}</span>`).join(" · ")}</p>
 </section>
 
 <section class="upload">
@@ -27,7 +27,7 @@ ${mascotStage(t("今天屯点什么呢？", "What shall we stash today?"), t("�
 <div class="dropzone" id="dropzone" role="button" tabindex="0" aria-label="${t("选择要上传的图片或视频", "Choose images or videos to upload")}">
 <div class="inner">
 <div class="dz-title" id="dz-title">${t("把图片和视频拖到这里", "Drop images and videos here")}</div>
-<div class="dz-hint"><span>${t("也可以", "or press")}</span><span class="kbd" id="paste-key">Ctrl + V</span><span>${t("直接粘贴截图哦", "to paste a screenshot")}</span></div>
+<div class="dz-hint"><span class="nw">${t("也可以", "or press")} <span class="kbd" id="paste-key">Ctrl + V</span></span><span class="nw">${t("直接粘贴截图哦", "to paste a screenshot")}</span></div>
 <div class="dz-btn">✿ ${t("选择文件", "Choose files")} ✿</div>
 </div>
 </div>
@@ -74,7 +74,7 @@ ${ctx.gated ? `<p class="gate" id="gate">${t("暂未开放匿名上传：服务�
 </section>
 
 <section class="features">
-<div class="card feature"><div class="ic" aria-hidden="true">✿</div><div class="t">${ctx.flags.accounts ? t("登不登录都行", "Account optional") : t("不用注册", "No sign-up")}</div><div class="d">${ctx.flags.accounts ? t("打开就能传。想换设备也不丢，再登录就好。", "Just open and upload. Log in later to keep your files across devices.") : t("打开就能传。记录存在这个浏览器里，可以导出备份。", "Just open and upload. Your history stays in this browser and can be exported.")}</div></div>
+<div class="card feature"><div class="ic" aria-hidden="true">✿</div><div class="t">${ctx.flags.accounts ? t("登不登录都行", "Account optional") : t("不用注册", "No sign-up")}</div><div class="d">${ctx.flags.account.includes("sync") ? t("打开就能传。想换设备也不丢，再登录就好。", "Just open and upload. Log in later to keep your files across devices.") : ctx.flags.accounts ? t("打开就能传。登录后，新上传的文件会记在你的账号下。", "Just open and upload. Once you log in, new uploads are recorded under your account.") : t("打开就能传。记录存在这个浏览器里，可以导出备份。", "Just open and upload. Your history stays in this browser and can be exported.")}</div></div>
 <div class="card feature"><div class="ic" aria-hidden="true">✦</div><div class="t">${t("永久或临时", "Forever or for a while")}</div><div class="d">${t("默认永久保存，也能选 1 小时到 3 天，到期自动消失。", "Kept forever by default, or pick 1 hour to 3 days and it disappears on its own.")}</div></div>
 <div class="card feature"><div class="ic" aria-hidden="true">♡</div><div class="t">${t("要乖乖的哦", "Be nice")}</div><div class="d">${t(`禁止违法内容，详见 <a href="/terms" data-nav>使用条款</a>。`, `No illegal content. See the <a href="/terms" data-nav>terms</a>.`)}</div></div>
 </section>
