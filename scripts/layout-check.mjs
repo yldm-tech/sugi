@@ -96,6 +96,8 @@ const pages = [
   ["dev-mcp", "/dev#mcp"],
   ["dev-tools", "/dev#tools"],
   ["faq", "/faq"],
+  // Only exists when the instance has a payment method (the CI run sets DONATE_ALIPAY_LINK); otherwise this checks the 404 page again.
+  ["donate", "/donate"],
   ["terms", "/terms"],
   ["privacy", "/privacy"],
   ["login", "/login"],

@@ -63,6 +63,28 @@ async function storageUsed(env: Env): Promise<{ objects: number; bytes: number }
   return { objects, bytes };
 }
 
+export interface StorageSnapshot {
+  objects: number;
+  bytes: number;
+  /** When it was measured (ms). */
+  at: number;
+}
+
+const STORAGE_MAX_AGE_MS = 6 * 3600e3;
+
+/** The bucket's size as last measured; measures it now when there is no measurement or it is older than `maxAgeMs`. Run from the cron so page views normally only read it. */
+export async function storageSnapshot(env: Env, now = Date.now(), maxAgeMs = STORAGE_MAX_AGE_MS): Promise<StorageSnapshot> {
+  const row = await env.DB.prepare("SELECT value, at FROM ops_state WHERE name = 'storage'").first<{ value: string; at: number }>();
+  if (row && now - row.at < maxAgeMs) return { ...(JSON.parse(row.value) as { objects: number; bytes: number }), at: row.at };
+  const used = await storageUsed(env);
+  await env.DB.prepare(
+    "INSERT INTO ops_state (name, value, at) VALUES ('storage', ?, ?) ON CONFLICT (name) DO UPDATE SET value = excluded.value, at = excluded.at",
+  )
+    .bind(JSON.stringify(used), now)
+    .run();
+  return { ...used, at: now };
+}
+
 /** The numbers of one UTC day, for the daily report (and tests). */
 export async function dailyNumbers(env: Env, day: string): Promise<Record<string, number | null>> {
   const usage = await env.DB.prepare("SELECT bytes, uploads, rejected FROM usage_daily WHERE day = ? AND scope = 'global'")

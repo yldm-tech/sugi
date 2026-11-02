@@ -45,7 +45,7 @@ jobs:
       - name: Start wrangler dev
         run: |
           printf 'IP_HASH_SECRET=ci-ip-hash-secret\nADMIN_TOKEN=layout-check-admin\n' > .dev.vars
-          npx wrangler dev --port 8787 --var MAIN_ORIGIN:http://localhost:8787 --var FILES_ORIGIN:http://localhost:8787/_files --var TMP_ORIGIN:http://localhost:8787/_tmp --var FEATURE_ACCOUNTS:1 "--var=MAIL_FROM:sugi <login@example.org>" --var RESEND_API_KEY:unused > wrangler-dev.log 2>&1 &
+          npx wrangler dev --port 8787 --var MAIN_ORIGIN:http://localhost:8787 --var FILES_ORIGIN:http://localhost:8787/_files --var TMP_ORIGIN:http://localhost:8787/_tmp --var FEATURE_ACCOUNTS:1 "--var=MAIL_FROM:sugi <login@example.org>" --var RESEND_API_KEY:unused --var DONATE_ALIPAY_LINK:https://qr.alipay.com/example > wrangler-dev.log 2>&1 &
           for i in $(seq 1 60); do curl -sf -o /dev/null http://localhost:8787/ && exit 0; sleep 2; done
           cat wrangler-dev.log
           exit 1
