@@ -4,8 +4,8 @@ import { call, MAIN } from "./helpers";
 
 describe("Chinese lead paragraphs", () => {
   it("become one line per sentence made of unbreakable clauses", () => {
-    expect(phraseHtml("sugi.moe 没有广告，也不卖数据，由 YLDM Co., Ltd. 运营。投喂会用来付服务器和域名，让仓仓一直开着。")).toBe(
-      '<span class="sent"><span class="ph">sugi.moe 没有广告，</span><span class="ph">也不卖数据，</span><span class="ph">由 YLDM Co., Ltd. 运营。</span></span>' +
+    expect(phraseHtml("sugi.moe 没有广告，也不卖数据，由 YLDM 运营。投喂会用来付服务器和域名，让仓仓一直开着。")).toBe(
+      '<span class="sent"><span class="ph">sugi.moe 没有广告，</span><span class="ph">也不卖数据，</span><span class="ph">由 YLDM 运营。</span></span>' +
         '<span class="sent"><span class="ph">投喂会用来付服务器和域名，</span><span class="ph">让仓仓一直开着。</span></span>',
     );
   });
