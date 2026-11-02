@@ -11,6 +11,7 @@ import { base64url } from "./ids";
 import { constantTimeEqual, hmacSha256Hex } from "./crypto";
 import { prepare, peekStream, result, sanitizeName, unsupportedType, uploadResponse, parseOptions } from "./files";
 import { authorizeUpload, HttpError, jsonResponse } from "./http";
+import { assertHashAllowed, hashObject } from "./moderation";
 import { MAX_FILE_BYTES, MAX_PART_BYTES, MIN_PART_BYTES } from "./limits";
 import { MEDIA_BY_EXT, SNIFF_BYTES, sniffMedia } from "./sniff";
 
@@ -148,6 +149,13 @@ export async function handleChunkComplete(request: Request, env: Env): Promise<R
   if (obj.size !== s.sz) {
     await env.BUCKET.delete(s.k);
     throw new HttpError(400, "the uploaded parts do not add up to the declared size");
+  }
+  // The parts were never seen whole, so hash the assembled object once to enforce the content blocklist.
+  try {
+    await assertHashAllowed(env, (await hashObject(env, s.k))!);
+  } catch (err) {
+    await env.BUCKET.delete(s.k);
+    throw err;
   }
   const type = MEDIA_BY_EXT[s.ext];
   return uploadResponse(request, result(env, { id: s.id, key: s.k, type, token: s.tk, expires: s.ex, r2: {} }, s.sz, sanitizeName(s.nm)));

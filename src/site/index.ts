@@ -1,5 +1,6 @@
 import { loadAlbum } from "../albums";
 import { findFile } from "../files";
+import { assertAlbumNotRemoved, assertFileNotRemoved } from "../moderation";
 import { randomNonce } from "../http";
 import { pickLang, readCookie } from "./i18n";
 import { Ctx, documentHtml, flagsOf, Page, pageCsp } from "./layout";
@@ -40,11 +41,13 @@ async function resolvePage(ctx: Ctx, pathname: string): Promise<Page> {
   const file = /^\/f\/([a-z0-9-]{1,64})$/.exec(pathname);
   if (file) {
     const found = await findFile(ctx.env, file[1]);
+    if (!found) await assertFileNotRemoved(ctx.env, file[1]);
     return found ? filePage(ctx, found.file) : notFoundPage(ctx);
   }
   const album = /^\/a\/([a-z0-9]{1,16})$/.exec(pathname);
   if (album) {
     const a = await loadAlbum(ctx.env, album[1]);
+    if (!a) await assertAlbumNotRemoved(ctx.env, album[1]);
     return a ? albumPage(ctx, a) : notFoundPage(ctx);
   }
   return notFoundPage(ctx);

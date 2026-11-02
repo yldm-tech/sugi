@@ -4,6 +4,7 @@ import { describe, fileKey, publicInfo, StoredFile } from "./files";
 import { authorizeUpload, HttpError, isAdmin, jsonResponse, wantsJson, textResponse, Uploader } from "./http";
 import { albumDeleteToken, isFileId, randomId } from "./ids";
 import { ALBUM_MAX_FILES, ALBUM_TITLE_MAX } from "./limits";
+import { assertAlbumNotRemoved, isTombstone, takedown } from "./moderation";
 
 export interface Album {
   id: string;
@@ -67,12 +68,14 @@ export async function createAlbum(env: Env, uploader: Uploader, rawIds: string[]
   const keys: string[] = [];
   for (const id of files) {
     if (!isFileId(id)) throw new HttpError(400, `not a file id: ${id}`);
-    const [perm, tmp] = await Promise.all([env.BUCKET.head(fileKey(id, false)), env.BUCKET.head(fileKey(id, true))]);
+    const heads = await Promise.all([env.BUCKET.head(fileKey(id, false)), env.BUCKET.head(fileKey(id, true))]);
+    const [perm, tmp] = heads.map((o) => (isTombstone(o) ? null : o));
     if (!perm && !tmp) throw new HttpError(404, `file not found: ${id}`);
     keys.push(fileKey(id, !perm));
   }
   let id = randomId();
-  for (let i = 0; i < 5 && (await env.DB.prepare("SELECT 1 FROM albums WHERE id = ?").bind(id).first()); i++) id = randomId();
+  // Ids of taken-down albums are never handed out again.
+  for (let i = 0; i < 5 && (await env.DB.prepare("SELECT 1 FROM albums WHERE id = ? UNION SELECT 1 FROM tombstones WHERE target = ?").bind(id, `album:${id}`).first()); i++) id = randomId();
   const token = albumDeleteToken();
   await env.DB.batch([
     env.DB.prepare("INSERT INTO albums (id, title, created_at, delete_hash, source) VALUES (?, ?, ?, ?, ?)").bind(id, title, Date.now(), await sha256Hex(new TextEncoder().encode(token)), uploader.source),
@@ -107,19 +110,26 @@ export async function loadAlbum(env: Env, id: string, now = Date.now()): Promise
 // GET /api/albums/:id
 export async function handleAlbumGet(env: Env, id: string): Promise<Response> {
   const album = await loadAlbum(env, id);
-  if (!album) throw new HttpError(404, "not found");
+  if (!album) {
+    await assertAlbumNotRemoved(env, id);
+    throw new HttpError(404, "not found");
+  }
   return jsonResponse({ id: album.id, url: albumUrl(env, album.id), title: album.title, created_at: new Date(album.created_at).toISOString(), files: album.files.map((f) => publicInfo(env, f)) });
 }
 
-// DELETE /api/albums/:id with `Sugi-Token: <delete_token>` (or the admin bearer token). Files are left alone.
+// DELETE /api/albums/:id with `Sugi-Token: <delete_token>` (or the admin bearer token, which makes it a takedown). Files are left alone.
 export async function handleAlbumDelete(request: Request, env: Env, id: string): Promise<Response> {
   const row = /^[a-z0-9]{8}$/.test(id) ? await env.DB.prepare("SELECT delete_hash FROM albums WHERE id = ?").bind(id).first<{ delete_hash: string }>() : null;
   if (!row) throw new HttpError(404, "not found");
-  if (!(await isAdmin(request, env))) {
-    const token = request.headers.get("sugi-token");
-    if (!token) throw new HttpError(401, "missing Sugi-Token header (the delete_token returned when the album was created)");
-    if (!(await constantTimeEqual(await sha256Hex(new TextEncoder().encode(token)), row.delete_hash))) throw new HttpError(403, "wrong delete token");
+  const admin = await isAdmin(request, env);
+  if (admin) {
+    const reason = new URL(request.url).searchParams.get("reason") ?? "admin DELETE /api/albums";
+    await takedown(env, `a/${id}`, { reason, via: "http" });
+    return jsonResponse({ deleted: [id] });
   }
+  const token = request.headers.get("sugi-token");
+  if (!token) throw new HttpError(401, "missing Sugi-Token header (the delete_token returned when the album was created)");
+  if (!(await constantTimeEqual(await sha256Hex(new TextEncoder().encode(token)), row.delete_hash))) throw new HttpError(403, "wrong delete token");
   await env.DB.batch([env.DB.prepare("DELETE FROM album_files WHERE album_id = ?").bind(id), env.DB.prepare("DELETE FROM albums WHERE id = ?").bind(id)]);
   return jsonResponse({ deleted: [id] });
 }

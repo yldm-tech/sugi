@@ -189,7 +189,8 @@ describe("upload token gate", () => {
     expect(res.status).toBe(401);
     expect(res.headers.get("www-authenticate")).toContain("Bearer");
     expect((await call(putUpload(pngBytes(), { headers: { authorization: "Bearer wrong" } }))).status).toBe(401);
-    expect((await call(putUpload(pngBytes(), { headers: { authorization: "Bearer test-admin-token" } }))).status).toBe(401);
+    // The admin token can do everything the trusted token can, including passing the gate.
+    expect((await call(putUpload(pngBytes(), { headers: { authorization: "Bearer test-admin-token" } }))).status).toBe(201);
     expect((await call(putUpload(pngBytes(), { headers: { authorization: "Basic dGVzdA==" } }))).status).toBe(401);
   });
 
@@ -302,9 +303,11 @@ describe("admin", () => {
     const ok = await call(new Request(`${ORIGIN}/${key}`, { method: "DELETE", headers: ADMIN_AUTH }));
     expect(ok.status).toBe(200);
     expect(await ok.json()).toEqual({ deleted: [key], cache_purged: true });
-    expect(await env.BUCKET.head(key)).toBeNull();
-    expect((await call(new Request(`${ORIGIN}/${key}`))).status).toBe(404);
-    expect((await call(new Request(`${ORIGIN}/${key}`, { method: "DELETE", headers: ADMIN_AUTH }))).status).toBe(404);
+    // An admin deletion is a takedown: a tombstone answers 451 and the key can never be stored again.
+    expect((await env.BUCKET.head(key))?.customMetadata?.tomb).toBe("1");
+    expect((await call(new Request(`${ORIGIN}/${key}`))).status).toBe(451);
+    const again = await call(new Request(`${ORIGIN}/${key}`, { method: "DELETE", headers: ADMIN_AUTH }));
+    expect(await again.json()).toEqual({ deleted: [], already_removed: [key], cache_purged: true });
   });
 
   it("admin endpoints are disabled when ADMIN_TOKEN is unset", async () => {
@@ -347,8 +350,8 @@ describe("admin", () => {
     expect(real.status).toBe(200);
     const realBody = await real.json<{ count: number; deleted: string[] }>();
     expect(realBody.deleted.sort()).toEqual([...bad].sort());
-    for (const key of bad) expect(await env.BUCKET.head(key)).toBeNull();
-    expect(await env.BUCKET.head(good)).not.toBeNull();
+    for (const key of bad) expect((await env.BUCKET.head(key))?.customMetadata?.tomb).toBe("1");
+    expect((await env.BUCKET.head(good))?.customMetadata?.tomb).toBeUndefined();
   });
 });
 
@@ -479,7 +482,8 @@ describe("cache-through serving and cache purge", () => {
     expect(calls[0].url).toBe("https://api.cloudflare.com/client/v4/zones/zone123/purge_cache");
     expect(calls[0].init?.method).toBe("POST");
     expect(new Headers(calls[0].init?.headers).get("authorization")).toBe("Bearer test-purge-token");
-    expect(JSON.parse(String(calls[0].init?.body))).toEqual({ files: [`${CACHE.CACHE_ORIGIN}/${key}`] });
+    // The cached origin copy and the public link.
+    expect(JSON.parse(String(calls[0].init?.body))).toEqual({ files: [`${CACHE.CACHE_ORIGIN}/${key}`, `https://sugi.moe/${key}`] });
   });
 
   it("reports 502 when the purge fails, and a retried DELETE purges again", async () => {
@@ -488,12 +492,13 @@ describe("cache-through serving and cache purge", () => {
     const res = await call(new Request(`${ORIGIN}/${key}`, { method: "DELETE", headers: ADMIN_AUTH }), CACHE);
     expect(res.status).toBe(502);
     expect(await res.json()).toEqual({ deleted: [key], cache_purged: false });
-    expect(await env.BUCKET.head(key)).toBeNull();
+    expect((await env.BUCKET.head(key))?.customMetadata?.tomb).toBe("1");
 
     vi.restoreAllMocks();
     const calls = stubFetch();
     const retry = await call(new Request(`${ORIGIN}/${key}`, { method: "DELETE", headers: ADMIN_AUTH }), CACHE);
-    expect(retry.status).toBe(404);
+    expect(retry.status).toBe(200);
+    expect(await retry.json()).toEqual({ deleted: [], already_removed: [key], cache_purged: true });
     expect(calls).toHaveLength(1);
   });
 
@@ -516,9 +521,10 @@ describe("cache-through serving and cache purge", () => {
     );
     expect(res.status).toBe(200);
     expect(await res.json()).toMatchObject({ count: 31, cache_purged: true });
-    expect(calls).toHaveLength(2);
+    // 31 cached origin copies plus 31 public links, 30 per request.
+    expect(calls).toHaveLength(3);
     const purged = calls.flatMap((c) => JSON.parse(String(c.init?.body)).files as string[]);
-    expect(purged.sort()).toEqual(keys.map((k) => `${CACHE.CACHE_ORIGIN}/${k}`).sort());
+    expect(purged.sort()).toEqual(keys.flatMap((k) => [`${CACHE.CACHE_ORIGIN}/${k}`, `https://sugi.moe/${k}`]).sort());
     expect(JSON.parse(String(calls[0].init?.body)).files).toHaveLength(30);
   });
 

@@ -60,8 +60,8 @@ export const PRIVACY: Section[] = [
         en: "For every file and album we record its upload time and an HMAC fingerprint of the uploader's IP address: a one-way function of the IP keyed with a secret only the server holds. We never store the IP itself. Without the key the fingerprint cannot be turned back into an IP; the maintainers, who hold the key, can check whether a known IP matches a fingerprint.",
       },
       {
-        zh: "这个指纹只用于防止和处理滥用：找出并删除同一来源上传的违规内容，以及在法律要求时配合执法机关。我们这样做的依据是防止和处理滥用这一正当利益（GDPR 第 6 条第 1 款 f 项）。指纹和对应的文件保存同样长的时间，文件删除时一起删除。",
-        en: "The fingerprint is used only to prevent and handle abuse: to find and remove violating content uploaded from the same source, and to cooperate with law enforcement when the law requires it. Our legal basis is our legitimate interest in preventing and handling abuse (GDPR Art. 6(1)(f)). The fingerprint is kept exactly as long as the file it belongs to and is deleted with it.",
+        zh: "这个指纹只用于防止和处理滥用：找出并删除同一来源上传的违规内容，以及在法律要求时配合执法机关。我们这样做的依据是防止和处理滥用这一正当利益（GDPR 第 6 条第 1 款 f 项）。指纹和对应的文件保存同样长的时间，文件删除时一起删除；因为违反使用条款被删除的文件例外，见「保存多久」。",
+        en: "The fingerprint is used only to prevent and handle abuse: to find and remove violating content uploaded from the same source, and to cooperate with law enforcement when the law requires it. Our legal basis is our legitimate interest in preventing and handling abuse (GDPR Art. 6(1)(f)). The fingerprint is kept exactly as long as the file it belongs to and is deleted with it, except for files removed for breaking the terms (see “How long we keep things”).",
         review: "Decided: legitimate interest (GDPR Art. 6(1)(f)); retention = lifetime of the file.",
       },
       {
@@ -126,6 +126,11 @@ export const PRIVACY: Section[] = [
       {
         zh: "打包链接保存到你删除它为止；里面的文件被删除后，打包链接里就不再显示它们。",
         en: "Albums stay until you delete them; files deleted from an album's set simply stop appearing in it.",
+      },
+      {
+        zh: "因为违反使用条款而被删除的文件，我们会保留一条删除记录（文件 id、删除的时间和原因、上传来源的 HMAC 指纹），用来处理同一来源后续的滥用；必要时还会保留文件内容的 SHA-256 哈希放进屏蔽列表，阻止同样的文件再次上传。哈希是单向的指纹，不能从它还原出文件。被删除文件的链接会一直显示「已删除」。",
+        en: "When a file is removed for breaking the terms, we keep a record of the removal (the file id, when and why it was removed, and the HMAC fingerprint of its source) to deal with further abuse from the same source, and where needed the SHA-256 hash of its content in a blocklist, so the same file cannot be uploaded again. A hash is a one-way fingerprint; the file cannot be recovered from it. The removed file's link keeps saying that it was removed.",
+        review: "Pending maintainer review (added with the moderation tools, 2026-11-02): takedown records keep the source HMAC after the file is gone; content hashes of removed files may be kept indefinitely in a blocklist.",
       },
       {
         zh: "账号数据保存到你要求删除账号为止；会话 30 天后过期，邮件登录链接 15 分钟后失效。",
