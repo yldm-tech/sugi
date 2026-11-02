@@ -1,0 +1,50 @@
+name: Staging
+
+# After CI passes on main, deploy the staging Worker (wrangler.staging.jsonc) and run the smoke check and the end-to-end suite against it. Production stays deployed from a maintainer's machine (scripts/deploy-production.sh).
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy staging and test it
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: e2b27aea5f599efdbe0a7016a2580d05
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # The staging Worker keeps its secrets between deploys; only code, config and the schema change here.
+      - name: Apply migrations
+        run: npx wrangler d1 migrations apply sugi-staging --remote --config wrangler.staging.jsonc
+      - name: Deploy
+        run: npx wrangler deploy --config wrangler.staging.jsonc
+      - name: Staging tokens for the checks
+        env:
+          ADMIN: ${{ secrets.STAGING_ADMIN_TOKEN }}
+          TRUSTED: ${{ secrets.STAGING_TRUSTED_TOKEN }}
+        run: |
+          umask 077
+          printf 'ADMIN_TOKEN=%s\nTRUSTED_TOKEN=%s\n' "$ADMIN" "$TRUSTED" > "$RUNNER_TEMP/staging.env"
+      - name: Smoke check
+        run: SUGI_SECRETS_FILE="$RUNNER_TEMP/staging.env" scripts/smoke.sh https://sugi-staging.evan-e2b.workers.dev
+      - name: End-to-end
+        run: SUGI_SECRETS_FILE="$RUNNER_TEMP/staging.env" scripts/e2e.sh https://sugi-staging.evan-e2b.workers.dev
