@@ -251,7 +251,7 @@ function buildServer(request: Request, env: Env, admin: boolean): McpServer {
     async (args) => {
       try {
         const id = args.id.trim().replace(/^.*\//, "").replace(/\.[a-z0-9]+$/i, "");
-        const done = await deleteFile(env, id, args.delete_token);
+        const done = await deleteFile(env, id, { token: args.delete_token });
         if (!done) throw new HttpError(404, "not found");
         return text({ deleted: id, cache_purged: done.cachePurged });
       } catch (err) {
