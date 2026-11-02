@@ -135,16 +135,17 @@ stored_at="$(sed -nE 's/.*"uploaded":"([^"]+)".*/\1/p' "$work/info.json")"
 if [ "$owned" = 1 ] && [ "$stored_sha" = "$(shasum -a 256 "$image" | cut -d' ' -f1)" ] && [[ "$stored_at" > "$run_started" ]]; then
   check "DELETE with admin token" "$(c "$admin_token" -o "$work/delete.json" -w '%{http_code}' -X DELETE "$url")" 200
   grep -q '"cache_purged":true' "$work/delete.json" && pass "DELETE purged the zone cache" || fail "DELETE did not purge the cache: $(cat "$work/delete.json")"
-  check "GET after delete" "$(c "" -o /dev/null -w '%{http_code}' "$url")" 404
+  # An admin deletion is a takedown: the link answers 451 from now on and the key holds an empty tombstone.
+  check "GET after delete (taken down)" "$(c "" -o /dev/null -w '%{http_code}' "$url")" 451
   if [ -n "$cache_origin" ]; then
-    # Purges propagate within seconds; poll briefly rather than fail on the first stale read.
-    origin_code=""
+    # Purges propagate within seconds; poll briefly rather than fail on the first stale read. The origin now holds the empty tombstone instead of the image.
+    origin_bytes=""
     for _ in 1 2 3 4 5 6 7 8 9 10; do
-      origin_code="$(c "" -o /dev/null -w '%{http_code}' "$cache_origin/$key")"
-      [ "$origin_code" = 404 ] && break
+      origin_bytes="$(c "" -o /dev/null -w '%{size_download}' "$cache_origin/$key")"
+      [ "$origin_bytes" = 0 ] && break
       sleep 2
     done
-    check "cached origin copy gone after purge" "$origin_code" 404
+    check "cached origin copy gone after purge (bytes served)" "$origin_bytes" 0
   fi
 else
   fail "not deleting $key: this run did not create it (owned=$owned, uploaded=$stored_at)"
@@ -203,9 +204,10 @@ burst_upload() {
   local token="$1" tag="$2" i codes=""
   for i in $(seq 1 "$burst"); do
     printf '\x89PNG\r\n\x1a\nsugi-e2e-%s-%s-%s-%s' "$run_id" "$tag" "$i" "$(openssl rand -hex 16)" >"$work/burst.png"
-    code="$(c "$token" -o "$work/burst.out" -w '%{http_code}' -T "$work/burst.png" "$base/upload")"
+    code="$(c "$token" -o "$work/burst.out" -w '%{http_code}' -H 'Accept: application/json' -T "$work/burst.png" "$base/api/upload")"
     codes="$codes $code"
-    if [ "$code" = 201 ]; then sed 's#.*/##' "$work/burst.out" >>"$work/burst.keys"; fi
+    # Burst objects are deleted with their own delete tokens, so cleanup leaves no takedown records behind.
+    if [ "$code" = 201 ]; then sed -nE 's/.*"id":"([^"]+)".*"delete_token":"([^"]+)".*/\1 \2/p' "$work/burst.out" >>"$work/burst.keys"; fi
     # Cloudflare's own rate limiting block page says "error code: 1015"; the Worker's 429 says "too many uploads".
     if [ "$code" = 429 ] && [ ! -s "$work/first429-$tag" ]; then { echo "$i"; head -c 200 "$work/burst.out"; } >"$work/first429-$tag"; fi
   done
@@ -223,8 +225,8 @@ fi
 if [ -s "$work/burst.keys" ]; then
   created="$(wc -l <"$work/burst.keys" | tr -d ' ')"
   deleted=0
-  while read -r k; do
-    [ "$(c "$admin_token" -o /dev/null -w '%{http_code}' -X DELETE "$base/$k")" = 200 ] && deleted=$((deleted + 1))
+  while read -r fid ftok; do
+    [ "$(c "" -o /dev/null -w '%{http_code}' -X DELETE -H "Sugi-Token: $ftok" "$base/api/files/$fid")" = 200 ] && deleted=$((deleted + 1))
   done <"$work/burst.keys"
   check "deleted every burst object this run created" "$deleted" "$created"
 fi

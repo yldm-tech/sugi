@@ -11,6 +11,18 @@ export class HttpError extends Error {
   }
 }
 
+/** Content removed by an admin (takedown): 451 Unavailable For Legal Reasons, with a short bilingual page for browsers. */
+export class RemovedError extends HttpError {
+  constructor() {
+    super(451, "removed after a report");
+  }
+}
+
+const REMOVED_PAGE = `<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><meta name="robots" content="noindex"><meta name="viewport" content="width=device-width, initial-scale=1"><title>451</title></head>
+<body><p>这个内容因为被举报，已经被删除。</p><p lang="en">This content was removed after a report.</p></body></html>
+`;
+
 export function wantsJson(request: Request): boolean {
   return (request.headers.get("accept") ?? "").includes("application/json");
 }
@@ -19,6 +31,12 @@ export function errorResponse(request: Request, err: HttpError): Response {
   const headers = new Headers(err.headers);
   headers.set("x-content-type-options", "nosniff");
   headers.set("cache-control", "no-store");
+  if (err instanceof RemovedError) headers.set("x-robots-tag", "noindex");
+  if (err instanceof RemovedError && !wantsJson(request) && (request.headers.get("accept") ?? "").includes("text/html")) {
+    headers.set("content-type", "text/html; charset=utf-8");
+    headers.set("content-security-policy", "default-src 'none'");
+    return new Response(request.method === "HEAD" ? null : REMOVED_PAGE, { status: 451, headers });
+  }
   if (wantsJson(request)) {
     headers.set("content-type", "application/json; charset=utf-8");
     return new Response(JSON.stringify({ error: err.message }) + "\n", { status: err.status, headers });
@@ -63,11 +81,18 @@ export async function isAdmin(request: Request, env: Env): Promise<boolean> {
   return Boolean(env.ADMIN_TOKEN) && given !== null && (await constantTimeEqual(given, env.ADMIN_TOKEN!));
 }
 
-// The maintainers' own token: never rate limited and accepted while the upload gate is on.
+// The maintainers' own tokens (TRUSTED_TOKEN, and ADMIN_TOKEN, which can do everything TRUSTED_TOKEN can): never rate limited, never source-blocked, and accepted while the upload gate is on.
 export async function isTrusted(request: Request, env: Env): Promise<boolean> {
-  if (!env.TRUSTED_TOKEN) return false;
   const given = bearerToken(request);
-  return given !== null && (await constantTimeEqual(given, env.TRUSTED_TOKEN));
+  if (given === null) return false;
+  if (env.TRUSTED_TOKEN && (await constantTimeEqual(given, env.TRUSTED_TOKEN))) return true;
+  return Boolean(env.ADMIN_TOKEN) && (await constantTimeEqual(given, env.ADMIN_TOKEN!));
+}
+
+/** True while an admin has blocked this source from uploading (see moderation.ts). */
+export async function isSourceBlocked(env: Env, source: string, now = Date.now()): Promise<boolean> {
+  const row = await env.DB.prepare("SELECT expires_at FROM blocked_sources WHERE source = ?").bind(source).first<{ expires_at: number | null }>();
+  return row !== null && (row.expires_at === null || row.expires_at > now);
 }
 
 export interface Uploader {
@@ -85,6 +110,8 @@ export async function authorizeUpload(request: Request, env: Env, bucket = "uplo
   const ip = request.headers.get("cf-connecting-ip") ?? "unknown";
   const source = await hmacSha256Hex(env.IP_HASH_SECRET, ip);
   if (!trusted) {
+    // Neutral wording: the client is not told why, nor that a block exists.
+    if (await isSourceBlocked(env, source)) throw new HttpError(403, "uploads are not accepted from this network");
     const key = bucket === "upload" ? source : `${bucket}:${source}`;
     // `cost` > 1 reserves several uploads at once (one per upload link handed out).
     for (let i = 0; i < cost; i++) {

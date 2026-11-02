@@ -37,13 +37,13 @@ JSON 返回 `{"id", "url", "page", "size", "type", "name", "expires_at", "delete
 | PUT | `/api/uploads/<n>` | 第 n 片，请求头 `Sugi-Upload: <会话>`，返回 `etag` |
 | POST | `/api/uploads/complete` | 请求头带会话，JSON `{"etags": [...]}`，返回和 `/api/upload` 一样；`DELETE /api/uploads` 放弃 |
 | GET | `/api/files/<id>` | 公开信息（链接、大小、类型、过期时间） |
-| DELETE | `/api/files/<id>` | `Sugi-Token: <delete_token>`，或管理员 `Authorization: Bearer <ADMIN_TOKEN>` |
+| DELETE | `/api/files/<id>` | `Sugi-Token: <delete_token>`；管理员令牌删除等于下架（见运维手册「处理举报」），可加 `?reason=` 和 `?block_content=1` |
 | POST | `/api/albums` | JSON `{"files": [...], "title": "..."}` 或表单 `files=id1,id2&title=`，最多 100 个，返回链接和 `delete_token` |
 | GET / DELETE | `/api/albums/<id>` | 读取；删除（`Sugi-Token`，不删里面的文件） |
 | POST / PUT | `/upload` | 旧接口，原样保留：只收 PNG/JPEG/WebP/GIF，最大 20 MB，内容哈希做键，返回 `https://sugi.moe/<hash>.<ext>` |
-| GET / HEAD / DELETE | `/<hash>.<ext>` | 旧链接；DELETE 需管理员令牌 |
+| GET / HEAD / DELETE | `/<hash>.<ext>` | 旧链接；DELETE 需管理员令牌，同样是下架 |
 | GET | `/admin/info/<key>` | 管理员：对象元数据（`<hash>.<ext>`、`f/<id>`、`t/<id>`） |
-| POST | `/admin/purge-by-source` | 管理员：按来源 HMAC 清除文件和打包链接 |
+| POST | `/admin/purge-by-source` | 管理员：按来源 HMAC 下架文件和打包链接（和 MCP 的 `takedown_by_source` 一样） |
 
 错误默认是纯文本，`Accept: application/json` 时是 `{"error": "..."}`。常见状态码：400 参数不对，401 缺令牌或闸门未开放，403 删除凭证不对，404 不存在（过期的临时文件也算），405 方法不对，411 缺 Content-Length，413 太大（单请求超过 90 MB 会提示改用分片），415 类型不支持，429 超过频率限制，502 搬运的远端出错或缓存清除失败，503 未配置 `IP_HASH_SECRET`。
 
@@ -178,6 +178,18 @@ set -a; . ~/.config/sugi/secrets.env; set +a
 admin() { printf 'header = "Authorization: Bearer %s"\n' "$ADMIN_TOKEN" | curl -sS -K - "$@"; }
 ```
 
+### 处理举报（MCP）
+
+`sugi` MCP 服务按请求带的令牌决定权限：带 `ADMIN_TOKEN` 时多出一组管理工具（普通请求看不到也调用不了），并且不受限流。同一个 MCP 条目，把请求头换成管理员令牌即可。
+
+1. `inspect`：把举报的链接（files./tmp. 直链、`/f/<id>` 分享页、旧链接、`/a/<id>` 打包链接都行）查一遍，看状态、来源 HMAC、所在的打包链接。
+2. `takedown`：下架，写上 `reason`。对象换成墓碑，所有出过图的地址（缓存回源地址、直链、分享页）清缓存，链接从此返回 451（浏览器看到一句中英文的“因被举报已删除”，带 noindex），id 不再分配。CSAM、反复出现的垃圾内容加 `block_content: true`，记下内容的 SHA-256，之后任何上传途径（普通上传、multipart、链接搬运、分片、`create_upload` 链接、旧接口 `/upload`）传同样的字节都会被 451 拒绝。打包链接也能下架，`include_files: true` 连同里面的文件一起下架。
+3. `list_by_source`：同一来源还传过什么（按时间倒序，分页）。
+4. `takedown_by_source`：整批下架，默认 `dry_run: true` 只列出来，确认后再传 `dry_run: false`；必要时 `block_source`（可设 `expires_in_hours`），该来源之后的上传得到不说明原因的 403。
+5. `takedown_log` 看最近的管理操作；`list_blocks` 看屏蔽列表；误伤时用 `unblock_source`、`unblock_content` 解除。
+
+下架记录、屏蔽列表和审计日志在 D1（`migrations/0002_moderation.sql`），墓碑对象留在 R2 原来的键上。HTTP 的管理员删除和按来源清除走的是同一套逻辑。
+
 ### 删除单个文件
 
 ```sh
@@ -188,7 +200,7 @@ admin -X DELETE https://sugi.moe/3f9a1c0b7e2d4a51.png
 admin -X DELETE https://sugi.moe/api/albums/<id>             # 打包链接
 ```
 
-返回体里 `"cache_purged": true` 才算清干净，502 就重试。已经被别处（GitHub camo、浏览器）缓存的副本不受控制。
+返回体里 `"cache_purged": true` 才算清干净，502 就重试（重试会再清一次缓存）。管理员删除就是下架：对象换成墓碑，链接从此返回 451，id 不再分配，并写进审计日志。已经被别处（GitHub camo、浏览器）缓存的副本不受控制。
 
 ### 按来源清除
 

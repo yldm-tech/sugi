@@ -316,7 +316,8 @@ describe("GET/DELETE /api/files/:id", () => {
   it("admin can delete anything, temporary files included", async () => {
     const r = await upload(png(), "?expire=12h");
     expect((await call(new Request(`${MAIN}/api/files/${r.id}`, { method: "DELETE", headers: ADMIN }))).status).toBe(200);
-    expect(await env.BUCKET.head(`t/${r.id}`)).toBeNull();
+    expect((await env.BUCKET.head(`t/${r.id}`))?.customMetadata?.tomb).toBe("1");
+    expect((await call(new Request(r.url))).status).toBe(451);
     const info = await call(new Request(`${MAIN}/admin/info/f/${(await upload(png())).id}`, { headers: ADMIN }));
     expect(await info.json()).toMatchObject({ type: "image/png", source: expect.stringMatching(/^[0-9a-f]{64}$/) });
   });
@@ -545,9 +546,9 @@ describe("albums", () => {
     const body = await res.json<{ deleted: string[]; albums: string[] }>();
     expect(body.deleted).toContain(`f/${mine.id}`);
     expect(body.albums).toEqual([al.id]);
-    expect((await call(new Request(mine.url))).status).toBe(404);
+    expect((await call(new Request(mine.url))).status).toBe(451);
     expect((await call(new Request(theirs.url))).status).toBe(200);
-    expect((await call(new Request(`${MAIN}/api/albums/${al.id}`))).status).toBe(404);
+    expect((await call(new Request(`${MAIN}/api/albums/${al.id}`))).status).toBe(451);
   });
 });
 

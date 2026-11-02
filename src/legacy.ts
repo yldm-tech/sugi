@@ -1,7 +1,8 @@
 // The original content-addressed API, kept unchanged because its links are embedded in pull requests and bin/sugi-upload and other scripts post to /upload: images only, at most 20 MB, key = first 16 hex of SHA-256 + extension, served from the main origin at /<key>.
 import { deletionResponse, fetchViaCache, purgeCache } from "./cache";
 import { sha256Hex } from "./crypto";
-import { authorizeUpload, etagMatches, hasBody, HttpError, jsonResponse, requireBearer, textResponse, wantsJson } from "./http";
+import { authorizeUpload, etagMatches, hasBody, HttpError, jsonResponse, RemovedError, requireBearer, textResponse, wantsJson } from "./http";
+import { assertHashAllowed, isTombstone, takedown, takedownBySource } from "./moderation";
 import { LEGACY_MAX_BYTES } from "./limits";
 import { sniffImageType, TYPES_BY_EXT } from "./sniff";
 
@@ -72,11 +73,13 @@ export async function handleLegacyUpload(request: Request, env: Env): Promise<Re
   if (type === null) throw new HttpError(415, "unsupported file type (only PNG, JPEG, WebP and GIF)");
 
   const sha256 = await sha256Hex(bytes);
+  await assertHashAllowed(env, sha256);
   const key = `${sha256.slice(0, 16)}.${type.ext}`;
   const url = `${new URL(request.url).origin}/${key}`;
 
   let created = false;
   const existing = await env.BUCKET.head(key);
+  if (isTombstone(existing)) throw new RemovedError();
   if (existing === null) {
     // The conditional put closes the race between head() and put(): if another request stored the key in between, R2 returns null instead of overwriting.
     const stored = await env.BUCKET.put(key, bytes, {
@@ -101,6 +104,10 @@ export async function handleLegacyServe(request: Request, env: Env, key: string)
   const viaCache = Boolean(env.CACHE_ORIGIN) && request.method === "GET";
   const obj = request.method === "HEAD" || viaCache ? await env.BUCKET.head(key) : await env.BUCKET.get(key);
   if (obj === null) throw new HttpError(404, "not found");
+  if (isTombstone(obj)) {
+    if (hasBody(obj)) await obj.body.cancel();
+    throw new RemovedError();
+  }
 
   const ext = key.slice(key.lastIndexOf(".") + 1);
   const stored = obj.httpMetadata?.contentType;
@@ -136,6 +143,7 @@ export async function handleLegacyServe(request: Request, env: Env, key: string)
   return new Response(obj.body, { status: 200, headers });
 }
 
+// Admin deletion of a legacy object is a takedown: tombstone (451 from now on), audit log, cache purge.
 export async function handleLegacyDelete(request: Request, env: Env, key: string): Promise<Response> {
   await requireBearer(request, env.ADMIN_TOKEN, "admin");
   const existing = await env.BUCKET.head(key);
@@ -144,8 +152,9 @@ export async function handleLegacyDelete(request: Request, env: Env, key: string
     if (!(await purgeCache(env, [key]))) return deletionResponse([], false);
     throw new HttpError(404, "not found");
   }
-  await env.BUCKET.delete(key);
-  return deletionResponse([key], await purgeCache(env, [key]));
+  const url = new URL(request.url);
+  const r = await takedown(env, key, { reason: url.searchParams.get("reason") ?? "admin DELETE (legacy)", blockContent: url.searchParams.get("block_content") === "1", via: "http" });
+  return deletionResponse(r.removed, r.cache_purged, r.already_removed.length ? { already_removed: r.already_removed } : {});
 }
 
 // Admin view of any stored object: legacy keys ("<hex>.<ext>") and current ones ("f/<id>", "t/<id>").
@@ -178,20 +187,9 @@ export async function handlePurgeBySource(request: Request, env: Env): Promise<R
   const source = typeof body.source === "string" ? body.source.toLowerCase() : "";
   if (!SOURCE_RE.test(source)) throw new HttpError(400, '"source" must be a 64-character hex HMAC');
   const dryRun = body.dry_run === true;
-
-  const matched: string[] = [];
-  let cursor: string | undefined;
-  do {
-    const page = await env.BUCKET.list({ include: ["customMetadata"], limit: 1000, cursor });
-    for (const obj of page.objects) {
-      if (obj.customMetadata?.source === source) matched.push(obj.key);
-    }
-    cursor = page.truncated ? page.cursor : undefined;
-  } while (cursor);
-  const albums = (await env.DB.prepare("SELECT id FROM albums WHERE source = ?").bind(source).all<{ id: string }>()).results.map((r) => r.id);
-
-  if (dryRun) return jsonResponse({ source, dry_run: true, count: matched.length, matched, albums });
-  for (let i = 0; i < matched.length; i += 1000) await env.BUCKET.delete(matched.slice(i, i + 1000));
-  if (albums.length) await env.DB.batch(albums.flatMap((id) => [env.DB.prepare("DELETE FROM album_files WHERE album_id = ?").bind(id), env.DB.prepare("DELETE FROM albums WHERE id = ?").bind(id)]));
-  return deletionResponse(matched, await purgeCache(env, matched), { source, dry_run: false, count: matched.length, albums });
+  // Same as the takedown_by_source admin tool: tombstones, audit log and cache purge.
+  const r = await takedownBySource(env, source, { dryRun, reason: typeof (body as { reason?: unknown }).reason === "string" ? (body as { reason: string }).reason : "admin purge-by-source", via: "http" });
+  const keys = r.keys as string[];
+  if (dryRun) return jsonResponse({ source, dry_run: true, count: keys.length, matched: keys, albums: r.album_ids });
+  return deletionResponse(keys, r.cache_purged as boolean, { source, dry_run: false, count: keys.length, albums: r.album_ids });
 }

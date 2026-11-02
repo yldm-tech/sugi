@@ -1,8 +1,9 @@
 // Current upload API: short ids, permanent (f/<id>) or temporary (t/<id>) objects, per-upload delete tokens, served from FILES_ORIGIN / TMP_ORIGIN.
 import { parseMultipartRequest, MultipartParseError, MaxFileSizeExceededError, MaxTotalSizeExceededError, MaxPartsExceededError } from "@remix-run/multipart-parser";
 import { deletionResponse, fetchViaCache, purgeCache } from "./cache";
-import { constantTimeEqual, sha256Hex } from "./crypto";
-import { authorizeUpload, etagMatches, hasBody, HttpError, isAdmin, jsonResponse, textResponse, Uploader, wantsJson } from "./http";
+import { constantTimeEqual, sha256Hex, toHex } from "./crypto";
+import { authorizeUpload, etagMatches, hasBody, HttpError, isAdmin, jsonResponse, RemovedError, textResponse, Uploader, wantsJson } from "./http";
+import { assertFileNotRemoved, assertHashAllowed, isTombstone, takedown } from "./moderation";
 import { cuteId, deleteToken, isFileId, randomId } from "./ids";
 import { EXPIRIES, ExpiryId, IMPORT_MAX_REDIRECTS, IMPORT_TIMEOUT_MS, IMPORT_UNKNOWN_LENGTH_MAX_BYTES, MAX_FILE_BYTES, NAME_MAX, parseExpiry, SINGLE_REQUEST_MAX_BYTES } from "./limits";
 import { MEDIA_BY_EXT, MediaType, SNIFF_BYTES, sniffMedia } from "./sniff";
@@ -64,6 +65,8 @@ export function parseOptions(get: (key: string) => string | null): UploadOptions
 
 export function describe(key: string, obj: R2Object): StoredFile | null {
   const m = obj.customMetadata ?? {};
+  // Tombstone markers of taken-down files keep the extension (for cache purges) but are not files.
+  if (m.tomb === "1") return null;
   const type = MEDIA_BY_EXT[m.ext ?? ""];
   if (!type) return null;
   return {
@@ -234,7 +237,19 @@ export async function storeStream(env: Env, uploader: Uploader, opts: UploadOpti
   }
   const fixed = new FixedLengthStream(length);
   const abort = new AbortController();
-  const piping = stream.pipeTo(fixed.writable, { signal: abort.signal }).then(
+  // Hash on the way through (no second copy of the body in memory) so blocked content can be refused.
+  const digest = new crypto.DigestStream("SHA-256");
+  const hashWriter = digest.getWriter();
+  const hasher = new TransformStream<Uint8Array, Uint8Array>({
+    async transform(chunk, controller) {
+      await hashWriter.write(chunk.slice());
+      controller.enqueue(chunk);
+    },
+    async flush() {
+      await hashWriter.close();
+    },
+  });
+  const piping = stream.pipeThrough(hasher).pipeTo(fixed.writable, { signal: abort.signal }).then(
     () => null,
     (err: unknown) => err ?? new Error("pipe failed"),
   );
@@ -257,6 +272,12 @@ export async function storeStream(env: Env, uploader: Uploader, opts: UploadOpti
     await env.BUCKET.delete(p.key);
     throw new HttpError(400, "upload body did not match its declared length");
   }
+  try {
+    await assertHashAllowed(env, toHex(await digest.digest));
+  } catch (err) {
+    await env.BUCKET.delete(p.key);
+    throw err;
+  }
   return result(env, p, length, opts.name);
 }
 
@@ -264,6 +285,7 @@ export async function storeBytes(env: Env, uploader: Uploader, opts: UploadOptio
   if (bytes.byteLength === 0) throw new HttpError(400, "empty upload");
   const type = sniffMedia(bytes.subarray(0, SNIFF_BYTES));
   if (!type) throw unsupportedType();
+  await assertHashAllowed(env, await sha256Hex(bytes));
   const p = await prepare(env, uploader, opts, type, fixedId);
   const stored = await env.BUCKET.put(p.key, bytes, await reservedPutOptions(env, p, fixedId));
   if (stored === null) throw linkUsed();
@@ -456,6 +478,7 @@ export async function handleFileServe(request: Request, env: Env, temporary: boo
   if (dot <= 0 || !isFileId(id) || !MEDIA_BY_EXT[ext]) throw new HttpError(404, "not found");
   const key = fileKey(id, temporary);
   const obj = await env.BUCKET.head(key);
+  if (isTombstone(obj)) throw new RemovedError();
   const file = obj && describe(key, obj);
   const now = Date.now();
   if (!obj || !file || file.type.ext !== ext || (file.expires !== null && file.expires <= now)) throw new HttpError(404, "not found");
@@ -524,7 +547,10 @@ export function publicInfo(env: Env, f: StoredFile) {
 // GET /api/files/:id
 export async function handleFileInfo(env: Env, id: string): Promise<Response> {
   const found = await findFile(env, id);
-  if (!found) throw new HttpError(404, "not found");
+  if (!found) {
+    await assertFileNotRemoved(env, id);
+    throw new HttpError(404, "not found");
+  }
   return jsonResponse(publicInfo(env, found.file));
 }
 
@@ -534,7 +560,7 @@ export async function deleteFile(env: Env, id: string, token: string | null): Pr
   for (const temporary of [false, true]) {
     const key = fileKey(id, temporary);
     const obj = await env.BUCKET.head(key);
-    if (!obj) continue;
+    if (!obj || isTombstone(obj)) continue;
     if (token !== null) {
       const expected = obj.customMetadata?.del ?? "";
       const given = await sha256Hex(new TextEncoder().encode(token));
@@ -552,7 +578,13 @@ export async function handleFileDelete(request: Request, env: Env, id: string): 
   const admin = await isAdmin(request, env);
   const token = request.headers.get("sugi-token");
   if (!admin && !token) throw new HttpError(401, "missing Sugi-Token header (the delete_token returned by the upload)");
-  const done = await deleteFile(env, id, admin ? null : token);
+  // An admin deletion is a takedown, exactly like the MCP tool: tombstone (451, id never reused), audit log, cache purge.
+  if (admin) {
+    const url = new URL(request.url);
+    const r = await takedown(env, id, { reason: url.searchParams.get("reason") ?? "admin DELETE /api/files", blockContent: url.searchParams.get("block_content") === "1", via: "http" });
+    return deletionResponse(r.removed.length ? [id] : [], r.cache_purged, r.already_removed.length ? { already_removed: [id] } : {});
+  }
+  const done = await deleteFile(env, id, token);
   if (done) return deletionResponse([id], done.cachePurged);
   // Already gone; purge anyway so a retry after a failed purge completes.
   if (!(await purgeCache(env, [fileKey(id, false), fileKey(id, true)]))) return deletionResponse([], false);
