@@ -36,7 +36,7 @@ fi
 mkdir -p "$dir"
 cp "$tmp" "$dir/sugi"
 chmod 755 "$dir/sugi"
-echo "✿ sugi ${ASSETS.cliVersion} installed to $dir/sugi"
+echo "sugi ${ASSETS.cliVersion} installed to $dir/sugi"
 case ":$PATH:" in
   *":$dir:"*) ;;
   *) echo "  add it to your PATH, e.g.: echo 'export PATH=\\"$dir:\\$PATH\\"' >> ~/.profile" ;;

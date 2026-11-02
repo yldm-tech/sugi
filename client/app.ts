@@ -155,6 +155,8 @@ function dropPending(fp: string) {
 
 const fingerprint = (f: File) => `${f.name}|${f.size}|${f.lastModified}`;
 
+const HEART_SVG = `<svg viewBox="0 0 32 32" width="1em" height="1em" stroke="#4A5646" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M16 27 C9 21.5 4 17.5 4 11.5 C4 7.5 7 5 10.5 5 C13 5 15 6.5 16 8.5 C17 6.5 19 5 21.5 5 C25 5 28 7.5 28 11.5 C28 17.5 23 21.5 16 27 Z" fill="#F6C3BE"/></svg>`;
+
 // ---------------------------------------------------------------- toast, copy, sound
 
 let toastTimer = 0;
@@ -1163,7 +1165,9 @@ function poke(e: Event) {
   setTimeout(touch, 1150);
   spawn(
     Array.from({ length: 5 }, () => {
-      const el = h("span", { class: "heart", text: "♥" });
+      const el = h("span", { class: "heart" });
+      // The same heart as the site's icons (src/site/icons.ts), sized by the font size set below.
+      el.innerHTML = HEART_SVG;
       el.style.left = `${70 + Math.random() * 60}px`;
       el.style.fontSize = `${14 + Math.random() * 12}px`;
       el.style.setProperty("--dx", `${(Math.random() - 0.5) * 70}px`);

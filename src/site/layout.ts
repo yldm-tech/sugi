@@ -1,4 +1,5 @@
 import { ASSETS } from "../generated/assets";
+import { ICON_HEART } from "./icons";
 import { donateConfig, donateOn } from "./pages/donate";
 import { type VideoPolicy, videoPolicy } from "../http";
 import { ACCOUNT_RATE_LIMIT, MAX_FILE_BYTES, RATE_LIMIT, RATE_LIMIT_PERIOD_SECONDS, SINGLE_REQUEST_MAX_BYTES, WAF_LIMIT, WAF_PERIOD_SECONDS } from "../limits";
@@ -99,10 +100,10 @@ export function pageCsp(env: Env, nonce: string): string {
 const THEME_BOOT = `document.documentElement.classList.add("js");try{var p=JSON.parse(localStorage.getItem("sugi.prefs.v1")||"null"),h=new Date().getHours(),n=p&&typeof p.night==="boolean"?p.night:(h>=22||h<6);if(n)document.documentElement.classList.add("night")}catch(e){}`;
 
 /** A header link; `short` is the label used where the row is tight (768-960px wide). */
-function navLink(_ctx: Ctx, href: string, ids: PageId[], current: PageId, label: string, extraClass = "", short = label): string {
+function navLink(_ctx: Ctx, href: string, ids: PageId[], current: PageId, label: string, extraClass = "", short = label, icon = ""): string {
   const on = ids.includes(current) ? " on" : "";
-  const text = short === label ? label : `<span class="long">${label}</span><span class="short">${short}</span>`;
-  return `<a class="pill${extraClass}${on}" href="${href}" data-nav data-for="${ids.join(" ")}"${short === label ? "" : ` aria-label="${label.replace(/ ♡$/, "")}"`}>${text}</a>`;
+  const text = `${short === label ? label : `<span class="long">${label}</span><span class="short">${short}</span>`}${icon}`;
+  return `<a class="pill${extraClass}${on}" href="${href}" data-nav data-for="${ids.join(" ")}"${short === label ? "" : ` aria-label="${label}"`}>${text}</a>`;
 }
 
 export function header(ctx: Ctx, current: PageId): string {
@@ -114,7 +115,7 @@ export function header(ctx: Ctx, current: PageId): string {
     navLink(ctx, "/mine", ["mine", "album"], current, t("我的文件", "My files"), "", t("文件", "Files")),
     navLink(ctx, "/dev", ["dev"], current, t("开发者", "Developers"), "", t("开发", "Dev")),
     navLink(ctx, "/faq", ["faq", "terms", "privacy"], current, t("问问题", "FAQ"), "", t("问题", "FAQ")),
-    ...(ctx.flags.donate ? [navLink(ctx, "/donate", ["donate"], current, t("投喂 ♡", "Feed ♡"), "", t("投喂", "Feed"))] : []),
+    ...(ctx.flags.donate ? [navLink(ctx, "/donate", ["donate"], current, t("投喂", "Feed"), "", t("投喂", "Feed"), ICON_HEART(14))] : []),
     ...(ctx.flags.accounts
       ? [
           ctx.user
@@ -153,7 +154,7 @@ export function footer(ctx: Ctx): string {
   const t = tr(ctx);
   const source = brand(ctx.env).sourceUrl;
   return `<footer class="foot">
-<span class="c">© ${new Date().getUTCFullYear()} ${esc(brand(ctx.env).siteName)} · <span title="すぎ = ${t("太……了", "too much")}">kawaii すぎ</span> <span class="heart">♡</span></span>
+<span class="c">© ${new Date().getUTCFullYear()} ${esc(brand(ctx.env).siteName)} · <span title="すぎ = ${t("太……了", "too much")}">kawaii すぎ</span> ${ICON_HEART(13)}</span>
 <nav>
 <a href="/faq" data-nav>${t("问问题", "FAQ")}</a>
 <a href="/terms" data-nav>${t("使用条款", "Terms")}</a>

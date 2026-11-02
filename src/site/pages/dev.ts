@@ -213,8 +213,8 @@ ${codeBlock(ctx, [{ kind: "cmd", text: `curl -fsSL ${ctx.env.MAIN_ORIGIN}/instal
 ${codeBlock(ctx, [
   { kind: "comment", text: t("# 传一个或很多个，链接自动进剪贴板", "# upload one or many; the links land on your clipboard") },
   { kind: "cmd", text: "sugi up cat.png dog.gif" },
-  { kind: "out", text: `✿ cat.png  →  ${files}/k3x9qa2m.png` },
-  { kind: "out", text: `✿ dog.gif  →  ${files}/p0w2nd7x.gif` },
+  { kind: "out", text: `cat.png  →  ${files}/k3x9qa2m.png` },
+  { kind: "out", text: `dog.gif  →  ${files}/p0w2nd7x.gif` },
   { kind: "comment", text: t("# 临时保存 1 小时", "# keep for 1 hour"), gap: true },
   { kind: "cmd", text: "sugi up -e 1h secret.jpg" },
   { kind: "comment", text: t("# 直接传剪贴板里的截图", "# upload the screenshot on your clipboard"), gap: true },
