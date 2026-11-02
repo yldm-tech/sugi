@@ -219,6 +219,8 @@ burst_upload() {
 }
 trusted_codes="$(burst_upload "$trusted_token" trusted)"
 check "trusted burst of $burst: non-201 responses" "$(echo $trusted_codes | tr ' ' '\n' | grep -vc '^201$' || true)" 0
+# One full WAF window (10 s) between the bursts, so the untrusted burst starts from a clean edge counter; the WAF's counting is approximate right after the trusted burst.
+sleep 10
 untrusted_codes="$(burst_upload "$upload_token" untrusted)"
 n429="$(echo $untrusted_codes | tr ' ' '\n' | grep -c '^429$' || true)"
 if [ "$n429" -gt 0 ]; then pass "untrusted burst of $burst hit 429 ($n429 times, first at #$(head -n1 "$work/first429-untrusted"))"; else fail "untrusted burst of $burst never got 429"; fi

@@ -21,6 +21,8 @@ export const IMPORT_MAX_REDIRECTS = 3;
 /** Keep in sync with the `ratelimits` entry in wrangler.jsonc; the binding does not expose its own configuration. */
 export const RATE_LIMIT = 10;
 export const RATE_LIMIT_PERIOD_SECONDS = 60;
+/** Uploads per minute for a logged-in account (the ACCOUNT_LIMITER binding), counted per account rather than per IP. */
+export const ACCOUNT_RATE_LIMIT = 60;
 
 /** Keep in sync with the zone WAF rate limiting rule (see README); shown on the developer page. */
 export const WAF_LIMIT = 5;

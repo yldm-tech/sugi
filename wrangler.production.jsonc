@@ -77,6 +77,12 @@
       "name": "UPLOAD_LIMITER",
       "namespace_id": "48613",
       "simple": { "limit": 10, "period": 60 }
+    },
+    // Logged-in accounts (session or API token), counted per account: keep in sync with ACCOUNT_RATE_LIMIT in src/limits.ts.
+    {
+      "name": "ACCOUNT_LIMITER",
+      "namespace_id": "48614",
+      "simple": { "limit": 60, "period": 60 }
     }
   ]
   // Secrets come from ~/.config/sugi/secrets.env via --secrets-file: IP_HASH_SECRET, ADMIN_TOKEN, TRUSTED_TOKEN, CF_PURGE_TOKEN, RESEND_API_KEY, GITHUB_CLIENT_ID/SECRET, GOOGLE_CLIENT_ID/SECRET. Never UPLOAD_TOKEN: it would close uploads to the public.

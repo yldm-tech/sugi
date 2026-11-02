@@ -169,10 +169,14 @@ export async function authorizeUpload(request: Request, env: Env, bucket = "uplo
   if (!trusted) {
     // Neutral wording: the client is not told why, nor that a block exists.
     if (await isSourceBlocked(env, source)) throw new HttpError(403, "uploads are not accepted from this network");
-    const key = bucket === "upload" ? source : `${bucket}:${source}`;
+    // Accounts get their own, larger allowance (ACCOUNT_LIMITER), counted per account; everyone else is counted per source.
+    const account = principal && env.ACCOUNT_LIMITER;
+    const limiter = account ? env.ACCOUNT_LIMITER : env.UPLOAD_LIMITER;
+    const who = account ? `user:${principal.user.id}` : source;
+    const key = bucket === "upload" ? who : `${bucket}:${who}`;
     // `cost` > 1 reserves several uploads at once (one per upload link handed out).
     for (let i = 0; i < cost; i++) {
-      const { success } = await env.UPLOAD_LIMITER.limit({ key });
+      const { success } = await limiter.limit({ key });
       if (!success) throw new HttpError(429, "too many uploads, slow down", { "retry-after": String(RATE_LIMIT_PERIOD_SECONDS) });
     }
   }

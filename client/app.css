@@ -1238,6 +1238,17 @@ html.night .theme-night {
   font-weight: 700;
   color: var(--danger);
 }
+.item .notetext {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted2);
+}
+.tailbtns {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 .bar {
   position: relative;
   height: 12px;

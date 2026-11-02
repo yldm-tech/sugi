@@ -27,6 +27,7 @@
   | sugi trusted uploads skip rate limit（自定义规则，Skip） | `http_request_firewall_custom` | `27e91a99f7b8408fabc6039282a8087e` | `d16fcfbd3bc34e69a2bcbc3a5549a5fc` |
   | sugi upload rate limit per IP（速率规则，Block）         | `http_ratelimit`               | `ad7a86bc252e4cd08ddc0c1ca0e7678d` | `268641d130ef4e5d96184b7f1f57aa4d` |
 
+- **上传限流（2026-11-02 起）**：Worker 里没登录时每个来源（IP 的 HMAC）每分钟 10 次（`UPLOAD_LIMITER`），登录的账号（会话或个人 API 令牌）按账号每分钟 60 次（`ACCOUNT_LIMITER`），每日额度照旧。zone 的 WAF 跳过规则除了两个共享令牌，现在也跳过带 `sugi_session=` cookie 或 `Authorization: Bearer sugi_…` 的请求：伪造 cookie 只能绕过边缘这一层粗限流，Worker 仍按 IP 限制（cookie 无效时按匿名算），伪造的令牌直接 401。网页会根据页面配置里的限额自己排队、控速，碰到 429 就倒计时自动重试（最多 6 次），只有每日额度用完才算失败；命令行同样会控速并按 Retry-After 重试。
 - **监控**：日报和告警发到 secret `OPS_EMAIL`（在 `secrets.env` 里），由 cron `5 0 * * *` 发前一天的日报，每 10 分钟检查一次告警。`/healthz` 可以接 UptimeRobot 一类的外部监控。日报和告警都走 Resend，与登录邮件共用每天 100 封的免费额度。
 - **Cloudflare 通知**（要在控制台里开，API 令牌没有 Notifications 权限）：Manage Account → Notifications → Add → Billing → Usage Based Billing，分别给 Workers、R2、D1 设阈值；以及 Workers Weekly Summary。
 

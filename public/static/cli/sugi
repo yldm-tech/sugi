@@ -13,7 +13,7 @@
 
 set -uo pipefail
 
-SUGI_CLI_VERSION="1.2.0"
+SUGI_CLI_VERSION="1.2.1"
 BASE="${SUGI_URL:-https://sugi.moe}"
 BASE="${BASE%/}"
 CONF_DIR="${SUGI_CONFIG_DIR:-$HOME/.config/sugi}"
@@ -84,6 +84,37 @@ api() {
   printf '%s' "$code"
 }
 
+# api_upload: api for the requests that count against the upload limits (an upload, the start of a chunked upload). Without a token it paces itself under the per-IP limits (10 a minute, and the zone's 5 per 10 seconds); on a 429 that is not a daily quota it waits (Retry-After, or 10 seconds for the zone's own block page) and tries again, up to 6 times.
+api_upload() {
+  local method="$1" path="$2" out="$3" code attempt wait now n
+  shift 3
+  local starts="$TMPDIR_SUGI/starts"
+  for attempt in 0 1 2 3 4 5 6; do
+    if [ -z "$token" ]; then
+      touch "$starts"
+      while :; do
+        now="$(date +%s)"
+        n="$(awk -v now="$now" '$1 > now - 60' "$starts" | wc -l | tr -d ' ')"
+        [ "$n" -ge 10 ] && { sleep 2; continue; }
+        n="$(awk -v now="$now" '$1 > now - 11' "$starts" | wc -l | tr -d ' ')"
+        [ "$n" -ge 5 ] && { sleep 1; continue; }
+        break
+      done
+      date +%s >>"$starts"
+    fi
+    code="$(api "$method" "$path" "$out" -D "$out.h" "$@")"
+    [ "$code" = 429 ] || break
+    grep -qi quota "$out" 2>/dev/null && break
+    [ "$attempt" = 6 ] && break
+    wait="$(tr -d '\r' <"$out.h" 2>/dev/null | sed -nE 's/^[Rr]etry-[Aa]fter: *([0-9]+).*/\1/p' | head -n1)"
+    [ -z "$wait" ] && wait=10
+    [ "$wait" -gt 60 ] && wait=60
+    err "排队中，${wait} 秒后自动重试" "rate limited; retrying in ${wait}s"
+    sleep "$wait"
+  done
+  printf '%s' "$code"
+}
+
 json_field() { sed -nE "s/.*\"$1\":\"([^\"]*)\".*/\\1/p" "$2" | head -n1; }
 json_num() { sed -nE "s/.*\"$1\":([0-9]+).*/\\1/p" "$2" | head -n1; }
 json_escape() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' | tr -d '\000-\037'; }
@@ -144,7 +175,7 @@ upload_one() {
   [ -n "$name" ] && q="$q&name=$(urlencode "$name")"
   out="$TMPDIR_SUGI/resp.$$.$RANDOM.json"
   if [ "$size" -le "$SINGLE_MAX" ]; then
-    code="$(api PUT "/api/upload?$q" "$out" --upload-file "$file")"
+    code="$(api_upload PUT "/api/upload?$q" "$out" --upload-file "$file")"
     if [ "$code" != 201 ]; then server_error "$code" "$out"; return 1; fi
     printf '%s' "$out"
     return 0
@@ -152,7 +183,7 @@ upload_one() {
   # Chunked upload for files over 90 MB: Cloudflare caps request bodies at 100 MB.
   local parts=$(((size + PART_MB * 1048576 - 1) / (PART_MB * 1048576))) part="$TMPDIR_SUGI/part" session etags n
   dd if="$file" of="$part" bs=1048576 count="$PART_MB" 2>/dev/null
-  code="$(api POST "/api/uploads?size=$size&$q" "$out" --upload-file "$part")"
+  code="$(api_upload POST "/api/uploads?size=$size&$q" "$out" --upload-file "$part")"
   if [ "$code" != 201 ]; then server_error "$code" "$out"; return 1; fi
   session="$(json_field upload "$out")"
   etags="\"$(json_field etag "$out")\""

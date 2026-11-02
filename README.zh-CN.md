@@ -78,12 +78,14 @@ npx wrangler secret put ADMIN_TOKEN
 
 ### 限流
 
-Worker 通过 [Rate Limiting 绑定](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/)限制每个 IP 每 60 秒 10 次上传（打包链接另算 10 次）。这个绑定按 Cloudflare 节点计数、最终一致，短时间连续请求会多放过很多次才开始拦（我们实测连续上传到第 85 次左右才出现第一个 429）。对外开放的实例如果用了自己的域名，建议再加一条 WAF 速率规则（免费计划：按路径匹配，周期 10 秒）：
+Worker 通过 [Rate Limiting 绑定](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/)限制每个 IP 每 60 秒 10 次上传（打包链接另算 10 次），登录的账号按账号计、每 60 秒 60 次（`ACCOUNT_LIMITER`）。这个绑定按 Cloudflare 节点计数、最终一致，短时间连续请求会多放过很多次才开始拦（我们实测连续上传到第 85 次左右才出现第一个 429）。对外开放的实例如果用了自己的域名，建议再加一条 WAF 速率规则（免费计划：按路径匹配，周期 10 秒）：
 
 - 表达式 `http.request.uri.path in {"/upload" "/api/upload" "/api/uploads"}`，按 IP 计数，每 10 秒 5 次，超出后 Block 10 秒。
 - 用了 `TRUSTED_TOKEN` 的话，在它之前加一条自定义规则：路径相同且 `any(http.request.headers["authorization"][*] == "Bearer <TRUSTED_TOKEN>")` 时跳过 `http_ratelimit` 阶段。WAF 没法校验令牌，所以令牌的值会写在规则里，轮换时两处要一起改。
 
-然后把 `WAF_RATE_LIMIT` 设成 `1`。
+- 开了账号功能的话，在这条跳过规则后面加上 `or any(starts_with(http.request.headers["authorization"][*], "Bearer sugi_")) or http.cookie contains "sugi_session="`，让登录用户的上传也跳过。伪造 cookie 或令牌前缀只能绕过边缘这一层粗限流：会话无效时 Worker 仍按 IP 限制，不认识的令牌直接 401。
+
+然后把 `WAF_RATE_LIMIT` 设成 `1`。网页会从页面配置里读到适用于当前访客的限额，自己给上传队列控速；碰到 429 就放回队列倒计时、自动重试（只有每日额度用完才算失败）。命令行没有令牌时会自己控速，并遵守 `Retry-After`。
 
 ### 处理违规内容
 

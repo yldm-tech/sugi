@@ -24,7 +24,9 @@ import {
 } from "./moderation";
 import { createUploadLinks } from "./links";
 import { listReports, resolveReport } from "./reports";
+import { resolvePrincipal } from "./auth/core";
 import {
+  ACCOUNT_RATE_LIMIT,
   ALBUM_MAX_FILES,
   ALBUM_TITLE_MAX,
   MAX_FILE_BYTES,
@@ -91,7 +93,7 @@ function instructions(env: Env): string {
             ? "Videos (MP4, WebM) need an account: connect with an API token from the account page (Authorization: Bearer sugi_...); without one, video uploads fail with 403. Images need no token."
             : "Videos (MP4, WebM) can only be uploaded with this site's trusted or admin token; anonymous uploads are images only.",
         ]),
-    `Without a token, uploads are rate limited to ${RATE_LIMIT} per ${RATE_LIMIT_PERIOD_SECONDS} seconds per IP. Keep each upload's delete_token if the user may want to delete the file later (delete_file).`,
+    `Uploads are rate limited: ${RATE_LIMIT} per ${RATE_LIMIT_PERIOD_SECONDS} seconds per IP without an account, ${ACCOUNT_RATE_LIMIT} per ${RATE_LIMIT_PERIOD_SECONDS} seconds with an account token; create_upload pays for its links up front. On a 429, wait for its Retry-After and try again; a message about a daily quota means stop for today. Keep each upload's delete_token if the user may want to delete the file later (delete_file).`,
   ].join("\n");
 }
 
@@ -308,10 +310,12 @@ function buildServer(request: Request, env: Env, admin: boolean): McpServer {
     async (args) => {
       try {
         const count = args.count ?? 1;
-        if (count > RATE_LIMIT && !(await isTrusted(request, env)))
+        const max = (await resolvePrincipal(request, env)) ? ACCOUNT_RATE_LIMIT : RATE_LIMIT;
+        if (count > max && !(await isTrusted(request, env)))
           throw new HttpError(
             429,
-            `without a token you can upload at most ${RATE_LIMIT} files per ${RATE_LIMIT_PERIOD_SECONDS} seconds; ask for ${RATE_LIMIT} links or fewer at a time`,
+            `${max === RATE_LIMIT ? "without an account" : "with an account"} you can upload at most ${max} files per ${RATE_LIMIT_PERIOD_SECONDS} seconds; ask for ${max} links or fewer at a time and the rest after a minute`,
+            { "retry-after": String(RATE_LIMIT_PERIOD_SECONDS) },
           );
         const uploader = await authorizeUpload(request, env, "upload", count);
         const opts = parseOptions((k) =>
