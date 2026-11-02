@@ -1,4 +1,5 @@
 import { ASSETS } from "../generated/assets";
+import { donateConfig, donateOn } from "./pages/donate";
 import { type VideoPolicy, videoPolicy } from "../http";
 import { MAX_FILE_BYTES, RATE_LIMIT, RATE_LIMIT_PERIOD_SECONDS, SINGLE_REQUEST_MAX_BYTES } from "../limits";
 import { esc, jsonForScript, type Lang } from "./i18n";
@@ -68,16 +69,22 @@ export function flagsOf(env: Env): Flags {
         .map((s) => s.trim())
         .filter(Boolean)
     : [];
-  return { accounts, account, cli: env.FEATURE_CLI === "1", donate: env.FEATURE_DONATE === "1", video: videoPolicy(env) };
+  return { accounts, account, cli: env.FEATURE_CLI === "1", donate: donateOn(env), video: videoPolicy(env) };
 }
 
 export function pageCsp(env: Env, nonce: string): string {
   const files = [env.FILES_ORIGIN, env.TMP_ORIGIN].filter(Boolean).join(" ");
+  // The donate QR code may live on another host.
+  let qr = "";
+  try {
+    const u = donateConfig(env).alipayQr;
+    if (u) qr = ` ${new URL(u).origin}`;
+  } catch {}
   return [
     "default-src 'none'",
     `script-src 'nonce-${nonce}' 'strict-dynamic'`,
     `style-src 'nonce-${nonce}'`,
-    `img-src 'self' data: blob: ${files}`,
+    `img-src 'self' data: blob: ${files}${qr}`,
     `media-src 'self' blob: ${files}`,
     "font-src 'self'",
     "connect-src 'self'",

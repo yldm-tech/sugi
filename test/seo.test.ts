@@ -39,7 +39,7 @@ describe("robots and sitemap", () => {
     expect(xml).not.toContain("/donate");
     expect(xml).not.toContain("/login");
     expect(xml).not.toContain("/mine");
-    const on = await (await get("/sitemap.xml", {}, { FEATURE_DONATE: "1", FEATURE_ACCOUNTS: "1" })).text();
+    const on = await (await get("/sitemap.xml", {}, { DONATE_ALIPAY_LINK: "https://qr.alipay.com/test", FEATURE_ACCOUNTS: "1" })).text();
     expect(on).toContain("https://sugi.moe/donate?lang=zh");
     expect(on).toContain("https://sugi.moe/login?lang=en");
   });

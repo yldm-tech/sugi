@@ -61,12 +61,16 @@
     "MAINLAND_CHINA_FAQ": "0",
     // Who may upload videos. Cloudflare's CSAM Scanning Tool only checks images, so by default videos need a logged-in account or an API token (with accounts off: only TRUSTED_TOKEN and ADMIN_TOKEN). "anyone" lets anonymous visitors upload videos too.
     "VIDEO_UPLOADS": "account",
-    // Features: the CLI and MCP server are on; accounts and the donation page are off.
+    // Donate page ("Feed the hamster"): shown, with a nav entry, once a payment method is set. DONATE_ALIPAY_QR is an image URL of your Alipay collection code (upload it to this site and use the files link), DONATE_ALIPAY_LINK the qr.alipay.com link behind it. DONATE_DOMAIN_COST_USD is your yearly domain renewal in US dollars (the cost list leaves it out when empty), DONATE_THANKS a comma-separated thank-you list (hidden when empty).
+    "DONATE_ALIPAY_QR": "",
+    "DONATE_ALIPAY_LINK": "",
+    "DONATE_DOMAIN_COST_USD": "",
+    "DONATE_THANKS": "",
+    // Features: the CLI and MCP server are on; accounts are off.
     "FEATURE_ACCOUNTS": "0",
     // With accounts on: which parts are live, comma-separated, from email, github, google, passkey, sync, tokens.
     "ACCOUNT_FEATURES": "email",
-    "FEATURE_CLI": "1",
-    "FEATURE_DONATE": "0"
+    "FEATURE_CLI": "1"
   },
   // Created on the first deploy (named after the Worker). The schema is applied by the Worker itself.
   "d1_databases": [
