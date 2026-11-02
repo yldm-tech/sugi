@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Rebuilds the self-hosted font subsets in public/static/fonts from the upstream Google Fonts sources (SIL Open Font License).
 #
-# ZCOOL KuaiLe is cut down to the characters that actually appear in the page templates and the browser strings, plus printable ASCII; Fredoka is cut to Latin and common punctuation with its weight axis limited to 500-700. Re-run this after changing any user-facing text, otherwise new characters fall back to system fonts.
+# ZCOOL KuaiLe is cut down to the characters of the text set in it (page titles, empty states, the mascot's lines), plus printable ASCII; Fredoka is cut to Latin and common punctuation with its weight axis limited to 500-700. Re-run this after changing any user-facing text, otherwise new characters fall back to system fonts.
 #
 # Needs: curl, uv (runs fonttools without installing it into the project).
 set -euo pipefail
@@ -23,16 +23,17 @@ fetch "$base/fredoka/OFL.txt" "$cache/OFL-fredoka.txt"
 
 ft() { timeout 600 uvx --quiet --from 'fonttools[woff]==4.60.1' "$@"; }
 
-# Every non-ASCII character used in templates and client strings, plus printable ASCII.
+# Only text set in the display face needs its glyphs (see --f-display in client/app.css): page titles (<h1> lines in the templates), empty states (class="cute"), and the mascot's bubble lines (bubble*/pokes in strings.ts and the mascotStage call). Plus printable ASCII.
 text="$cache/zcool-text.txt"
 timeout 60 python3 -I - "$here" "$text" <<'PY'
-import pathlib, sys
+import pathlib, re, sys
 root = pathlib.Path(sys.argv[1])
 chars = set(chr(c) for c in range(0x20, 0x7f))
-for p in list((root / "src" / "site").rglob("*.ts")) + list((root / "client").rglob("*.ts")):
-    for ch in p.read_text(encoding="utf-8"):
-        if ord(ch) > 0x7f:
-            chars.add(ch)
+display = re.compile(r'<h1[ >]|class="cute|mascotStage\(|^\s*(bubble\w*|pokes):')
+for p in (root / "src" / "site").rglob("*.ts"):
+    for line in p.read_text(encoding="utf-8").splitlines():
+        if display.search(line):
+            chars.update(ch for ch in line if ord(ch) > 0x7f)
 pathlib.Path(sys.argv[2]).write_text("".join(sorted(chars)), encoding="utf-8")
 print(f"zcool subset: {len(chars)} characters")
 PY
