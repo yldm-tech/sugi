@@ -13,7 +13,7 @@
 
 set -uo pipefail
 
-SUGI_CLI_VERSION="1.1.0"
+SUGI_CLI_VERSION="1.1.1"
 BASE="${SUGI_URL:-https://sugi.moe}"
 BASE="${BASE%/}"
 CONF_DIR="${SUGI_CONFIG_DIR:-$HOME/.config/sugi}"
@@ -341,7 +341,7 @@ cmd_login() {
   local code
   code="$(curl -sS -K "$cfg" -o "$TMPDIR_SUGI/me.json" -w '%{http_code}' "$BASE/api/me")" || code=000
   if [ "$code" != 200 ]; then
-    err "这个令牌用不了（$code），去 $BASE/account 看看" "the server did not accept this token ($code); check $BASE/account"
+    err "这个令牌用不了（${code}），去 ${BASE}/account 看看" "the server did not accept this token ($code); check $BASE/account"
     exit 1
   fi
   umask 077

@@ -207,6 +207,8 @@ describe("CLI distribution", () => {
     expect(cli.status).toBe(200);
     expect(cli.headers.get("cache-control")).toBe("no-cache");
     const body = new Uint8Array(await cli.arrayBuffer());
+    // bash 3.2 (macOS) reads non-ASCII bytes after $name as part of the name, so every variable next to Chinese text must be written ${name}.
+    expect(new TextDecoder().decode(body).match(/\$[A-Za-z_][A-Za-z0-9_]*[^\x00-\x7f]/g)).toBeNull();
     // install.sh rewrites exactly this line for servers other than sugi.moe.
     // biome-ignore lint/suspicious/noTemplateCurlyInString: the shell line itself contains ${...}
     expect(new TextDecoder().decode(body).split("\n")).toContain('BASE="${SUGI_URL:-https://sugi.moe}"');
