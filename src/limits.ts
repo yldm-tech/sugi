@@ -30,6 +30,9 @@ export const WAF_PERIOD_SECONDS = 10;
 export const UPLOAD_LINK_MAX = 50;
 export const UPLOAD_LINK_TTL_SECONDS = 600;
 
+/** Content blocklist: files up to this size are hashed on upload (and on takedown). Hashing a whole 90-200 MB file exceeds the Worker CPU limit (error 1102), so bigger files are not checked. */
+export const HASH_MAX_BYTES = 20 * MiB;
+
 /** Album limits. */
 export const ALBUM_MAX_FILES = 100;
 export const ALBUM_TITLE_MAX = 80;

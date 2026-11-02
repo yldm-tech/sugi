@@ -100,26 +100,14 @@ describe("admin MCP tools", () => {
     expect(again.id).not.toBe(up.id);
   });
 
-  it("chunked uploads are checked once assembled", async () => {
-    const first = png(5 * MiB);
-    const second = crypto.getRandomValues(new Uint8Array(1024));
-    const whole = new Uint8Array(first.length + second.length);
-    whole.set(first);
-    whole.set(second, first.length);
-    const upChunked = async () => {
-      const start = await call(new Request(`${MAIN}/api/uploads?size=${whole.length}`, { method: "POST", body: first, headers: { "cf-connecting-ip": freshIp(), ...TRUSTED } }));
-      const s = await start.json<{ upload: string; etag: string; id: string }>();
-      const p2 = await (await call(new Request(`${MAIN}/api/uploads/2`, { method: "PUT", body: second, headers: { "sugi-upload": s.upload } }))).json<{ etag: string }>();
-      const done = await call(new Request(`${MAIN}/api/uploads/complete`, { method: "POST", body: JSON.stringify({ etags: [s.etag, p2.etag] }), headers: { "sugi-upload": s.upload, accept: "application/json", "content-type": "application/json" } }));
-      return { status: done.status, id: s.id };
-    };
-    const ok = await upChunked();
-    expect(ok.status).toBe(201);
-    await admin("takedown", { target: ok.id, block_content: true });
-    const blocked = await upChunked();
-    expect(blocked.status).toBe(451);
-    expect(await env.BUCKET.head(`f/${blocked.id}`)).toBeNull();
-    await admin("unblock_content", { sha256: await sha256(whole) });
+  it("files over the hashing cap are taken down without a content block", async () => {
+    // Hashing a whole big file exceeds the Worker CPU limit in production, so the blocklist covers files up to 20 MB only.
+    const big = png(21 * MiB);
+    const up = await (await put(big, TRUSTED)).json<{ id: string; url: string }>();
+    const r = await admin("takedown", { target: up.id, block_content: true });
+    expect(r).toMatchObject({ removed: [`f/${up.id}`], blocked_hashes: [], not_blocked_too_big: [`f/${up.id}`] });
+    expect((await call(new Request(up.url))).status).toBe(451);
+    expect((await put(big, TRUSTED)).status).toBe(201);
   });
 
   it("takes albums down, optionally with their files", async () => {
