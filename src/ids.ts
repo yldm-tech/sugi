@@ -30,6 +30,9 @@ export const CUTE_WORDS = [
   "wonton", "yam", "yuzu", "zest", "acorncap", "applepie", "babka", "beanie", "blini", "brioche", "candle", "cheddar", "churro", "crumble", "eclair", "fondue", "galette", "granola", "gyoza", "jasmine",
   "kabocha", "kimchi", "koala", "lavender", "lentil", "marzipan", "mascot", "miso", "nacho", "nectarine", "omelet", "panda", "paprika", "pastel", "penguin", "persimmon", "pinecone", "pixel", "plushie", "praline",
   "puffin", "quokka", "rabbit", "risotto", "rosemary", "saffron", "seal", "shiba", "smore", "sparrow", "squirrel", "tamago", "tapioca", "teddy", "tiramisu", "tortilla", "turnip", "vanilla", "whiskers", "yogurt",
+  "anise", "azuki", "bluebell", "bramble", "buckwheat", "buttercup", "calico", "camellia", "canary", "chai", "chamomile", "citrus", "clementine", "cobble", "comet", "coral", "cornbread", "cranberry", "daikon", "dandelion",
+  "doodle", "duckling", "edamame", "elderberry", "feather", "firefly", "flapjack", "frost", "gingko", "gooseberry", "guava", "hamster", "hedgehog", "hibiscus", "huckleberry", "icing", "jujube", "kitten", "kumquat", "ladybug",
+  "lantern", "lilac", "loquat", "lullaby", "marshmallow", "minnow", "mulberry", "nutella", "orchid", "otter", "peony", "pinwheel", "plover", "pomelo", "puppy", "robin", "sundae", "teapot", "tinsel", "wren",
 ];
 
 /** "word-word-NN": easy to read aloud, but only a few million combinations, so easier to guess than randomId(). */
