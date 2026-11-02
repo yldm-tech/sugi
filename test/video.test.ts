@@ -92,6 +92,7 @@ describe("who may upload videos (VIDEO_UPLOADS)", () => {
     expect(await page("/?lang=zh", { cookie: await session() })).not.toContain(`视频要先 <a href="/login"`);
     expect(await page("/faq?lang=en")).toContain("Cloudflare's CSAM Scanning Tool checks images but not videos, so videos need an account");
     expect(await page("/terms?lang=zh")).toContain("视频要先登录（或者用 API 令牌）才能上传");
+    expect(await page("/faq?lang=zh")).toContain("传图片是这样；Cloudflare 的 CSAM 扫描工具只检测图片");
     expect(await page("/?lang=en", {})).toContain('"video":"account"');
     expect(
       await call(new Request(`${MAIN}/?lang=en`, { headers: { accept: "text/html" } }), { ...ACCOUNTS, VIDEO_UPLOADS: "anyone" }).then((r) => r.text()),

@@ -57,6 +57,8 @@
     // Alert emails to OPS_EMAIL (a secret, like the daily report): server errors per hour, and bytes uploaded in a day (0 = off).
     "ALERT_5XX_PER_HOUR": "20",
     "ALERT_DAILY_UPLOAD_BYTES": "0",
+    // Set to "1" to add an FAQ entry on access from mainland China, which states that the site has no ICP filing there and runs on Cloudflare's global network (not its China Network). Only if that is true for your deployment.
+    "MAINLAND_CHINA_FAQ": "0",
     // Who may upload videos. Cloudflare's CSAM Scanning Tool only checks images, so by default videos need a logged-in account or an API token (with accounts off: only TRUSTED_TOKEN and ADMIN_TOKEN). "anyone" lets anonymous visitors upload videos too.
     "VIDEO_UPLOADS": "account",
     // Features: the CLI and MCP server are on; accounts and the donation page are off.

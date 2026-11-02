@@ -55,20 +55,22 @@ export function faqPage(ctx: Ctx): Page {
     ),
     faqItem(
       t("一定要注册吗？", "Do I need an account?"),
-      ctx.flags.account.includes("sync")
-        ? t(
-            "不用。不登录也能传，记录只保存在当前浏览器里。想换设备也不丢，可以登录，之前传的文件能一键认领。",
-            "No. You can upload without logging in; your history stays in this browser. Log in if you want it on every device, and claim your earlier uploads in one click.",
-          )
-        : ctx.flags.accounts
+      `${
+        ctx.flags.account.includes("sync")
           ? t(
-              "不用。不登录也能传，记录只保存在当前浏览器里（「我的文件」）。登录后，新上传的文件会记在你的账号下。",
-              "No. You can upload without logging in; your history stays in this browser (“My files”). Once you log in, new uploads are recorded under your account.",
+              "不用。不登录也能传，记录只保存在当前浏览器里。想换设备也不丢，可以登录，之前传的文件能一键认领。",
+              "No. You can upload without logging in; your history stays in this browser. Log in if you want it on every device, and claim your earlier uploads in one click.",
             )
-          : t(
-              "不用，sugi 现在没有账号，打开就能传。上传记录和删除凭证保存在你当前用的浏览器里（「我的文件」），可以随时导出一份备份。",
-              "No. sugi has no accounts right now; just open it and upload. Your history and delete tokens are kept in this browser (“My files”), and you can export them at any time.",
-            ),
+          : ctx.flags.accounts
+            ? t(
+                "不用。不登录也能传，记录只保存在当前浏览器里（「我的文件」）。登录后，新上传的文件会记在你的账号下。",
+                "No. You can upload without logging in; your history stays in this browser (“My files”). Once you log in, new uploads are recorded under your account.",
+              )
+            : t(
+                "不用，sugi 现在没有账号，打开就能传。上传记录和删除凭证保存在你当前用的浏览器里（「我的文件」），可以随时导出一份备份。",
+                "No. sugi has no accounts right now; just open it and upload. Your history and delete tokens are kept in this browser (“My files”), and you can export them at any time.",
+              )
+      }${ctx.flags.video === "anyone" ? "" : ctx.lang === "zh" ? `传图片是这样；${videoRule(ctx)}` : ` That is for pictures: ${videoRule(ctx)}`}`,
     ),
     faqItem(
       t("文件会保存多久？", "How long are files kept?"),
@@ -126,6 +128,18 @@ export function faqPage(ctx: Ctx): Page {
         "Yes. Every link is a direct link and hotlinking is allowed. You can copy them as Markdown, HTML or BBCode right after uploading.",
       ),
     ),
+    // MAINLAND_CHINA_FAQ: the operator states that the site has no ICP filing in mainland China (true for sugi.moe), so it is off by default.
+    ...(ctx.env.MAINLAND_CHINA_FAQ === "1"
+      ? [
+          faqItem(
+            t("在中国大陆能用吗？", "Does it work in mainland China?"),
+            t(
+              `多数时候能用，但我们不能保证速度和稳定性。${esc(b.siteName)} 运行在 Cloudflare 的全球网络上，没有在中国大陆做 ICP 备案，也没有用 Cloudflare 的中国网络，所以从大陆访问时，请求会绕到境外的节点。速度取决于你的运营商、地区和时段，晚高峰可能明显变慢，个别网络下也可能完全打不开，网页、上传和图片链接都一样。如果图片主要给大陆读者看，或者内容很重要，请另外存一份。`,
+              `Usually, but we cannot promise speed or reliability there. ${esc(b.siteName)} runs on Cloudflare's global network, has no ICP filing in mainland China and does not use Cloudflare's China Network, so requests from the mainland are served from data centres outside it. Speed depends on your carrier, region and the time of day; it can slow down a lot in the evening peak, and on some networks the site may not load at all. This applies to the website, uploads and image links alike. If your readers are mostly in mainland China, or the pictures matter, keep a copy elsewhere too.`,
+            ),
+          ),
+        ]
+      : []),
     faqItem(
       t("看到不好的内容怎么办？", "I found something bad. What do I do?"),
       t(

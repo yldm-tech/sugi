@@ -48,3 +48,14 @@ describe("integrations", () => {
     expect(withCli).toContain("~/.local/bin/sugi up --plain --no-copy");
   });
 });
+
+describe("FAQ on mainland China", () => {
+  it("is shown only when the operator turns it on", async () => {
+    expect(await page("/faq?lang=zh")).not.toContain("在中国大陆能用吗？");
+    const zh = await page("/faq?lang=zh", { MAINLAND_CHINA_FAQ: "1" });
+    expect(zh).toContain("在中国大陆能用吗？");
+    expect(zh).toContain("没有在中国大陆做 ICP 备案");
+    const en = await page("/faq?lang=en", { MAINLAND_CHINA_FAQ: "1" });
+    expect(en).toContain("has no ICP filing in mainland China");
+  });
+});
