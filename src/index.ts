@@ -17,6 +17,7 @@ import { handleMcp } from "./mcp";
 import { handleInboxRead, receiveEmail, sweepInbox } from "./inbox";
 import { handleMagicRequest, handleMagicVerify } from "./auth/email";
 import { handleLogout, handleMe } from "./auth/me";
+import { handleOAuthCallback, handleOAuthStart, type Provider } from "./auth/oauth";
 
 // Only the default handler may be exported from this module: workerd treats every named export of the main module as an entrypoint.
 
@@ -150,6 +151,12 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (pathname === "/upload") {
     if (method === "POST" || method === "PUT") return handleLegacyUpload(request, env);
     throw methodNotAllowed("POST, PUT");
+  }
+  const oauth = /^\/auth\/(github|google)(\/callback)?$/.exec(pathname);
+  if (oauth) {
+    if (method !== "GET" && method !== "HEAD") throw methodNotAllowed("GET");
+    const provider = oauth[1] as Provider;
+    return oauth[2] ? handleOAuthCallback(request, env, provider) : handleOAuthStart(request, env, provider);
   }
   if (pathname === "/auth/email" || pathname === "/auth/email/verify" || pathname === "/auth/logout") {
     if (method === "POST")

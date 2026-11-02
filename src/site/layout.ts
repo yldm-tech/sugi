@@ -24,7 +24,7 @@ export interface Ctx {
   /** Query string of the request (login messages). */
   query?: URLSearchParams;
   /** The signed-in account, when accounts are on. */
-  user?: { email: string | null; name: string } | null;
+  user?: { email: string | null; name: string; providers: string[] } | null;
 }
 
 export type PageId = "home" | "mine" | "dev" | "faq" | "terms" | "privacy" | "file" | "album" | "login" | "account" | "donate" | "notfound";

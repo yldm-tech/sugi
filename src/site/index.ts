@@ -75,7 +75,12 @@ export async function handleSite(request: Request, env: Env, pathname: string): 
   const { ctx, setCookie } = makeCtx(request, env);
   if (ctx.flags.accounts) {
     const p = await resolvePrincipal(request, env).catch(() => null);
-    ctx.user = p ? { email: p.user.email, name: displayName(p.user) } : null;
+    const providers = p
+      ? (await env.DB.prepare("SELECT provider FROM identities WHERE user_id = ? ORDER BY created_at").bind(p.user.id).all<{ provider: string }>()).results.map(
+          (r) => r.provider,
+        )
+      : [];
+    ctx.user = p ? { email: p.user.email, name: displayName(p.user), providers } : null;
   }
   const page = await resolvePage(ctx, pathname);
   const headers: Record<string, string> = {
