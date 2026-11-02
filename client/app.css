@@ -2573,3 +2573,19 @@ html.night .theme-night {
   font-size: 14px;
   font-weight: 400;
 }
+
+/* ---- brand icons (from @yldm-tech/ai-logo) ---- */
+.brand-icon {
+  flex: none;
+  vertical-align: -3px;
+}
+.mini.with-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.provider .brand-icon {
+  width: 15px;
+  height: 15px;
+  margin-right: 4px;
+}

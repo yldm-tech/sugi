@@ -256,7 +256,7 @@ describe("GitHub login", () => {
     }>();
     expect(me).toMatchObject({ email: "octo@example.com", name: "Octo Cat" });
     const account = await (await call(new Request(`${MAIN}/account?lang=en`, { headers: { cookie: `sugi_session=${session}` } }), GH)).text();
-    expect(account).toContain("Log in with: GitHub");
+    expect(account).toMatch(/Log in with: <span class="nw provider"><svg[\s\S]*?<\/svg>GitHub<\/span>/);
     expect(account).not.toContain('href="/auth/github"');
   });
 
@@ -273,7 +273,7 @@ describe("GitHub login", () => {
     vi.restoreAllMocks();
     const account = await (await call(new Request(`${MAIN}/account?lang=en`, { headers: { cookie: `sugi_session=${session}` } }), GH)).text();
     expect(account).toContain("linker@example.com");
-    expect(account).toContain("Email · GitHub");
+    expect(account).toMatch(/Email<\/span> · <span class="nw provider"><svg[\s\S]*?<\/svg>GitHub<\/span>/);
   });
 });
 
@@ -583,5 +583,25 @@ describe("API tokens", () => {
       expect((await call(new Request(`${MAIN}/api/upload`, { method: "PUT", body: png(), headers: { ...bearer, "cf-connecting-ip": ip } }), TK)).status).toBe(
         201,
       );
+  });
+});
+
+describe("provider icons", () => {
+  it("come from @yldm-tech/ai-logo: GitHub in the text colour, Google in its colours", async () => {
+    const { BRAND_ICONS } = await import("../src/site/brand-icons");
+    expect(BRAND_ICONS.github).toContain('fill="currentColor"');
+    expect(BRAND_ICONS.google).toContain('fill="#4285F4"');
+    const html = await (
+      await call(new Request(`${MAIN}/login?lang=en`), {
+        ...ON,
+        ACCOUNT_FEATURES: "email,github,google",
+        GITHUB_CLIENT_ID: "a",
+        GITHUB_CLIENT_SECRET: "b",
+        GOOGLE_CLIENT_ID: "c",
+        GOOGLE_CLIENT_SECRET: "d",
+      })
+    ).text();
+    expect(html).toContain(`<a class="mini with-icon" href="/auth/github">${BRAND_ICONS.github}<span>Log in with GitHub</span></a>`);
+    expect(html).toContain(`<a class="mini with-icon" href="/auth/google">${BRAND_ICONS.google}<span>Log in with Google</span></a>`);
   });
 });

@@ -31,7 +31,9 @@ try {
   const svg = (src) => {
     const head = src.slice(0, src.indexOf("children:"));
     const attrs = { viewBox: str(head, "viewBox"), fill: str(head, "fill"), "fill-rule": str(head, "fillRule") };
-    const paths = [...src.matchAll(/jsx\("path", \{\s*d: "([^"]+)"(?:,\s*fill: "([^"]+)")?\s*\}\)/g)].map(([, d, fill]) => `<path d="${d}"${fill ? ` fill="${fill}"` : ""}/>`);
+    const paths = [...src.matchAll(/jsx\("path", \{\s*d: "([^"]+)"(?:,\s*fill: "([^"]+)")?\s*\}\)/g)].map(
+      ([, d, fill]) => `<path d="${d}"${fill ? ` fill="${fill}"` : ""}/>`,
+    );
     if (!attrs.viewBox || paths.length === 0) throw new Error("unexpected icon source");
     const a = Object.entries(attrs)
       .filter(([, v]) => v)
