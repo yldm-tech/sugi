@@ -36,6 +36,7 @@ import { handlePasskeyLoginOptions, handlePasskeyLoginVerify, handlePasskeyRegis
 import { handleOAuthCallback, handleOAuthStart, type Provider } from "./auth/oauth";
 import { handleAdmin, matchAdmin } from "./admin";
 import { sweepAdminSessions } from "./admin/auth";
+import { reindexStep } from "./fileindex";
 
 // Only the default handler may be exported from this module: workerd treats every named export of the main module as an entrypoint.
 
@@ -294,6 +295,7 @@ export default {
         await sweepReports(env);
         await sweepAdminSessions(env);
         await runBackup(env);
+        await reindexStep(env);
         await checkAlerts(env);
         // A failed digest stays unsent and is retried on the next run.
         await notifyReports(env).catch(() => undefined);

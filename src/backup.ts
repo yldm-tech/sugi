@@ -1,6 +1,7 @@
 // Backup of the bucket to a second R2 bucket (the optional BACKUP binding; off when it is absent). The cron copies permanent files a small batch at a time, so each run stays far below the Worker CPU limit, and walks the whole bucket over and over with a cursor kept in ops_state. Temporary files are not backed up: they disappear within three days anyway.
 //
 // The backup follows the live bucket with a delay in one direction only: a file deleted by its owner (or by the account deletion) keeps its backup copy for BACKUP_GRACE_MS, so a mistake that deletes many files can be undone, and then the copy goes too. A takedown removes the backup copy at once (moderation.ts calls dropFromBackup), so removed content never survives in the backup.
+import { indexObject } from "./fileindex";
 import { HttpError } from "./http";
 import { isTombstone } from "./moderation";
 import { LEGACY_KEY_RE } from "./legacy";
@@ -160,6 +161,7 @@ export async function restoreFromBackup(
     const put = await env.BUCKET.put(key, copy.body, { httpMetadata: copy.httpMetadata, customMetadata: meta, onlyIf: { etagDoesNotMatch: "*" } });
     if (put) {
       restored.push(key);
+      await indexObject(env, key, put);
       await env.DB.prepare("DELETE FROM backup_gone WHERE key = ?").bind(key).run();
     } else skipped.push({ key, why: "appeared meanwhile" });
   }

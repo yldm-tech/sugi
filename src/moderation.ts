@@ -2,6 +2,7 @@
 import { purgeUrls } from "./cache";
 import { dropFromBackup } from "./backup";
 import { toHex } from "./crypto";
+import { unindexStatements } from "./fileindex";
 import { describe, fileKey, pageUrl, publicUrl } from "./files";
 import { MEDIA_BY_EXT } from "./sniff";
 import { HASH_MAX_BYTES } from "./limits";
@@ -268,6 +269,7 @@ async function takedownKeys(env: Env, keys: string[], opts: TakedownOptions, act
     }
     removed.push(key);
   }
+  stmts.push(...unindexStatements(env, [...removed, ...already]));
   stmts.push(
     await auditLog(env, action, logTarget, opts.reason ?? null, {
       via: opts.via ?? null,

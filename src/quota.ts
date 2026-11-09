@@ -96,9 +96,9 @@ export async function recordUsage(env: Env, u: Uploader, bytes: number): Promise
   );
 }
 
-/** Cron: keep a week of totals. */
+/** Cron: keep a week of per-source and per-account totals, and 90 days of the site-wide one (one row a day) for the admin dashboard's charts. */
 export async function sweepUsage(env: Env, now = Date.now()): Promise<void> {
-  await env.DB.prepare("DELETE FROM usage_daily WHERE day < ?")
-    .bind(today(now - 7 * 86400e3))
+  await env.DB.prepare("DELETE FROM usage_daily WHERE day < ? AND (scope != 'global' OR day < ?)")
+    .bind(today(now - 7 * 86400e3), today(now - 90 * 86400e3))
     .run();
 }

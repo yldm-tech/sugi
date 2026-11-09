@@ -14,6 +14,7 @@ import { peekStream, unsupportedType } from "./upload";
 import { authorizeUpload, HttpError, jsonResponse } from "./http";
 import { checkQuota, recordUsage } from "./quota";
 import { ownFile } from "./auth/core";
+import { indexObject } from "./fileindex";
 import { MAX_FILE_BYTES, MAX_PART_BYTES, MIN_PART_BYTES } from "./limits";
 import { MEDIA_BY_EXT, SNIFF_BYTES, sniffMedia } from "./sniff";
 
@@ -180,6 +181,7 @@ export async function handleChunkComplete(request: Request, env: Env): Promise<R
   // Chunked files are always over HASH_MAX_BYTES, so the content blocklist does not apply to them (hashing them exceeds the CPU limit).
   const type = MEDIA_BY_EXT[s.ext];
   await ownFile(env, s.uid, s.k);
+  await indexObject(env, s.k, obj);
   await recordUsage(env, { source: s.src ?? "unknown", trusted: Boolean(s.tr), userId: s.uid }, s.sz);
   return uploadResponse(request, result(env, { id: s.id, key: s.k, type, token: s.tk, expires: s.ex, r2: {} }, s.sz, sanitizeName(s.nm)));
 }

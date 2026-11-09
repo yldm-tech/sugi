@@ -2,6 +2,7 @@
 import { deletionResponse, purgeCache } from "./cache";
 import { constantTimeEqual, sha256Hex } from "./crypto";
 import { assertMayUpload, HttpError, isAdmin, jsonResponse, textResponse, type Uploader, wantsJson } from "./http";
+import { unindex } from "./fileindex";
 import { assertFileNotRemoved, isTombstone, takedown } from "./moderation";
 import { cuteId, deleteToken, isFileId, randomId } from "./ids";
 import { accountsOn, forgetFiles, ownsFile, resolvePrincipal } from "./auth/core";
@@ -206,6 +207,7 @@ export async function deleteFile(env: Env, id: string, auth: DeleteAuth): Promis
       if (!ok) throw new HttpError(403, "token" in auth ? "wrong delete token" : "this file does not belong to your account");
     }
     await env.BUCKET.delete(key);
+    await unindex(env, [key]);
     if (accountsOn(env)) await forgetFiles(env, [key]);
     return { key, cachePurged: await purgeCache(env, [key]) };
   }
@@ -254,6 +256,7 @@ export async function sweepExpired(env: Env, now = Date.now()): Promise<{ delete
     cursor = page.truncated ? page.cursor : undefined;
   } while (cursor);
   for (let i = 0; i < expired.length; i += 1000) await env.BUCKET.delete(expired.slice(i, i + 1000));
+  await unindex(env, expired);
   if (accountsOn(env)) await forgetFiles(env, expired);
   return { deleted: expired, cachePurged: await purgeCache(env, expired) };
 }
