@@ -66,10 +66,16 @@ export function brand(env: Env): Brand {
 }
 
 /**
- * Fills in the origins a template deployment leaves empty: the main origin is the request's own origin (e.g. https://my-sugi.example.workers.dev), and without dedicated file hosts files are served from paths on the main host.
+ * Fills in the origins a template deployment leaves empty: the main origin is the request's own origin (e.g. https://my-sugi.example.workers.dev), and without dedicated hosts files are served from paths on the main host and the admin dashboard from /_admin.
  */
 export function withDefaults(env: Env, request: Request): Env {
-  if (env.MAIN_ORIGIN && env.FILES_ORIGIN && env.TMP_ORIGIN) return env;
+  if (env.MAIN_ORIGIN && env.FILES_ORIGIN && env.TMP_ORIGIN && env.ADMIN_ORIGIN) return env;
   const origin = env.MAIN_ORIGIN || new URL(request.url).origin;
-  return { ...env, MAIN_ORIGIN: origin, FILES_ORIGIN: env.FILES_ORIGIN || `${origin}/_files`, TMP_ORIGIN: env.TMP_ORIGIN || `${origin}/_tmp` };
+  return {
+    ...env,
+    MAIN_ORIGIN: origin,
+    FILES_ORIGIN: env.FILES_ORIGIN || `${origin}/_files`,
+    TMP_ORIGIN: env.TMP_ORIGIN || `${origin}/_tmp`,
+    ADMIN_ORIGIN: env.ADMIN_ORIGIN || `${origin}/_admin`,
+  };
 }

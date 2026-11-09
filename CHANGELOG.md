@@ -17,6 +17,8 @@ All notable changes to sugi are listed here. The format follows [Keep a Changelo
 
 - `NOINDEX` keeps an instance out of search engines (robots.txt and `X-Robots-Tag`), for staging and private instances.
 
+- An admin dashboard on `ADMIN_ORIGIN` (default `/_admin`; https://admin.sugi.moe for sugi.moe): reports with blurred previews, look-up, takedowns, everything from one source, blocks, the audit log, the day's numbers and the backup, behind a session opened with `ADMIN_TOKEN` or a personal admin token.
+
 - Optional backup of permanent files to a second R2 bucket (`BACKUP` binding), with a 7-day grace period for deleted files, immediate removal of taken-down files, and the admin MCP tools `backup_status` and `restore_from_backup`.
 
 ### Changed
