@@ -98,7 +98,7 @@ export async function systemPage(v: View, currentSession: string): Promise<Rende
 </div>
 <div class="cols">
 <div class="card"><h2>${t("服务器错误（48 小时）", "Server errors, 48 hours")}</h2>${barChart(
-      errors.map((p) => ({ label: `${p.hour.slice(11)}:00`, value: p.n, tip: `${p.hour.replace("T", " ")}:00 UTC: ${p.n}` })),
+      errors.map((p) => ({ label: `${p.hour.slice(5, 10)} ${p.hour.slice(11)}:00`, value: p.n, tip: `${p.hour.replace("T", " ")}:00 UTC: ${p.n}` })),
       fmtNum,
       "bad",
     )}</div>

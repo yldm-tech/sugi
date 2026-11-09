@@ -120,7 +120,7 @@ admin -H 'content-type: application/json' -d '{"source":"<hmac>","dry_run":true}
 
 ### 管理后台
 
-同样的管理功能也能在浏览器里用：打开 `ADMIN_ORIGIN`（默认是网站上的 `/_admin`），用 `ADMIN_TOKEN` 或角色为 `admin` 的个人 API 令牌登录。可以看举报（带模糊预览，CSAM 举报一律不预览）并处理，查询任意链接，下架文件和打包链接，查看同一来源的全部上传并整批下架或禁止上传，查看和解除封禁，看审计日志、当天的数字和备份。会话 12 小时有效，存在只发给后台的 HttpOnly、SameSite=Strict cookie 里；登录所用的令牌一旦轮换或失去 admin 角色，会话立即失效。页面不带任何脚本，所有写操作只接受来自后台自身的请求，每个操作都和 MCP 工具记在同一份审计日志里。
+同样的管理功能也能在浏览器里用：打开 `ADMIN_ORIGIN`（默认是网站上的 `/_admin`），用 `ADMIN_TOKEN` 或角色为 `admin` 的个人 API 令牌登录。包括：概览（总量、30 天趋势、存储构成、最新上传）；全部文件（可筛选，预览默认模糊，可批量下架）；相册；用户（登录方式、会话、API 令牌及其角色、文件，可以强制下线、撤销或提升令牌、下架账号的全部内容）；举报（带模糊预览，CSAM 举报一律不预览）；同一来源的全部上传；封禁；可筛选的审计日志；状态页（健康检查、后台任务、设置、后台会话）；备份。顶部一个搜索框能搜链接、id、文件名、邮箱、来源哈希和 SHA-256。文件列表来自 D1 里的文件索引（`file_index`）：上传和删除时同步更新，每 10 分钟的 cron 再拿存储桶逐页对账，索引建立前的旧文件也是这样补进来的。会话 12 小时有效，存在只发给后台的 HttpOnly、SameSite=Strict cookie 里；登录所用的令牌一旦轮换或失去 admin 角色，会话立即失效。页面不带任何脚本，所有写操作只接受来自后台自身的请求，每个操作都和 MCP 工具记在同一份审计日志里。
 
 同样的管理功能也能通过 MCP 用：带 `Authorization: Bearer <ADMIN_TOKEN>` 连接 `https://<域名>/mcp`，会多出 `inspect`、`takedown`（可加 `block_content`，打包链接可加 `include_files`）、`list_by_source`、`takedown_by_source`（默认只预演）、`block_source` / `unblock_source`、`unblock_content`、`list_blocks`、`takedown_log`、`list_reports`、`resolve_report`。处理举报的顺序：`inspect` 查链接，`takedown` 下架，`list_by_source` 看同一上传者还传了什么，必要时 `takedown_by_source` 或 `block_source`。管理员令牌也不受限流；用了 WAF 规则的话，把它和 `TRUSTED_TOKEN` 一起写进跳过规则。
 

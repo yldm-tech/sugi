@@ -112,8 +112,13 @@ export async function reindexStep(env: Env, now = Date.now(), batch = INDEX_BATC
   const page = await env.BUCKET.list({ limit: batch, cursor: state.cursor, include: ["customMetadata", "httpMetadata"] });
   const last = page.objects.at(-1)?.key;
   const after = state.after ?? "";
+  // A truncated page may come back empty (R2 can return fewer objects than asked for when metadata is included); its range is unknown, so only move on.
+  if (page.truncated && last === undefined) {
+    await writeState(env, "index_cursor", { cursor: page.cursor, after: state.after }, now).run();
+    return { checked: 0, added: 0, updated: 0, removed: 0, pass_done: false };
+  }
   const rows = (
-    page.truncated && last !== undefined
+    page.truncated
       ? await env.DB.prepare("SELECT * FROM file_index WHERE key > ? AND key <= ?").bind(after, last).all<IndexRow>()
       : await env.DB.prepare("SELECT * FROM file_index WHERE key > ?").bind(after).all<IndexRow>()
   ).results;

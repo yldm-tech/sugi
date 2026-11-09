@@ -83,7 +83,7 @@ admin() { printf 'header = "Authorization: Bearer %s"\n' "$ADMIN_TOKEN" | curl -
 
 ### 管理后台
 
-https://admin.sugi.moe ，用 `ADMIN_TOKEN`（`secrets.env` 里）或自己的 admin 个人令牌登录，会话 12 小时。下面 MCP 的举报处理、查询、下架、按来源处理、封禁和审计日志在后台里都有对应页面，走的是同一套函数，记在同一份审计日志里（网页操作的 `detail.via` 是 `web`）。轮换 `ADMIN_TOKEN` 后，用旧令牌开的会话立即失效。Staging 的后台在 https://sugi-staging.evan-e2b.workers.dev/_admin 。
+https://admin.sugi.moe ，用 `ADMIN_TOKEN`（`secrets.env` 里）或自己的 admin 个人令牌登录，会话 12 小时。下面 MCP 的举报处理、查询、下架、按来源处理、封禁和审计日志在后台里都有对应页面，走的是同一套函数，记在同一份审计日志里（网页操作的 `detail.via` 是 `web`）。轮换 `ADMIN_TOKEN` 后，用旧令牌开的会话立即失效。Staging 的后台在 https://sugi-staging.evan-e2b.workers.dev/_admin ，用 `staging.env` 里 staging 自己的 `ADMIN_TOKEN` 登录，看到的是 staging 的数据（左上角会标出站点和「测试站」）。用户页可以把个人令牌设为或降为 admin，这是除了手改 D1 之外唯一的入口，同样记在审计日志里；当前登录用的令牌不能在后台里改或撤销。文件页和用户页依赖文件索引 `file_index`，新部署后由 cron 每 10 分钟对账 1000 个对象，状态页能看到上次完整对账的时间；没完成前列表可能不全。
 
 ### 处理举报（MCP）
 

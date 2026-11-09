@@ -73,6 +73,7 @@ export function targetCell(v: View, target: string): string {
   if (kind === "album") return inspectLink(v, `a/${id}`, target);
   if (kind === "source" && /^[0-9a-f]{64}$/.test(id)) return `source:${sourceLink(v, id)}`;
   if (kind === "user") return `<a href="${esc(href(v.env, `/users/${id}`))}">${esc(target)}</a>`;
+  if (kind === "files" && /^\d+$/.test(id)) return esc(tr(v)(`${id} 个文件`, `${id} files`));
   if (kind === "sha256") return `<a class="mono" href="${esc(href(v.env, "/search", { q: id }))}">${esc(`sha256:${id.slice(0, 12)}…`)}</a>`;
   return `<code>${esc(target)}</code>`;
 }

@@ -2,7 +2,7 @@
 import { findFile, publicUrl } from "../../files";
 import { HttpError, isSourceBlocked } from "../../http";
 import { LEGACY_KEY_RE } from "../../legacy";
-import { inspect, listBlocks } from "../../moderation";
+import { inspect, isHashBlocked, listBlocks } from "../../moderation";
 import { listReports } from "../../reports";
 import { esc } from "../../site/i18n";
 import { MEDIA_BY_EXT } from "../../sniff";
@@ -153,6 +153,17 @@ export async function inspectPage(v: View, q: string): Promise<Rendered> {
 
   const key = info.kind === "album" ? null : (info.key ?? info.id);
   const owner = info.kind === "album" ? await albumOwnerOf(v.env, info.id) : key ? await ownerOf(v.env, key) : null;
+  // New-API files keep their content hash only in the file index, not in their R2 metadata.
+  if (!info.sha256 && key) {
+    const sha = (await v.env.DB.prepare("SELECT sha256 FROM file_index WHERE key = ?").bind(key).first<{ sha256: string | null }>())?.sha256 ?? null;
+    if (sha) Object.assign(info, { sha256: sha, content_blocked: await isHashBlocked(v.env, sha) });
+  }
+  const reportTarget = info.kind === "album" ? `album:${info.id}` : info.kind === "legacy" ? `legacy:${info.id}` : `file:${info.id}`;
+  const reports = (
+    await v.env.DB.prepare("SELECT id, reason, created_at, resolved_at, resolution FROM reports WHERE target = ? ORDER BY id DESC LIMIT 20")
+      .bind(reportTarget)
+      .all<{ id: number; reason: string; created_at: number; resolved_at: number | null; resolution: string | null }>()
+  ).results;
   const row = (k: string, val: string) => `<tr><th>${k}</th><td>${val}</td></tr>`;
   const link = info.kind === "album" ? (info.status === "live" ? `${v.env.MAIN_ORIGIN}/a/${info.id}` : null) : (info.url ?? null);
   const rows = [
@@ -186,6 +197,21 @@ export async function inspectPage(v: View, q: string): Promise<Rendered> {
       : []),
     ...(info.albums?.length
       ? [row(t("所在相册", "In albums"), info.albums.map((a) => `<a href="${esc(href(v.env, "/inspect", { q: `a/${a}` }))}">a/${esc(a)}</a>`).join(", "))]
+      : []),
+    ...(reports.length
+      ? [
+          row(
+            t("举报", "Reports"),
+            reports
+              .map(
+                (r) =>
+                  `<a href="${esc(href(v.env, "/reports", { status: r.resolved_at ? "all" : null }))}">#${r.id}</a> ${reasonBadge(t, r.reason)} ${
+                    r.resolved_at ? badge(r.resolution === "removed" ? t("已下架", "removed") : t("已驳回", "dismissed")) : badge(t("待处理", "open"), "bad")
+                  } <span class="muted small">${fmtAgo(t, r.created_at)}</span>`,
+              )
+              .join("<br>"),
+          ),
+        ]
       : []),
     ...(info.takedown ? [row(t("下架记录", "Takedown"), `${fmtTime(info.takedown.at)}${info.takedown.reason ? ` · ${esc(info.takedown.reason)}` : ""}`)] : []),
   ];
@@ -232,8 +258,7 @@ ${info.kind === "album" ? `<label class="check"><input type="checkbox" name="inc
     }</p>
 <div class="card report"><div class="scroll"><table class="kv"><tbody>${rows.join("")}</tbody></table></div>${pv}</div>
 ${albumFiles}
-${actions}${unblock}
-${form}`,
+${actions}${unblock}`,
   };
 }
 
