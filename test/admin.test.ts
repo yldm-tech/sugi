@@ -1,6 +1,6 @@
 import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
-import { call, freshIp, MAIN, upload } from "./helpers";
+import { call, freshIp, MAIN, png, upload } from "./helpers";
 
 const ADMIN_HOST = "https://admin.sugi.moe";
 const DEDICATED = { ADMIN_ORIGIN: ADMIN_HOST };
@@ -310,5 +310,181 @@ describe("admin dashboard", () => {
     const home = await call(new Request(`${MAIN}/_admin/`, { headers: { cookie: /sugi_admin=[^;]+/.exec(cookie)![0] } }));
     expect(home.status).toBe(200);
     expect(await home.text()).toContain('href="/_admin/reports"');
+  });
+
+  it("lists files from the index with filters, and takes down a selection", async () => {
+    const cookie = await signIn();
+    const a = await upload(png(), "?name=holiday-beach.png");
+    const b = await upload(png(), "?name=holiday-hill.png&expire=1h");
+    const c = await upload(png(), "?name=other.png");
+    const all = await (await get("/files", cookie)).text();
+    for (const f of [a, b, c]) expect(all).toContain(`/inspect?q=${f.id}`);
+    const holiday = await (await get("/files?q=holiday", cookie)).text();
+    expect(holiday).toContain(a.id);
+    expect(holiday).toContain(b.id);
+    expect(holiday).not.toContain(c.id);
+    const temporary = await (await get("/files?q=holiday&life=temporary", cookie)).text();
+    expect(temporary).toContain(b.id);
+    expect(temporary).not.toContain(a.id);
+    // Previews are blurred until the page's switch is on, and there is no script.
+    expect(all).toContain('class="reveal-all"');
+    expect(all).not.toContain("<script");
+
+    const none = flashOf(await post("/files/takedown", { back: "/files" }, cookie));
+    expect(none.ok).toBe(false);
+    const body = new URLSearchParams({ back: "/files?q=holiday", reason: "bulk test" });
+    body.append("key", `f/${a.id}`);
+    body.append("key", `t/${b.id}`);
+    body.append("key", "../../etc/passwd");
+    const res = await call(
+      new Request(`${ADMIN_HOST}/files/takedown`, {
+        method: "POST",
+        body,
+        headers: { "content-type": "application/x-www-form-urlencoded", origin: ADMIN_HOST, cookie, "cf-connecting-ip": freshIp() },
+      }),
+      DEDICATED,
+    );
+    expect(res.status).toBe(303);
+    expect(res.headers.get("location")).toBe("/files?q=holiday");
+    expect(flashOf(res).text).toContain(`f/${a.id}`);
+    expect((await call(new Request(a.url))).status).toBe(451);
+    expect((await call(new Request(b.url))).status).toBe(451);
+    expect((await call(new Request(c.url))).status).toBe(200);
+    const after = await (await get("/files?q=holiday", cookie)).text();
+    expect(after).not.toContain(a.id);
+    const log = await env.DB.prepare("SELECT target, detail FROM admin_log WHERE reason = 'bulk test'").first<{ target: string; detail: string }>();
+    expect(log!.target).toBe("files:2");
+    expect(JSON.parse(log!.detail).via).toBe("web");
+  });
+
+  it("shows accounts and acts on their sessions, tokens and files", async () => {
+    const accounts = { ...DEDICATED, FEATURE_ACCOUNTS: "1", ACCOUNT_FEATURES: "email,tokens" };
+    const cookie = await signIn(TOKEN, accounts);
+    const uid = `u${crypto.randomUUID().slice(0, 11)}`;
+    const now = Date.now();
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO users (id, email, name, created_at) VALUES (?, ?, 'Hana', ?)").bind(uid, `${uid}@example.org`, now),
+      env.DB.prepare("INSERT INTO identities (provider, subject, user_id, email, created_at) VALUES ('github', ?, ?, NULL, ?)").bind(uid, uid, now),
+      env.DB.prepare("INSERT INTO sessions (id_hash, user_id, via, created_at, expires_at) VALUES (?, ?, 'github', ?, ?)").bind(
+        `s${uid}`,
+        uid,
+        now,
+        now + 3600e3,
+      ),
+      env.DB.prepare("INSERT INTO api_tokens (id, user_id, token_hash, role, prefix, created_at) VALUES (?, ?, ?, 'user', 'sugi_abcd', ?)").bind(
+        `t${uid}`,
+        uid,
+        `h${uid}`,
+        now,
+      ),
+    ]);
+    const f = await upload();
+    await env.DB.prepare("INSERT INTO user_files (user_id, file_key, created_at) VALUES (?, ?, ?)").bind(uid, `f/${f.id}`, now).run();
+
+    const list = await (await get(`/users?q=${uid}`, cookie, accounts)).text();
+    expect(list).toContain(`${uid}@example.org`);
+    expect(list).toContain("GitHub");
+    const page = await (await get(`/users/${uid}`, cookie, accounts)).text();
+    expect(page).toContain("Hana");
+    expect(page).toContain("sugi_abcd");
+    expect(page).toContain(`/inspect?q=${f.id}`);
+    expect((await get("/users/nobody", cookie, accounts)).status).toBe(404);
+
+    // The file's page names its owner.
+    expect(await (await get(`/inspect?q=${f.id}`, cookie, accounts)).text()).toContain(`/users/${uid}`);
+
+    const out = flashOf(await post(`/users/${uid}/sessions/revoke`, {}, cookie, accounts));
+    expect(out.text).toContain("1");
+    expect(await env.DB.prepare("SELECT 1 FROM sessions WHERE user_id = ?").bind(uid).first()).toBeNull();
+
+    flashOf(await post(`/users/${uid}/tokens/t${uid}/role`, { role: "admin" }, cookie, accounts));
+    expect((await env.DB.prepare("SELECT role FROM api_tokens WHERE id = ?").bind(`t${uid}`).first<{ role: string }>())!.role).toBe("admin");
+    expect(flashOf(await post(`/users/${uid}/tokens/t${uid}/role`, { role: "root" }, cookie, accounts)).ok).toBe(false);
+    flashOf(await post(`/users/${uid}/tokens/t${uid}/revoke`, {}, cookie, accounts));
+    expect(await env.DB.prepare("SELECT 1 FROM api_tokens WHERE id = ?").bind(`t${uid}`).first()).toBeNull();
+
+    expect(flashOf(await post(`/users/${uid}/takedown`, {}, cookie, accounts)).ok).toBe(false);
+    expect((await call(new Request(f.url))).status).toBe(200);
+    const gone = flashOf(await post(`/users/${uid}/takedown`, { confirm: "1", reason: "abuse" }, cookie, accounts));
+    expect(gone.text).toContain("Took down 1 file(s)");
+    expect((await call(new Request(f.url))).status).toBe(451);
+    // A second click finds nothing left.
+    expect(flashOf(await post(`/users/${uid}/takedown`, { confirm: "1" }, cookie, accounts)).text).toContain("Took down 0 file(s)");
+
+    const actions = (
+      await env.DB.prepare("SELECT action FROM admin_log WHERE target = ? ORDER BY id").bind(`user:${uid}`).all<{ action: string }>()
+    ).results.map((r) => r.action);
+    // The second click took nothing down, so it left no entry.
+    expect(actions).toEqual(["revoke_sessions", "set_token_role", "revoke_token", "takedown_user"]);
+  });
+
+  it("does not let a session change or revoke the token it signed in with", async () => {
+    const accounts = { ...DEDICATED, FEATURE_ACCOUNTS: "1", ACCOUNT_FEATURES: "email,tokens" };
+    const uid = `u${crypto.randomUUID().slice(0, 11)}`;
+    const token = `sugi_${crypto.randomUUID().replaceAll("-", "")}`;
+    const hash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token))), (b) =>
+      b.toString(16).padStart(2, "0"),
+    ).join("");
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO users (id, email, name, created_at) VALUES (?, ?, NULL, ?)").bind(uid, `${uid}@example.org`, Date.now()),
+      env.DB.prepare("INSERT INTO api_tokens (id, user_id, token_hash, role, prefix, created_at) VALUES (?, ?, ?, 'admin', 'sugi_self', ?)").bind(
+        `t${uid}`,
+        uid,
+        hash,
+        Date.now(),
+      ),
+    ]);
+    const cookie = await signIn(token, accounts);
+    expect(flashOf(await post(`/users/${uid}/tokens/t${uid}/role`, { role: "user" }, cookie, accounts)).ok).toBe(false);
+    expect(flashOf(await post(`/users/${uid}/tokens/t${uid}/revoke`, {}, cookie, accounts)).ok).toBe(false);
+    expect((await get("/", cookie, accounts)).status).toBe(200);
+  });
+
+  it("searches everything, and opens a file directly from its link", async () => {
+    const accounts = { ...DEDICATED, FEATURE_ACCOUNTS: "1", ACCOUNT_FEATURES: "email,tokens" };
+    const cookie = await signIn(TOKEN, accounts);
+    const f = await upload(png(), "?name=sunflower-field.png");
+    const direct = await get(`/search?q=${encodeURIComponent(f.url)}`, cookie, accounts);
+    expect(direct.status).toBe(303);
+    expect(direct.headers.get("location")).toBe(`/inspect?q=${encodeURIComponent(f.url)}`);
+    const byName = await (await get("/search?q=sunflower", cookie, accounts)).text();
+    expect(byName).toContain(`/inspect?q=${f.id}`);
+    const source = (await env.BUCKET.head(`f/${f.id}`))!.customMetadata!.source;
+    const bySource = await (await get(`/search?q=${source}`, cookie, accounts)).text();
+    expect(bySource).toContain(`/source?s=${source}`);
+    const nothing = await (await get("/search?q=no-such-thing-anywhere", cookie, accounts)).text();
+    expect(nothing).toContain("sugi.moe");
+    expect(nothing).toContain("separate data");
+    // A file id that does not exist says which site was searched.
+    const missing = await get("/inspect?q=zzzzzzzz", cookie, accounts);
+    expect(missing.status).toBe(404);
+    expect(await missing.text()).toContain("separate data");
+  });
+
+  it("renders the overview, status, albums and a filtered audit log", async () => {
+    const cookie = await signIn();
+    await upload();
+    const overview = await (await get("/", cookie)).text();
+    expect(overview).toContain("<svg");
+    expect(overview).toContain("Newest uploads");
+    const status = await get("/system", cookie);
+    expect(status.status).toBe(200);
+    expect(await status.text()).toContain("ADMIN_TOKEN");
+    expect((await get("/albums", cookie)).status).toBe(200);
+    expect((await get("/log?action=takedown&q=x", cookie)).status).toBe(200);
+    expect((await get("/?day=2026-01-01", cookie)).status).toBe(200);
+  });
+
+  it("ends another dashboard session, but not its own", async () => {
+    const mine = await signIn();
+    const other = await signIn();
+    const hash = async (s: string) =>
+      Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s))), (b) => b.toString(16).padStart(2, "0")).join("");
+    const otherId = await hash(/sugi_admin=([^;]+)/.exec(other)![1]);
+    const myId = await hash(/sugi_admin=([^;]+)/.exec(mine)![1]);
+    expect(flashOf(await post("/sessions/end", { session: myId }, mine)).ok).toBe(false);
+    expect(flashOf(await post("/sessions/end", { session: otherId }, mine)).ok).toBe(true);
+    expect((await get("/", other)).status).toBe(303);
+    expect((await get("/", mine)).status).toBe(200);
   });
 });

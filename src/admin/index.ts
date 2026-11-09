@@ -244,9 +244,10 @@ export async function handleAdmin(request: Request, env: Env, sub: string): Prom
       const [, uid, what, tokenId, tokenAction] = user;
       const back = `/users/${uid}`;
       if (what === "sessions/revoke")
-        return act(env, back, async () =>
-          t(`已让 ${await revokeUserSessions(env, uid, session.label)} 个会话下线。`, `Ended ${await revokeUserSessions(env, uid, session.label)} session(s).`),
-        );
+        return act(env, back, async () => {
+          const n = await revokeUserSessions(env, uid, session.label);
+          return t(`已让 ${n} 个会话下线。`, `Ended ${n} session(s).`);
+        });
       if (what === "takedown")
         return act(env, back, async () => {
           if (!str(f, "confirm")) throw new HttpError(400, t("请先勾选确认。", "Tick the confirmation first."));

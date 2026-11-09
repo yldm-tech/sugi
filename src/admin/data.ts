@@ -5,9 +5,9 @@ import { MEDIA_BY_EXT } from "../sniff";
 
 const HEX64 = /^[0-9a-f]{64}$/;
 
-/** A LIKE pattern matching `s` anywhere, with LIKE's own wildcards escaped (use with ESCAPE '\'). */
-export function likeAny(s: string): string {
-  return `%${s.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+/** SQL that is true when the column contains the bound text, ignoring ASCII case. instr() rather than LIKE: no wildcards to escape, and D1 refuses LIKE patterns longer than 50 bytes (a link or a 64-character hash). */
+function contains(column: string): string {
+  return `instr(lower(COALESCE(${column}, '')), ?) > 0`;
 }
 
 /** The public link of an indexed file. */
@@ -70,8 +70,8 @@ function fileWhere(f: FileFilter): { sql: string; args: unknown[] } {
     } else {
       // A link or id matches its key; anything else is looked for in keys and file names.
       const last = (f.q.split(/[/?#]/).filter(Boolean).pop() ?? "").replace(/\.[a-z0-9]+$/i, "");
-      parts.push("(fi.key IN (?, ?, ?) OR fi.key LIKE ? ESCAPE '\\' OR fi.name LIKE ? ESCAPE '\\')");
-      args.push(`f/${last}`, `t/${last}`, f.q.split("/").pop() ?? "", likeAny(f.q), likeAny(f.q));
+      parts.push(`(fi.key IN (?, ?, ?) OR ${contains("fi.key")} OR ${contains("fi.name")})`);
+      args.push(`f/${last}`, `t/${last}`, f.q.split("/").pop() ?? "", q, q);
     }
   }
   if (f.kind) {
@@ -159,8 +159,8 @@ export async function listUsers(
   offset: number,
   limit: number,
 ): Promise<{ total: number; users: UserRow[] }> {
-  const where = q ? "WHERE u.email LIKE ? ESCAPE '\\' OR u.name LIKE ? ESCAPE '\\' OR u.id = ?" : "";
-  const args = q ? [likeAny(q.toLowerCase()), likeAny(q), q] : [];
+  const where = q ? `WHERE ${contains("u.email")} OR ${contains("u.name")} OR u.id = ?` : "";
+  const args = q ? [q.toLowerCase(), q.toLowerCase(), q] : [];
   const order = sort === "files" ? "files DESC, u.created_at DESC" : sort === "bytes" ? "bytes DESC, u.created_at DESC" : "u.created_at DESC";
   const [total, rows] = await env.DB.batch([
     env.DB.prepare(`SELECT COUNT(*) AS n FROM users u ${where}`).bind(...args),
@@ -269,8 +269,8 @@ export interface AlbumRow {
 }
 
 export async function listAlbums(env: Env, q: string, offset: number, limit: number): Promise<{ total: number; albums: AlbumRow[] }> {
-  const where = q ? "WHERE a.title LIKE ? ESCAPE '\\' OR a.id = ?" : "";
-  const args = q ? [likeAny(q), q.replace(/^.*\/a\//, "").replace(/^a\//, "")] : [];
+  const where = q ? `WHERE ${contains("a.title")} OR a.id = ?` : "";
+  const args = q ? [q.toLowerCase(), q.replace(/^.*\/a\//, "").replace(/^a\//, "")] : [];
   const [total, rows] = await env.DB.batch([
     env.DB.prepare(`SELECT COUNT(*) AS n FROM albums a ${where}`).bind(...args),
     env.DB.prepare(
@@ -307,8 +307,9 @@ export async function queryLog(
     args.push(opts.action);
   }
   if (opts.q) {
-    parts.push("(target LIKE ? ESCAPE '\\' OR reason LIKE ? ESCAPE '\\' OR detail LIKE ? ESCAPE '\\')");
-    args.push(likeAny(opts.q), likeAny(opts.q), likeAny(opts.q));
+    parts.push(`(${contains("target")} OR ${contains("reason")} OR ${contains("detail")})`);
+    const q = opts.q.toLowerCase();
+    args.push(q, q, q);
   }
   if (opts.before !== null) {
     parts.push("id < ?");
