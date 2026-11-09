@@ -223,7 +223,13 @@ export interface TakedownResult {
 }
 
 /** Takes down objects by key: replaces each with a tombstone marker, records it, optionally blocks its content, and purges every URL it was served from. */
-async function takedownKeys(env: Env, keys: string[], opts: TakedownOptions, action: string, logTarget: string): Promise<Omit<TakedownResult, "target">> {
+export async function takedownKeys(
+  env: Env,
+  keys: string[],
+  opts: TakedownOptions,
+  action: string,
+  logTarget: string,
+): Promise<Omit<TakedownResult, "target">> {
   const removed: string[] = [];
   const already: string[] = [];
   const hashes: string[] = [];

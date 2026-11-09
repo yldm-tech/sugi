@@ -10,6 +10,8 @@ export interface AdminSession {
   idHash: string;
   /** Which token the session was opened with, shown in the header. */
   label: string;
+  /** SHA-256 of the token the session was opened with. */
+  tokenHash: string;
   expiresAt: number;
 }
 
@@ -56,7 +58,7 @@ export async function readAdminSession(request: Request, env: Env, now = Date.no
     await env.DB.prepare("DELETE FROM admin_sessions WHERE id_hash = ?").bind(idHash).run();
     return null;
   }
-  return { idHash, label: row.label, expiresAt: row.expires_at };
+  return { idHash, label: row.label, tokenHash: row.token_hash, expiresAt: row.expires_at };
 }
 
 export async function closeAdminSession(env: Env, session: AdminSession): Promise<string> {

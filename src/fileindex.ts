@@ -83,11 +83,9 @@ async function readCursor(env: Env): Promise<Cursor> {
 }
 
 function writeState(env: Env, name: string, value: unknown, now: number): D1PreparedStatement {
-  return env.DB.prepare("INSERT INTO ops_state (name, value, at) VALUES (?, ?, ?) ON CONFLICT (name) DO UPDATE SET value = excluded.value, at = excluded.at").bind(
-    name,
-    JSON.stringify(value),
-    now,
-  );
+  return env.DB.prepare(
+    "INSERT INTO ops_state (name, value, at) VALUES (?, ?, ?) ON CONFLICT (name) DO UPDATE SET value = excluded.value, at = excluded.at",
+  ).bind(name, JSON.stringify(value), now);
 }
 
 const same = (a: IndexRow, b: IndexRow) =>

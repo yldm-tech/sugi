@@ -2,12 +2,19 @@
 import { restoreFromBackup } from "../backup";
 import { hmacSha256Hex } from "../crypto";
 import { HttpError, methodNotAllowed, randomNonce } from "../http";
-import { blockSource, takedown, takedownBySource, type TakedownResult, unblockContent, unblockSource } from "../moderation";
+import { blockSource, inspect, parseTarget, takedown, takedownBySource, takedownKeys, type TakedownResult, unblockContent, unblockSource } from "../moderation";
 import { today } from "../quota";
 import { resolveReport } from "../reports";
 import { pickLang, readCookie } from "../site/i18n";
 import { adminBase, adminCookie, assertAdminOrigin, closeAdminSession, openAdminSession, readAdminSession } from "./auth";
-import { backupPage, blocksPage, inspectPage, loginPage, logPage, overviewPage, type Rendered, reportsPage, sourcePage } from "./pages";
+import { parseFileFilter, revokeUserSessions, revokeUserToken, setTokenRole } from "./data";
+import type { Rendered } from "./pages/common";
+import { albumsPage, filesPage } from "./pages/files";
+import { blocksPage, inspectPage, logPage, reportsPage, sourcePage } from "./pages/moderation";
+import { overviewPage } from "./pages/overview";
+import { searchPage } from "./pages/search";
+import { backupPage, loginPage, systemPage } from "./pages/system";
+import { userPage, usersPage } from "./pages/users";
 import { adminCsp, document, type Flash, href, type Nav, tr, type View } from "./view";
 
 const FLASH_COOKIE = "sugi_admin_flash";
@@ -119,7 +126,10 @@ async function handleLogin(request: Request, env: Env, v: View): Promise<Respons
   const { success } = await env.UPLOAD_LIMITER.limit({ key: `admin-login:${await hmacSha256Hex(env.IP_HASH_SECRET ?? "admin-login", ip)}` });
   if (!success) return render(request, v, "login", loginPage(v, t("尝试次数太多，一分钟后再试。", "Too many attempts; try again in a minute."), next));
   const cookie = await openAdminSession(env, str(f, "token"));
-  if (!cookie) return render(request, v, "login", loginPage(v, t("令牌不对。", "That is not an admin token."), next));
+  if (!cookie) {
+    const host = new URL(env.MAIN_ORIGIN).host;
+    return render(request, v, "login", loginPage(v, t(`这不是 ${host} 的管理员令牌。`, `That is not an admin token of ${host}.`), next));
+  }
   return redirect(env, next, [cookie]);
 }
 
@@ -215,6 +225,54 @@ export async function handleAdmin(request: Request, env: Env, sub: string): Prom
           : t("这段内容本来就没有被封禁", "That content was not blocked"),
       );
     }
+    if (sub === "/files/takedown") {
+      const keys = [...new Set(f.getAll("key").filter((k): k is string => typeof k === "string" && FILE_KEY_RE.test(k)))];
+      return act(env, safeBack(str(f, "back"), "/files"), async () => {
+        if (!keys.length) throw new HttpError(400, t("先勾选要下架的文件。", "Select some files first."));
+        if (keys.length > 200) throw new HttpError(400, t("一次最多 200 个。", "At most 200 at a time."));
+        const target =
+          keys.length === 1
+            ? keys[0].startsWith("f/") || keys[0].startsWith("t/")
+              ? `file:${keys[0].slice(2)}`
+              : `legacy:${keys[0]}`
+            : `files:${keys.length}`;
+        return takedownSummary(t, await takedownKeys(env, keys, { reason, blockContent: f.get("block_content") === "1", via: "web" }, "takedown", target));
+      });
+    }
+    const user = /^\/users\/([A-Za-z0-9_-]{1,64})\/(sessions\/revoke|takedown|tokens\/([A-Za-z0-9_-]{1,64})\/(revoke|role))$/.exec(sub);
+    if (user) {
+      const [, uid, what, tokenId, tokenAction] = user;
+      const back = `/users/${uid}`;
+      if (what === "sessions/revoke")
+        return act(env, back, async () =>
+          t(`已让 ${await revokeUserSessions(env, uid, session.label)} 个会话下线。`, `Ended ${await revokeUserSessions(env, uid, session.label)} session(s).`),
+        );
+      if (what === "takedown")
+        return act(env, back, async () => {
+          if (!str(f, "confirm")) throw new HttpError(400, t("请先勾选确认。", "Tick the confirmation first."));
+          return takedownUser(env, t, uid, { reason, blockContent: f.get("block_content") === "1" });
+        });
+      return act(env, back, async () => {
+        const token = await env.DB.prepare("SELECT token_hash FROM api_tokens WHERE id = ? AND user_id = ?").bind(tokenId, uid).first<{ token_hash: string }>();
+        if (!token) throw new HttpError(404, t("没有这个令牌。", "No such token."));
+        if (token.token_hash === session.tokenHash)
+          throw new HttpError(400, t("不能修改当前登录所用的令牌。", "That is the token this session signed in with."));
+        if (tokenAction === "revoke")
+          return (await revokeUserToken(env, uid, tokenId, session.label)) ? t("已撤销令牌。", "Token revoked.") : t("没有这个令牌。", "No such token.");
+        const role = str(f, "role");
+        if (role !== "admin" && role !== "user") throw new HttpError(400, "role must be admin or user");
+        await setTokenRole(env, uid, tokenId, role, session.label);
+        return role === "admin" ? t("令牌已设为管理员。", "The token is now an admin token.") : t("令牌已降为普通令牌。", "The token is now a user token.");
+      });
+    }
+    if (sub === "/sessions/end") {
+      const id = str(f, "session");
+      return act(env, "/system", async () => {
+        if (id === session.idHash) throw new HttpError(400, t("要结束当前会话，请点退出。", "Use Sign out to end this session."));
+        const r = await env.DB.prepare("DELETE FROM admin_sessions WHERE id_hash = ?").bind(id).run();
+        return r.meta.changes ? t("已结束这个会话。", "Session ended.") : t("这个会话已经不在了。", "That session was already gone.");
+      });
+    }
     if (sub === "/backup/restore") {
       const raw = str(f, "keys");
       const keys = [
@@ -236,44 +294,128 @@ export async function handleAdmin(request: Request, env: Env, sub: string): Prom
   const offset = Math.max(0, Math.floor(Number(url.searchParams.get("offset")) || 0));
   let page: Rendered;
   let nav: Nav;
-  switch (sub) {
-    case "/": {
-      const dayParam = url.searchParams.get("day") ?? "";
-      const day = /^\d{4}-\d{2}-\d{2}$/.test(dayParam) && dayParam <= today() ? dayParam : today();
-      [page, nav] = [await overviewPage(view, day, url.searchParams.get("storage") === "1"), "overview"];
-      break;
+  const p = url.searchParams;
+  const userMatch = /^\/users\/([A-Za-z0-9_-]{1,64})$/.exec(sub);
+  if (userMatch) [page, nav] = [await userPage(view, userMatch[1], session.tokenHash), "users"];
+  else
+    switch (sub) {
+      case "/": {
+        const dayParam = p.get("day") ?? "";
+        [page, nav] = [await overviewPage(view, /^\d{4}-\d{2}-\d{2}$/.test(dayParam) && dayParam <= today() ? dayParam : null), "overview"];
+        break;
+      }
+      case "/files":
+        [page, nav] = [await filesPage(view, parseFileFilter(p), offset), "files"];
+        break;
+      case "/albums":
+        [page, nav] = [await albumsPage(view, (p.get("q") ?? "").trim().slice(0, 200), offset), "albums"];
+        break;
+      case "/users": {
+        const sort = p.get("sort");
+        [page, nav] = [await usersPage(view, (p.get("q") ?? "").trim().slice(0, 200), sort === "files" || sort === "bytes" ? sort : "new", offset), "users"];
+        break;
+      }
+      case "/search": {
+        const q = (p.get("q") ?? "").trim().slice(0, 300);
+        // A link or id of a file or album that exists (or was taken down) opens its page.
+        if (q && !/\s/.test(q) && (await namesSomething(env, q))) return redirect(env, `/inspect?q=${encodeURIComponent(q)}`, langCookie);
+        [page, nav] = [await searchPage(view, q), "search"];
+        break;
+      }
+      case "/reports": {
+        const s = p.get("status");
+        [page, nav] = [await reportsPage(view, s === "resolved" || s === "all" ? s : "open", offset), "reports"];
+        break;
+      }
+      case "/inspect":
+        [page, nav] = [await inspectPage(view, (p.get("q") ?? "").trim()), "files"];
+        break;
+      case "/source":
+        [page, nav] = [await sourcePage(view, (p.get("s") ?? "").trim(), offset), "files"];
+        break;
+      case "/blocks":
+        [page, nav] = [await blocksPage(view), "blocks"];
+        break;
+      case "/log": {
+        const before = Number(p.get("before"));
+        [page, nav] = [
+          await logPage(view, {
+            action: (p.get("action") ?? "").slice(0, 64),
+            q: (p.get("q") ?? "").trim().slice(0, 200),
+            before: Number.isSafeInteger(before) && before > 0 ? before : null,
+          }),
+          "log",
+        ];
+        break;
+      }
+      case "/system":
+        [page, nav] = [await systemPage(view, session.idHash), "system"];
+        break;
+      case "/backup":
+        [page, nav] = [await backupPage(view, null), "backup"];
+        break;
+      default:
+        [page, nav] = [
+          { title: "404", main: `<h1>404</h1><p><a href="${href(env, "/")}">${t("回到概览", "Back to the overview")}</a></p>`, status: 404 },
+          "overview",
+        ];
     }
-    case "/reports": {
-      const s = url.searchParams.get("status");
-      [page, nav] = [await reportsPage(view, s === "resolved" || s === "all" ? s : "open", offset), "reports"];
-      break;
-    }
-    case "/inspect":
-      [page, nav] = [await inspectPage(view, (url.searchParams.get("q") ?? "").trim()), "inspect"];
-      break;
-    case "/source":
-      [page, nav] = [await sourcePage(view, (url.searchParams.get("s") ?? "").trim(), offset), "inspect"];
-      break;
-    case "/blocks":
-      [page, nav] = [await blocksPage(view), "blocks"];
-      break;
-    case "/log": {
-      const limit = Math.min(500, Math.max(1, Math.floor(Number(url.searchParams.get("limit")) || 100)));
-      [page, nav] = [await logPage(view, limit), "log"];
-      break;
-    }
-    case "/backup":
-      [page, nav] = [await backupPage(view, null), "backup"];
-      break;
-    default:
-      [page, nav] = [
-        { title: "404", main: `<h1>404</h1><p><a href="${href(env, "/")}">${t("回到概览", "Back to the overview")}</a></p>`, status: 404 },
-        "overview",
-      ];
-  }
   return render(request, view, nav, page, langCookie);
 }
 
 async function openReports(env: Env): Promise<number> {
   return (await env.DB.prepare("SELECT COUNT(*) AS n FROM reports WHERE resolved_at IS NULL").first<{ n: number }>())?.n ?? 0;
+}
+
+/** R2 keys a bulk takedown may name: f/<id>, t/<id> or a legacy key. */
+const FILE_KEY_RE = /^(?:[ft]\/[A-Za-z0-9]{4,32}|[0-9a-f]{16}\.(?:png|jpg|webp|gif))$/;
+
+/** The search box was given the link or id of a file or album this site has, or had. */
+async function namesSomething(env: Env, q: string): Promise<boolean> {
+  try {
+    parseTarget(q);
+  } catch {
+    return false;
+  }
+  return (await inspect(env, q).catch(() => null))?.status !== "missing";
+}
+
+/** Takes down every file and album of an account, up to 1000 files per click. */
+async function takedownUser(
+  env: Env,
+  t: (zh: string, en: string) => string,
+  userId: string,
+  opts: { reason: string | null; blockContent: boolean },
+): Promise<string> {
+  // Files already taken down stay in user_files; skip them so a second click continues where the first stopped.
+  const files = (
+    await env.DB.prepare(
+      "SELECT file_key FROM user_files uf WHERE user_id = ? AND NOT EXISTS (SELECT 1 FROM tombstones WHERE target = 'file:' || substr(uf.file_key, 3)) LIMIT 1001",
+    )
+      .bind(userId)
+      .all<{ file_key: string }>()
+  ).results.map((r) => r.file_key);
+  const more = files.length > 1000;
+  const keys = files.slice(0, 1000);
+  const done = keys.length ? await takedownKeys(env, keys, { ...opts, via: "web" }, "takedown_user", `user:${userId}`) : null;
+  const albums = (await env.DB.prepare("SELECT album_id FROM user_albums WHERE user_id = ?").bind(userId).all<{ album_id: string }>()).results;
+  let albumsDone = 0;
+  for (const a of albums) {
+    const r = await takedown(env, `a/${a.album_id}`, { ...opts, via: "web" }).catch((err) => {
+      if (err instanceof HttpError && err.status === 404) return null;
+      throw err;
+    });
+    if (r?.removed.length) albumsDone++;
+  }
+  const head = t(
+    `已下架 ${done?.removed.length ?? 0} 个文件、${albumsDone} 个相册。`,
+    `Took down ${done?.removed.length ?? 0} file(s) and ${albumsDone} album(s).`,
+  );
+  return [
+    head,
+    more ? t("还有更多文件，再点一次继续。", "There are more files; click again to continue.") : "",
+    done && !done.cache_purged ? t("缓存没有清除成功。", "The cache purge failed.") : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
 }

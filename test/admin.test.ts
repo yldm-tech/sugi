@@ -223,7 +223,7 @@ describe("admin dashboard", () => {
     }
     const source = (await env.BUCKET.head(`f/${uploads[0].id}`))!.customMetadata!.source;
     const page = await (await get(`/source?s=${source}`, cookie)).text();
-    for (const u of uploads) expect(page).toContain(`f/${u.id}`);
+    for (const u of uploads) expect(page).toContain(`/inspect?q=${u.id}`);
     const unconfirmed = flashOf(await post("/source/takedown", { source }, cookie));
     expect(unconfirmed.ok).toBe(false);
     expect((await call(new Request(uploads[0].url))).status).toBe(200);
