@@ -63,8 +63,8 @@ async function storageUsed(env: Env): Promise<{ objects: number; bytes: number }
   return { objects, bytes };
 }
 
-/** The numbers of one UTC day, for the daily report (and tests). */
-export async function dailyNumbers(env: Env, day: string): Promise<Record<string, number | null>> {
+/** The numbers of one UTC day, for the daily report, the admin dashboard and tests. `storage: false` skips counting the bucket, which lists every object and is too slow for a page view on a large bucket (storage_objects and storage_bytes are then null). */
+export async function dailyNumbers(env: Env, day: string, opts: { storage?: boolean } = {}): Promise<Record<string, number | null>> {
   const usage = await env.DB.prepare("SELECT bytes, uploads, rejected FROM usage_daily WHERE day = ? AND scope = 'global'")
     .bind(day)
     .first<{ bytes: number; uploads: number; rejected: number }>();
@@ -77,7 +77,7 @@ export async function dailyNumbers(env: Env, day: string): Promise<Record<string
         .first<{ n: number }>()
         .catch(() => null)
     )?.n ?? null;
-  const storage = await storageUsed(env);
+  const storage = opts.storage === false ? { objects: null, bytes: null } : await storageUsed(env);
   return {
     uploads: usage?.uploads ?? 0,
     upload_bytes: usage?.bytes ?? 0,

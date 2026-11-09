@@ -11,6 +11,7 @@ import { authorizeUpload, HttpError, type Uploader } from "./http";
 import { assertHashAllowed } from "./moderation";
 import { checkQuota, recordUsage } from "./quota";
 import { ownFile } from "./auth/core";
+import { indexObject } from "./fileindex";
 import { HASH_MAX_BYTES, IMPORT_MAX_REDIRECTS, IMPORT_TIMEOUT_MS, IMPORT_UNKNOWN_LENGTH_MAX_BYTES, MAX_FILE_BYTES, SINGLE_REQUEST_MAX_BYTES } from "./limits";
 import { SNIFF_BYTES, sniffMedia } from "./sniff";
 import { fileKey, type Prepared, prepare, result, sanitizeName, parseOptions, uploadResponse, type UploadOptions, type UploadResult } from "./files";
@@ -144,13 +145,15 @@ export async function storeStream(
     await env.BUCKET.delete(p.key);
     throw new HttpError(400, "upload body did not match its declared length");
   }
+  const sha256 = digest ? toHex(await digest.digest) : null;
   try {
-    if (digest) await assertHashAllowed(env, toHex(await digest.digest));
+    if (sha256) await assertHashAllowed(env, sha256);
   } catch (err) {
     await env.BUCKET.delete(p.key);
     throw err;
   }
   await ownFile(env, uploader.userId, p.key);
+  await indexObject(env, p.key, stored, sha256);
   await recordUsage(env, uploader, length);
   return result(env, p, length, opts.name);
 }
@@ -160,11 +163,13 @@ export async function storeBytes(env: Env, uploader: Uploader, opts: UploadOptio
   await checkQuota(env, uploader, bytes.byteLength);
   const type = sniffMedia(bytes.subarray(0, SNIFF_BYTES));
   if (!type) throw unsupportedType();
-  if (bytes.byteLength <= HASH_MAX_BYTES) await assertHashAllowed(env, await sha256Hex(bytes));
+  const sha256 = bytes.byteLength <= HASH_MAX_BYTES ? await sha256Hex(bytes) : null;
+  if (sha256) await assertHashAllowed(env, sha256);
   const p = await prepare(env, uploader, opts, type, fixedId);
   const stored = await env.BUCKET.put(p.key, bytes, await reservedPutOptions(env, p, fixedId));
   if (stored === null) throw linkUsed();
   await ownFile(env, uploader.userId, p.key);
+  await indexObject(env, p.key, stored, sha256);
   await recordUsage(env, uploader, bytes.byteLength);
   return result(env, p, bytes.byteLength, opts.name);
 }

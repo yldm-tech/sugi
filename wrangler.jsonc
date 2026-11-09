@@ -30,6 +30,8 @@
     "MAIN_ORIGIN": "",
     "FILES_ORIGIN": "",
     "TMP_ORIGIN": "",
+    // The admin dashboard (sign in with ADMIN_TOKEN). Empty: /_admin on the main host. With your own domain, give it a hostname of its own, e.g. https://admin.example.org, so its cookie never reaches the public site.
+    "ADMIN_ORIGIN": "",
     // Who runs this instance and how to reach them; shown on the terms and privacy pages, which you are responsible for.
     "OPERATOR_NAME": "",
     "CONTACT_EMAIL": "",

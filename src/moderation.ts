@@ -2,6 +2,7 @@
 import { purgeUrls } from "./cache";
 import { dropFromBackup } from "./backup";
 import { toHex } from "./crypto";
+import { unindexStatements } from "./fileindex";
 import { describe, fileKey, pageUrl, publicUrl } from "./files";
 import { MEDIA_BY_EXT } from "./sniff";
 import { HASH_MAX_BYTES } from "./limits";
@@ -222,7 +223,13 @@ export interface TakedownResult {
 }
 
 /** Takes down objects by key: replaces each with a tombstone marker, records it, optionally blocks its content, and purges every URL it was served from. */
-async function takedownKeys(env: Env, keys: string[], opts: TakedownOptions, action: string, logTarget: string): Promise<Omit<TakedownResult, "target">> {
+export async function takedownKeys(
+  env: Env,
+  keys: string[],
+  opts: TakedownOptions,
+  action: string,
+  logTarget: string,
+): Promise<Omit<TakedownResult, "target">> {
   const removed: string[] = [];
   const already: string[] = [];
   const hashes: string[] = [];
@@ -268,6 +275,7 @@ async function takedownKeys(env: Env, keys: string[], opts: TakedownOptions, act
     }
     removed.push(key);
   }
+  stmts.push(...unindexStatements(env, [...removed, ...already]));
   stmts.push(
     await auditLog(env, action, logTarget, opts.reason ?? null, {
       via: opts.via ?? null,

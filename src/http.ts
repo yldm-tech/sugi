@@ -95,16 +95,22 @@ export async function requireBearer(request: Request, expected: string | undefin
   }
 }
 
-/** The shared ADMIN_TOKEN, or a personal API token whose role is "admin" (set by hand in D1), so a maintainer can use their own token instead of the shared one. */
+/** Who an admin token belongs to: "ADMIN_TOKEN" for the shared token, or the account and token prefix of a personal API token whose role is "admin" (set by hand in D1), so a maintainer can use their own token instead of the shared one. Null for any other token. */
+export async function adminTokenLabel(env: Env, token: string): Promise<string | null> {
+  if (env.ADMIN_TOKEN && (await constantTimeEqual(token, env.ADMIN_TOKEN))) return "ADMIN_TOKEN";
+  if (!token.startsWith("sugi_") || env.FEATURE_ACCOUNTS !== "1" || !(env.ACCOUNT_FEATURES ?? "").split(",").some((f) => f.trim() === "tokens")) return null;
+  const row = await env.DB.prepare(
+    "SELECT t.role AS role, t.prefix AS prefix, u.email AS email FROM api_tokens t JOIN users u ON u.id = t.user_id WHERE t.token_hash = ?",
+  )
+    .bind(await sha256Hex(new TextEncoder().encode(token)))
+    .first<{ role: string; prefix: string; email: string | null }>();
+  return row?.role === "admin" ? `${row.email ?? "account"} (${row.prefix}…)` : null;
+}
+
+/** The request carries the shared ADMIN_TOKEN or a personal admin token (see adminTokenLabel). */
 export async function isAdmin(request: Request, env: Env): Promise<boolean> {
   const given = bearerToken(request);
-  if (given === null) return false;
-  if (env.ADMIN_TOKEN && (await constantTimeEqual(given, env.ADMIN_TOKEN))) return true;
-  if (!given.startsWith("sugi_") || env.FEATURE_ACCOUNTS !== "1" || !(env.ACCOUNT_FEATURES ?? "").split(",").some((f) => f.trim() === "tokens")) return false;
-  const row = await env.DB.prepare("SELECT role FROM api_tokens WHERE token_hash = ?")
-    .bind(await sha256Hex(new TextEncoder().encode(given)))
-    .first<{ role: string }>();
-  return row?.role === "admin";
+  return given !== null && (await adminTokenLabel(env, given)) !== null;
 }
 
 /** Gate for the admin HTTP endpoints. */
