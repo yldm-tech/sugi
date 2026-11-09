@@ -151,9 +151,10 @@ export async function handleAdmin(request: Request, env: Env, sub: string): Prom
   }
 
   if (method === "POST") {
+    // Signing out needs no form fields, so it must not depend on a body.
+    if (sub === "/logout") return redirect(env, "/login", [await closeAdminSession(env, session)]);
     const f = await form(request);
     const reason = str(f, "reason") || null;
-    if (sub === "/logout") return redirect(env, "/login", [await closeAdminSession(env, session)]);
     const report = /^\/reports\/(\d{1,12})$/.exec(sub);
     if (report) {
       const action = str(f, "action");

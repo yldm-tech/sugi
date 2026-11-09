@@ -274,6 +274,11 @@ describe("admin dashboard", () => {
     expect(out.status).toBe(303);
     expect(out.headers.get("set-cookie")).toContain("sugi_admin=; Path=/; Max-Age=0");
     expect((await get("/", cookie)).status).toBe(303);
+    // Without any body too.
+    const bare = await signIn();
+    const res = await call(new Request(`${ADMIN_HOST}/logout`, { method: "POST", headers: { origin: ADMIN_HOST, cookie: bare } }), DEDICATED);
+    expect(res.status).toBe(303);
+    expect((await get("/", bare)).status).toBe(303);
   });
 
   it("lives only on its own host, and never takes over the public site", async () => {
