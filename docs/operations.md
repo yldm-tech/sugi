@@ -6,7 +6,7 @@
 
 - Cloudflare 账户 `e2b27aea5f599efdbe0a7016a2580d05`（也是 zone `sugi.moe` 所在的账户；Worker 的自定义域必须和 zone 在同一个账户）。
 - Worker `sugi`，配置在 [`wrangler.production.jsonc`](../wrangler.production.jsonc)；R2 bucket `sugi`（存储区域 APAC，自定义域 `r2.sugi.moe` 作为走缓存的回源地址）；D1 数据库 `sugi`（`61f7d685-83be-4cad-9a56-b6ce9887affb`）。
-- 自定义域：`sugi.moe`（网站和接口）、`files.sugi.moe`（永久文件）、`tmp.sugi.moe`（临时文件），workers.dev 入口关闭。
+- 自定义域：`sugi.moe`（网站和接口）、`files.sugi.moe`（永久文件）、`tmp.sugi.moe`（临时文件）、`admin.sugi.moe`（管理后台），workers.dev 入口关闭。四个主机名都是 zone 路由，DNS 记录是代理的 `AAAA 100::`。
 - 生产环境开放匿名上传：Worker secrets 里没有 `UPLOAD_TOKEN`。
 - 部署只用 `npm run deploy:production`（[`scripts/deploy-production.sh`](../scripts/deploy-production.sh)）：它先拒绝含 `UPLOAD_TOKEN` 或缺少必要 secret 的 secrets 文件，打印当前版本作为回滚目标，再执行 `wrangler deploy --config wrangler.production.jsonc --secrets-file ~/.config/sugi/secrets.env`。回滚：`npx wrangler rollback <版本 id> --config wrangler.production.jsonc`。
 - 每次部署后跑 `scripts/e2e.sh https://sugi.moe`（旧链接、`bin/sugi-upload`、新接口、缓存清除、限流和 WAF），开了 `FEATURE_CLI` 时再跑 `SUGI_TOKEN=<TRUSTED_TOKEN> scripts/cli-e2e.sh https://sugi.moe`。两个脚本都只上传现场生成的合成文件，并删掉自己创建的所有对象。
@@ -80,6 +80,10 @@ Secrets 只存在两处：Cloudflare 的 Worker secrets，以及本机 `~/.confi
 set -a; . ~/.config/sugi/secrets.env; set +a
 admin() { printf 'header = "Authorization: Bearer %s"\n' "$ADMIN_TOKEN" | curl -sS -K - "$@"; }
 ```
+
+### 管理后台
+
+https://admin.sugi.moe ，用 `ADMIN_TOKEN`（`secrets.env` 里）或自己的 admin 个人令牌登录，会话 12 小时。下面 MCP 的举报处理、查询、下架、按来源处理、封禁和审计日志在后台里都有对应页面，走的是同一套函数，记在同一份审计日志里（网页操作的 `detail.via` 是 `web`）。轮换 `ADMIN_TOKEN` 后，用旧令牌开的会话立即失效。Staging 的后台在 https://sugi-staging.evan-e2b.workers.dev/_admin ，用 `staging.env` 里 staging 自己的 `ADMIN_TOKEN` 登录，看到的是 staging 的数据（左上角会标出站点和「测试站」）。用户页可以把个人令牌设为或降为 admin，这是除了手改 D1 之外唯一的入口，同样记在审计日志里；当前登录用的令牌不能在后台里改或撤销。文件页和用户页依赖文件索引 `file_index`，新部署后由 cron 每 10 分钟对账 1000 个对象，状态页能看到上次完整对账的时间；没完成前列表可能不全。
 
 ### 处理举报（MCP）
 

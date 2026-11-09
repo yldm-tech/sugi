@@ -2,6 +2,7 @@
 import { deletionResponse, fetchViaCache, purgeCache } from "./cache";
 import { sha256Hex } from "./crypto";
 import { authorizeUpload, etagMatches, hasBody, HttpError, jsonResponse, RemovedError, requireAdmin, textResponse, wantsJson } from "./http";
+import { indexObject } from "./fileindex";
 import { checkQuota, recordUsage } from "./quota";
 import { assertHashAllowed, isTombstone, takedown, takedownBySource } from "./moderation";
 import { LEGACY_MAX_BYTES } from "./limits";
@@ -91,7 +92,10 @@ export async function handleLegacyUpload(request: Request, env: Env): Promise<Re
       onlyIf: { etagDoesNotMatch: "*" },
     });
     created = stored !== null;
-    if (created) await recordUsage(env, uploader, bytes.byteLength);
+    if (stored) {
+      await indexObject(env, key, stored);
+      await recordUsage(env, uploader, bytes.byteLength);
+    }
   } else if (existing.customMetadata?.sha256 && existing.customMetadata.sha256 !== sha256) {
     // A 64-bit prefix collision with different content; never overwrite, never pretend the old URL serves this file.
     throw new HttpError(409, "key collision with different content");

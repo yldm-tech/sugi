@@ -34,6 +34,9 @@ import {
 } from "./auth/me";
 import { handlePasskeyLoginOptions, handlePasskeyLoginVerify, handlePasskeyRegisterOptions, handlePasskeyRegisterVerify } from "./auth/passkey";
 import { handleOAuthCallback, handleOAuthStart, type Provider } from "./auth/oauth";
+import { handleAdmin, matchAdmin } from "./admin";
+import { sweepAdminSessions } from "./admin/auth";
+import { reindexStep } from "./fileindex";
 
 // Only the default handler may be exported from this module: workerd treats every named export of the main module as an entrypoint.
 
@@ -171,6 +174,11 @@ async function route(request: Request, env: Env): Promise<Response> {
   const method = request.method;
   const fileMatch = matchFileOrigin(env, url);
   if (fileMatch) return routeFileHost(request, env, fileMatch);
+  const adminPath = matchAdmin(env, url);
+  if (adminPath !== null) {
+    await ensureSchema(env.DB).catch(() => undefined);
+    return handleAdmin(request, env, adminPath);
+  }
 
   if (pathname.startsWith("/static/")) return serveStatic(request, env, pathname);
   // Everything past this point may touch D1; make sure the schema exists (a no-op after the first request of an isolate).
@@ -285,7 +293,9 @@ export default {
         await sweepUsage(env);
         await sweepOps(env);
         await sweepReports(env);
+        await sweepAdminSessions(env);
         await runBackup(env);
+        await reindexStep(env);
         await checkAlerts(env);
         // A failed digest stays unsent and is retried on the next run.
         await notifyReports(env).catch(() => undefined);

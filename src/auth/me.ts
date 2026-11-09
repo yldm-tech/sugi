@@ -1,5 +1,6 @@
 // Account endpoints: who am I, my files and albums across devices (sync), claiming uploads made before logging in, passkey removal, deleting the account, and logging out.
 import { purgeCache } from "../cache";
+import { unindex } from "../fileindex";
 import { HttpError, jsonResponse } from "../http";
 import { albumUrl } from "../albums";
 import { constantTimeEqual, sha256Hex } from "../crypto";
@@ -170,6 +171,7 @@ export async function handleDeleteAccount(request: Request, env: Env): Promise<R
     const { results } = await env.DB.prepare("SELECT file_key FROM user_files WHERE user_id = ?").bind(p.user.id).all<{ file_key: string }>();
     const keys = results.map((r) => r.file_key);
     for (let i = 0; i < keys.length; i += 1000) await env.BUCKET.delete(keys.slice(i, i + 1000));
+    await unindex(env, keys);
     deletedFiles = keys.length;
     cachePurged = await purgeCache(env, keys);
     const { results: albums } = await env.DB.prepare("SELECT album_id FROM user_albums WHERE user_id = ?").bind(p.user.id).all<{ album_id: string }>();
