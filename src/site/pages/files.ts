@@ -1,4 +1,5 @@
 import { type Album, albumUrl } from "../../albums";
+import { ICON_SEARCH } from "../icons";
 import { pageUrl, publicUrl, type StoredFile } from "../../files";
 import { esc } from "../i18n";
 import { brand } from "../../config";
@@ -156,7 +157,7 @@ ${
 <section class="stack" id="mine-files">
 <div class="selbar" id="selbar" hidden><span class="count" id="sel-count"></span><input id="album-title" maxlength="80" placeholder="${t("起个标题（可以不填）", "Title (optional)")}"><button type="button" class="mk" id="sel-album">${t("打包成链接", "Make a link")}</button><button type="button" class="rm" id="sel-delete">${t("删除", "Delete")}</button><button type="button" class="cx" id="sel-clear">${t("取消", "Cancel")}</button></div>
 <div class="stack" id="mine-tools" hidden>
-<div class="filters"><div class="search"><span aria-hidden="true">⌕</span><input id="mine-q" placeholder="${t("按文件名找找", "Search by file name")}" aria-label="${t("按文件名找找", "Search by file name")}"></div>
+<div class="filters"><div class="search">${ICON_SEARCH(16)}<input id="mine-q" placeholder="${t("按文件名找找", "Search by file name")}" aria-label="${t("按文件名找找", "Search by file name")}"></div>
 <div class="seg" id="mine-filter"><button type="button" data-filter="all" class="on">${t("全部", "All")}</button><button type="button" data-filter="perm">${t("永久", "Forever")}</button><button type="button" data-filter="tmp">${t("临时", "Temporary")}</button><button type="button" data-filter="gone">${t("已过期", "Expired")}</button></div></div>
 <div class="fmtrow"><span>${t("复制成", "Copy as")}</span><div class="seg" data-fmt-seg></div></div>
 </div>
