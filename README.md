@@ -172,7 +172,6 @@ sugi up big.mp4 ; sugi abort big.mp4          # continue an interrupted big uplo
 
 The CLI needs only bash and curl and talks to the instance it was installed from. The MCP server at `https://<host>/mcp` (Streamable HTTP, stateless) offers `upload_file`, `upload_url`, `create_album`, `get_file` and `delete_file`; for example `claude mcp add --transport http sugi https://<host>/mcp`.
 
-
 ### Upload tools
 
 Every instance documents these on `/dev#tools`, filled in with its own address. They all send the same request: a multipart POST of the field `file` to `https://<host>/api/upload` with `Accept: application/json`, reading the link from `url`. Add `Authorization: Bearer sugi_…` (a personal API token) to upload videos or to record uploads under your account.
