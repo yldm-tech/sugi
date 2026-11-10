@@ -48,7 +48,6 @@ npx wrangler secret put ADMIN_TOKEN
 
 不想叫 `my-sugi` 的话，先改 `wrangler.jsonc` 里的 `"name"`。
 
-
 ### 用自己的域名
 
 把网站和文件域名放在同一个 Cloudflare zone 里（例如 `example.org`、`files.example.org`、`tmp.example.org`），用**路由**（routes）挂 Worker，**不要用自定义域名**（Custom Domains）：给三个名字各加一条代理的 DNS 记录（`AAAA 100::` 就够，所有请求都由 Worker 回答），然后在 `wrangler.jsonc` 里写
@@ -62,6 +61,7 @@ npx wrangler secret put ADMIN_TOKEN
 ```
 
 并设置 `MAIN_ORIGIN`、`FILES_ORIGIN`、`TMP_ORIGIN`。这样三个名字都用 zone 的 Universal SSL 证书（`example.org`、`*.example.org`）。自定义域名会给每个主机名单独发一张证书；浏览器会把 HTTP/2 连接复用给证书覆盖到的其他主机名，而 Cloudflare 对落在另一张证书上的主机名直接回一个空的 403，结果是 files 域名上的图片在 Chrome 里时不时打不开。`scripts/smoke.sh` 专门检查这一点。
+
 ## 配置
 
 一个实例的身份都在 [`wrangler.jsonc`](wrangler.jsonc) 的 `vars` 里。留空时用默认值，在裸的 `*.workers.dev` 地址上也能工作。
@@ -124,8 +124,8 @@ admin -H 'content-type: application/json' -d '{"source":"<hmac>","dry_run":true}
 
 同样的管理功能也能通过 MCP 用：带 `Authorization: Bearer <ADMIN_TOKEN>` 连接 `https://<域名>/mcp`，会多出 `inspect`、`takedown`（可加 `block_content`，打包链接可加 `include_files`）、`list_by_source`、`takedown_by_source`（默认只预演）、`block_source` / `unblock_source`、`unblock_content`、`list_blocks`、`takedown_log`、`list_reports`、`resolve_report`。处理举报的顺序：`inspect` 查链接，`takedown` 下架，`list_by_source` 看同一上传者还传了什么，必要时 `takedown_by_source` 或 `block_source`。管理员令牌也不受限流；用了 WAF 规则的话，把它和 `TRUSTED_TOKEN` 一起写进跳过规则。
 
-
 访客可以用文件页和打包链接页最下面的「举报」表单举报（或者 `POST /api/reports`，JSON `{"target", "reason", "details", "contact"}`，原因可选 `csam`、`illegal`、`copyright`、`privacy`、`spam`、`other`）。举报存在 D1 里，每个来源每小时最多 5 条、每天 20 条，全站每天 300 条，举报本身不会删除任何东西。配置了 `ABUSE_EMAIL`（或 `CONTACT_EMAIL`）和发信之后，新举报会汇总发到那个邮箱，最多一小时一封（涉及 CSAM 时标题带 URGENT）。`list_reports` 列出举报；`resolve_report` 用 `action: "takedown"` 时和 `takedown` 一样下架，并把同一链接上所有未处理的举报一起结掉，`action: "dismiss"` 保留内容并记进审计日志。举报人的来源 HMAC 7 天后抹掉，处理完的举报一年后删除。
+
 ### 额度和监控
 
 - 每日上传额度（按 UTC 日、单位字节，`0` 表示不限）：`QUOTA_ANON_BYTES_PER_DAY`（没登录时每个来源，默认 1 GB）、`QUOTA_ACCOUNT_BYTES_PER_DAY`（每个账号，5 GB）、`QUOTA_GLOBAL_BYTES_PER_DAY`（全站，50 GB，超过后只接受可信令牌和管理员上传）。超出个人额度返回 429，超出全站额度返回 507。
@@ -171,7 +171,6 @@ sugi up big.mp4 ; sugi abort big.mp4          # 接着传中断的大文件，�
 ```
 
 命令行工具只依赖 bash 和 curl，默认连到安装它的那个实例。MCP 服务在 `https://<域名>/mcp`（Streamable HTTP，无状态），工具有 `upload_file`、`upload_url`、`create_album`、`get_file`、`delete_file`，例如 `claude mcp add --transport http sugi https://<域名>/mcp`。
-
 
 ### 上传工具
 
