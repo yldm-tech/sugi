@@ -1,5 +1,7 @@
 # sugi
 
+[![X](https://img.shields.io/badge/X-%40suzukaze__haduki-000000?logo=x&logoColor=white)](https://x.com/suzukaze_haduki) [![GitHub Sponsors](https://img.shields.io/badge/GitHub%20Sponsors-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/houko)
+
 [简体中文](README.zh-CN.md)
 
 sugi is an anonymous image and short-video host that runs entirely on Cloudflare: one Worker, one R2 bucket for the files and one D1 database for albums. No sign-up for pictures (short videos need an account by default): drop one in and get a direct link, kept forever or deleted after 1 hour, 12 hours or 3 days. It comes with a bilingual (Chinese and English) website, an HTTP API, a command-line tool and an MCP server, and a hamster that stuffs everything into its cheeks.

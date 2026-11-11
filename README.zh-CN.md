@@ -1,5 +1,7 @@
 # sugi
 
+[![X](https://img.shields.io/badge/X-%40suzukaze__haduki-000000?logo=x&logoColor=white)](https://x.com/suzukaze_haduki) [![GitHub Sponsors](https://img.shields.io/badge/GitHub%20Sponsors-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/houko)
+
 [English](README.md)
 
 sugi 是一个匿名图床，图片和短视频都能传，整个跑在 Cloudflare 上：一个 Worker，一个存文件的 R2 bucket，一个存打包链接的 D1 数据库。传图片不用注册（短视频默认要登录），拖进来就能拿到直链，可以永久保存，也可以 1 小时、12 小时或 3 天后自动删除。自带中英双语网站、HTTP API、命令行工具和 MCP 服务，还有一只什么都往腮帮子里屯的仓鼠。
