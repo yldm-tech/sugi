@@ -49,18 +49,18 @@
     }
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.6.7",
+    "@biomejs/biome": "^2.6.8",
     "@cloudflare/vitest-plugin": "^1.6.0",
     "@resvg/resvg-js": "2.6.2",
     "esbuild": "0.28.2",
-    "playwright": "^1.65.0",
+    "playwright": "^1.65.1",
     "typescript": "^7.0.2",
-    "vitest": "^5.1.0",
+    "vitest": "^5.1.1",
     "wrangler": "^4.156.1"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.2",
-    "@remix-run/multipart-parser": "1.1.1",
+    "@remix-run/multipart-parser": "1.1.2",
     "@simplewebauthn/browser": "^14.0.0",
     "@simplewebauthn/server": "^14.1.0",
     "arctic": "^3.7.0",
